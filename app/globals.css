@@ -6,7 +6,7 @@
   --bg-mid: #081325;
   --bg-end: #02030a;
   --app-main-top: calc(100px + env(safe-area-inset-top));
-  --app-main-top-mobile: calc(154px + env(safe-area-inset-top));
+  --app-main-top-mobile: calc(114px + env(safe-area-inset-top));
   --panel: rgba(10, 16, 30, 0.72);
   --panel-strong: rgba(14, 24, 44, 0.9);
   --ring: rgba(45, 212, 191, 0.35);
@@ -191,6 +191,15 @@ input[type="range"] {
   contain-intrinsic-size: 960px;
 }
 
+.scrollbar-none {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;
+}
+
 .horizontal-card-rail {
   display: flex;
   gap: 1rem;
@@ -211,6 +220,10 @@ input[type="range"] {
   scroll-snap-align: start;
 }
 
+.playlist-card-rail > * {
+  flex: 0 0 clamp(196px, 58vw, 236px);
+}
+
 .song-card-rail {
   display: flex;
   gap: 0.75rem;
@@ -227,7 +240,7 @@ input[type="range"] {
 }
 
 .song-card-rail > * {
-  flex: 0 0 clamp(168px, 44vw, 220px);
+  flex: 0 0 clamp(148px, 38vw, 188px);
   scroll-snap-align: start;
 }
 
@@ -247,7 +260,15 @@ input[type="range"] {
 
 @media (min-width: 640px) {
   .horizontal-card-rail > * {
-    flex-basis: min(44vw, 360px);
+    flex-basis: min(42vw, 320px);
+  }
+
+  .playlist-card-rail > * {
+    flex-basis: clamp(216px, 30vw, 276px);
+  }
+
+  .song-card-rail > * {
+    flex-basis: clamp(164px, 24vw, 208px);
   }
 }
 

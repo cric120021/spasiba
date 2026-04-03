@@ -6,6 +6,7 @@ import { memo, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRe
 import SaveToPlaylistButton from "@/components/SaveToPlaylistButton";
 import { audioController } from "@/lib/audio-controller";
 import { emitProfileUpdatedEvent } from "@/lib/profile-events";
+import { shareSong } from "@/lib/song-share";
 import type { Song } from "@/lib/types";
 import { playerActions } from "@/store/playerStore";
 
@@ -202,6 +203,22 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
     onClosePlayer?.();
   }, [onClosePlayer]);
 
+  const handleShareSong = useCallback(async () => {
+    try {
+      const result = await shareSong(song);
+
+      if (result === "shared") {
+        playerActions.showToast(`Shared "${song.title}".`);
+      } else if (result === "copied") {
+        playerActions.showToast(`Copied "${song.title}" link.`);
+      }
+    } catch (error) {
+      playerActions.showToast(error instanceof Error ? error.message : "Unable to share this song.");
+    } finally {
+      setOpen(false);
+    }
+  }, [song]);
+
   const menu = mounted && open && position
     ? createPortal(
         <div
@@ -220,6 +237,17 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
             className="flex w-full items-center rounded-[16px] px-4 py-3 text-left text-sm text-white transition hover:bg-white/[0.08] disabled:cursor-wait disabled:opacity-70"
           >
             <span>{liked ? "Unlike" : "Like"}</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
+              void handleShareSong();
+            }}
+            className="flex w-full items-center rounded-[16px] px-4 py-3 text-left text-sm text-white transition hover:bg-white/[0.08]"
+          >
+            <span>Share song</span>
           </button>
 
           <button

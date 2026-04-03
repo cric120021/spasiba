@@ -196,7 +196,7 @@ export const DISCOVERY_SECTIONS = [
   },
   {
     id: "english-global",
-    title: "English (Global / Hollywood)",
+    title: "English",
     blurb: "Popular English records with polished production and wide appeal.",
     query: "global pop official video"
   },
@@ -214,31 +214,31 @@ export const DISCOVERY_SECTIONS = [
   },
   {
     id: "lofi-chill",
-    title: "Lofi / Chill",
+    title: "Lofi",
     blurb: "Soft-focus instrumentals and easy listening for calmer moments.",
     query: "lofi hip hop beats"
   },
   {
     id: "love-romantic",
-    title: "Love / Romantic",
+    title: "Romance",
     blurb: "Warm, melodic songs built around romance and softer emotion.",
     query: "romantic love songs official audio"
   },
   {
     id: "sad-emotional",
-    title: "Sad / Emotional",
+    title: "Sad",
     blurb: "Slower, emotional songs with reflective lyrics and mood.",
     query: "sad emotional songs official audio"
   },
   {
     id: "high-energy-workout",
-    title: "High Energy / Workout",
+    title: "Workout",
     blurb: "Pumped-up songs for runs, lifts, and fast movement.",
     query: "high energy workout songs official audio"
   },
   {
     id: "trending-viral",
-    title: "Trending / Viral",
+    title: "Trending",
     blurb: "Songs spreading fast right now across short-form and playlists.",
     query: "viral trending songs official audio"
   }

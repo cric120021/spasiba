@@ -55,11 +55,29 @@ async function fetchSearchResults(query: string): Promise<Song[]> {
 function SearchResultsComponent() {
   const searchParams = useSearchParams();
   const query = (searchParams.get("q") || "").trim();
+  const sharedVideoId = (searchParams.get("v") || "").trim();
   const deferredQuery = useDeferredValue(query);
   const queryKey = useMemo(() => createQueryKey(query), [query]);
   const [results, setResults] = useState<Song[]>(() => searchCache.get(queryKey) || []);
   const [loading, setLoading] = useState(Boolean(query && !searchCache.get(queryKey)));
   const [error, setError] = useState<string | null>(null);
+  const displayResults = useMemo(() => {
+    if (!sharedVideoId) {
+      return results;
+    }
+
+    const sharedIndex = results.findIndex((track) => track.videoId === sharedVideoId);
+
+    if (sharedIndex <= 0) {
+      return results;
+    }
+
+    const nextResults = [...results];
+    const [sharedTrack] = nextResults.splice(sharedIndex, 1);
+
+    nextResults.unshift(sharedTrack);
+    return nextResults;
+  }, [results, sharedVideoId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -112,21 +130,21 @@ function SearchResultsComponent() {
   }, [query, queryKey]);
 
   useEffect(() => {
-    if (!results.length) {
+    if (!displayResults.length) {
       return;
     }
 
-    const firstTrack = results[0];
+    const firstTrack = displayResults[0];
     audioController.seedTrack(firstTrack);
     void audioController.prepareTrack(firstTrack);
-  }, [results]);
+  }, [displayResults]);
 
   useEffect(() => {
-    if (!results.length) {
+    if (!displayResults.length) {
       return;
     }
 
-    const warmupTracks = results.slice(1, 1 + SEARCH_PRELOAD_COUNT);
+    const warmupTracks = displayResults.slice(1, 1 + SEARCH_PRELOAD_COUNT);
 
     if (!warmupTracks.length) {
       return;
@@ -139,7 +157,7 @@ function SearchResultsComponent() {
     };
 
     return scheduleIdleTask(warmup, 200);
-  }, [results]);
+  }, [displayResults]);
 
   return (
     <div className="space-y-8">
@@ -157,7 +175,7 @@ function SearchResultsComponent() {
           </div>
           <div className="flex items-center gap-3">
             <div className="rounded-full border border-white/[0.08] bg-white/[0.06] px-3 py-1.5 text-[10px] uppercase tracking-[0.18em] text-slate-300/80 sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.24em]">
-              {results.length} tracks
+              {displayResults.length} tracks
             </div>
           </div>
         </div>
@@ -175,13 +193,13 @@ function SearchResultsComponent() {
         </section>
       ) : null}
 
-      {loading && results.length === 0 ? <SkeletonGrid count={12} /> : null}
+      {loading && displayResults.length === 0 ? <SkeletonGrid count={12} /> : null}
 
-      {query && results.length > 0 ? (
+      {query && displayResults.length > 0 ? (
         <SongGrid
           title="Results"
           subtitle="Tap any song to play."
-          tracks={results}
+          tracks={displayResults}
           prefetchCount={SEARCH_PRELOAD_COUNT}
         />
       ) : null}

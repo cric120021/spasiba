@@ -886,16 +886,16 @@ function LibrarySectionComponent() {
 
   return (
     <>
-      <section className="deferred-section space-y-4">
+      <section className="deferred-section space-y-3.5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 sm:text-[11px] sm:tracking-[0.28em]">Personal</p>
-            <h2 className="text-[24px] font-semibold tracking-tight text-white sm:text-3xl">Your library</h2>
-            <p className="max-w-2xl text-[15px] leading-6 text-slate-300/80 sm:text-base">
-              Open any playlist to see the full track list, or use the three dots to share, rename, or remove it.
+            <h2 className="text-[21px] font-semibold tracking-tight text-white sm:text-[25px]">Your library</h2>
+            <p className="max-w-xl text-[12px] leading-5 text-slate-300/62 sm:text-[14px]">
+              Playlists you made and revisit often.
             </p>
           </div>
-          <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-slate-300/80 sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.26em]">
+          <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[9px] uppercase tracking-[0.18em] text-slate-300/80 sm:px-3.5 sm:py-1.5 sm:text-[10px] sm:tracking-[0.22em]">
             {playlists.length} playlists
           </div>
         </div>
@@ -905,14 +905,14 @@ function LibrarySectionComponent() {
             Your saved playlists will appear here. Use the save button on any song to start building your library.
           </div>
         ) : (
-          <div className="horizontal-card-rail">
+          <div className="horizontal-card-rail playlist-card-rail !gap-3 !px-0 !pb-1">
             {playlists.map((playlist) => {
               const coverTrack = getStableCoverTrack(playlist);
 
               return (
                 <article
                   key={playlist.id}
-                  className="group relative overflow-visible rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(13,20,34,0.92),rgba(8,12,22,0.92))] p-3 shadow-[0_24px_80px_rgba(0,0,0,0.28)] transition hover:border-white/14 hover:bg-[linear-gradient(180deg,rgba(15,24,40,0.96),rgba(9,14,26,0.96))] sm:p-4"
+                  className="group relative overflow-hidden rounded-[22px] border border-white/8 bg-[linear-gradient(180deg,rgba(13,20,34,0.92),rgba(8,12,22,0.92))] shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition hover:border-white/14 hover:bg-[linear-gradient(180deg,rgba(15,24,40,0.96),rgba(9,14,26,0.96))]"
                 >
                   <button
                     type="button"
@@ -922,7 +922,7 @@ function LibrarySectionComponent() {
                     onTouchStart={() => prefetchRoute(`/library/${playlist.id}`)}
                     className="block w-full text-left"
                   >
-                    <div className="relative aspect-[1.08/1] overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.04]">
+                    <div className="relative aspect-[1/1.06] overflow-hidden bg-white/[0.04]">
                       {coverTrack ? (
                         <>
                           <Image
@@ -939,24 +939,17 @@ function LibrarySectionComponent() {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(74,222,208,0.24),transparent_55%),linear-gradient(180deg,#0a1020,#050816)]" />
                       )}
 
-                      <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-white/80 backdrop-blur-md">
+                      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-slate-950/70 px-2.5 py-1 text-[9px] uppercase tracking-[0.2em] text-white/80 backdrop-blur-md">
                         {playlist.trackCount} songs
                       </div>
 
-                      <div className="absolute inset-x-0 bottom-0 p-4">
-                        <p className="text-[11px] uppercase tracking-[0.28em] text-slate-300/70">Playlist</p>
-                        <h3 className="mt-2 line-clamp-2 text-xl font-semibold tracking-tight text-white">{playlist.name}</h3>
-                        <p className="mt-2 line-clamp-1 text-sm text-slate-200/70">
+                      <div className="absolute inset-x-0 bottom-0 p-3.5">
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-300/70">Playlist</p>
+                        <h3 className="mt-1.5 line-clamp-2 text-[18px] font-semibold tracking-tight text-white">{playlist.name}</h3>
+                        <p className="mt-1.5 line-clamp-1 text-[12px] text-slate-200/70">
                           {coverTrack ? `Featuring ${coverTrack.author}` : "Start saving songs to bring this playlist to life."}
                         </p>
                       </div>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between px-1">
-                      <p className="line-clamp-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                        {coverTrack ? coverTrack.title : "Empty playlist"}
-                      </p>
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-slate-300/70">Open</span>
                     </div>
                   </button>
 
@@ -967,7 +960,7 @@ function LibrarySectionComponent() {
                       event.stopPropagation();
                       openMenu(playlist, event.currentTarget);
                     }}
-                    className="absolute right-6 top-6 z-10 flex h-11 w-11 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-lg text-white backdrop-blur-md transition hover:bg-slate-950/88"
+                    className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-lg text-white backdrop-blur-md transition hover:bg-slate-950/88"
                     aria-label={`Open actions for ${playlist.name}`}
                   >
                     <span className="-translate-y-[1px]">⋯</span>
@@ -979,13 +972,13 @@ function LibrarySectionComponent() {
         )}
       </section>
 
-      <section className="deferred-section space-y-4">
+      <section className="deferred-section space-y-3.5">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <p className="text-[10px] uppercase tracking-[0.24em] text-slate-400 sm:text-[11px] sm:tracking-[0.28em]">Shared</p>
-            <h2 className="text-[24px] font-semibold tracking-tight text-white sm:text-3xl">Shared playlists</h2>
-            <p className="max-w-2xl text-[15px] leading-6 text-slate-300/80 sm:text-base">
-              Playlists friends shared with you and the ones you saved into your own library.
+            <h2 className="text-[21px] font-semibold tracking-tight text-white sm:text-[25px]">Shared playlists</h2>
+            <p className="max-w-xl text-[12px] leading-5 text-slate-300/62 sm:text-[14px]">
+              Playlists friends shared with you.
             </p>
           </div>
           <div className="flex flex-wrap items-center gap-3">
@@ -996,11 +989,11 @@ function LibrarySectionComponent() {
                 setShareCodeInput("");
                 setCodeModalOpen(true);
               }}
-              className="rounded-full border border-teal-300/18 bg-teal-300/10 px-4 py-2 text-[11px] uppercase tracking-[0.22em] text-teal-100 transition hover:bg-teal-300/16"
+              className="rounded-full border border-teal-300/18 bg-teal-300/10 px-3.5 py-1.5 text-[10px] uppercase tracking-[0.18em] text-teal-100 transition hover:bg-teal-300/16"
             >
               Enter code
             </button>
-            <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1.5 text-[10px] uppercase tracking-[0.2em] text-slate-300/80 sm:px-4 sm:py-2 sm:text-[11px] sm:tracking-[0.26em]">
+            <div className="rounded-full border border-white/[0.08] bg-white/[0.04] px-3 py-1 text-[9px] uppercase tracking-[0.18em] text-slate-300/80 sm:px-3.5 sm:py-1.5 sm:text-[10px] sm:tracking-[0.22em]">
               {sharedPlaylists.length} shared
             </div>
           </div>
@@ -1011,14 +1004,14 @@ function LibrarySectionComponent() {
             Shared playlists you unlock with a code will show up here automatically.
           </div>
         ) : (
-          <div className="horizontal-card-rail">
+          <div className="horizontal-card-rail playlist-card-rail !gap-3 !px-0 !pb-1">
             {sharedPlaylists.map((playlist) => {
               const coverTrack = getStableCoverTrack(playlist);
 
               return (
                 <article
                   key={`shared-${playlist.id}`}
-                  className="group relative overflow-visible rounded-[28px] border border-sky-300/10 bg-[linear-gradient(180deg,rgba(10,18,32,0.94),rgba(7,12,22,0.94))] p-3 shadow-[0_24px_80px_rgba(0,0,0,0.28)] transition hover:border-sky-300/18 hover:bg-[linear-gradient(180deg,rgba(12,22,38,0.96),rgba(8,14,26,0.96))] sm:p-4"
+                  className="group relative overflow-hidden rounded-[22px] border border-sky-300/10 bg-[linear-gradient(180deg,rgba(10,18,32,0.94),rgba(7,12,22,0.94))] shadow-[0_18px_48px_rgba(0,0,0,0.24)] transition hover:border-sky-300/18 hover:bg-[linear-gradient(180deg,rgba(12,22,38,0.96),rgba(8,14,26,0.96))]"
                 >
                   <button
                     type="button"
@@ -1028,7 +1021,7 @@ function LibrarySectionComponent() {
                     onTouchStart={() => playlist.shareToken && prefetchRoute(`/shared/${playlist.shareToken}`)}
                     className="block w-full text-left"
                   >
-                    <div className="relative aspect-[1.08/1] overflow-hidden rounded-[24px] border border-white/8 bg-white/[0.04]">
+                    <div className="relative aspect-[1/1.06] overflow-hidden bg-white/[0.04]">
                       {coverTrack ? (
                         <>
                           <Image
@@ -1045,26 +1038,19 @@ function LibrarySectionComponent() {
                         <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(56,189,248,0.24),transparent_55%),linear-gradient(180deg,#0a1020,#050816)]" />
                       )}
 
-                      <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-white/80 backdrop-blur-md">
+                      <div className="absolute left-3 top-3 rounded-full border border-white/10 bg-slate-950/70 px-2.5 py-1 text-[9px] uppercase tracking-[0.2em] text-white/80 backdrop-blur-md">
                         Shared
                       </div>
 
-                      <div className="absolute inset-x-0 bottom-0 p-4">
-                        <p className="text-[11px] uppercase tracking-[0.28em] text-slate-300/70">
+                      <div className="absolute inset-x-0 bottom-0 p-3.5">
+                        <p className="text-[10px] uppercase tracking-[0.24em] text-slate-300/70">
                           {playlist.ownerName ? `By ${playlist.ownerName}` : "Shared playlist"}
                         </p>
-                        <h3 className="mt-2 line-clamp-2 text-xl font-semibold tracking-tight text-white">{playlist.name}</h3>
-                        <p className="mt-2 line-clamp-1 text-sm text-slate-200/70">
+                        <h3 className="mt-1.5 line-clamp-2 text-[18px] font-semibold tracking-tight text-white">{playlist.name}</h3>
+                        <p className="mt-1.5 line-clamp-1 text-[12px] text-slate-200/70">
                           {coverTrack ? `Featuring ${coverTrack.author}` : "Open it to see the full shared track list."}
                         </p>
                       </div>
-                    </div>
-
-                    <div className="mt-3 flex items-center justify-between px-1">
-                      <p className="line-clamp-1 text-[11px] uppercase tracking-[0.18em] text-slate-400">
-                        {coverTrack ? coverTrack.title : "Shared playlist"}
-                      </p>
-                      <span className="text-[11px] uppercase tracking-[0.22em] text-slate-300/70">Open</span>
                     </div>
                   </button>
                 </article>

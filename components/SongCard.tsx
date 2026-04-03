@@ -5,8 +5,10 @@ import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
 import { audioController } from "@/lib/audio-controller";
+import { shareSong } from "@/lib/song-share";
 import type { Song } from "@/lib/types";
 import { formatCompactCount } from "@/lib/utils";
+import { playerActions } from "@/store/playerStore";
 
 import SaveToPlaylistButton from "@/components/SaveToPlaylistButton";
 
@@ -81,28 +83,42 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
     };
   }, [menuOpen, updateMenuPosition]);
 
+  const handleShareSong = useCallback(async () => {
+    try {
+      const result = await shareSong(song);
+
+      if (result === "shared") {
+        playerActions.showToast(`Shared "${song.title}".`);
+      } else if (result === "copied") {
+        playerActions.showToast(`Copied "${song.title}" link.`);
+      }
+    } catch (error) {
+      playerActions.showToast(error instanceof Error ? error.message : "Unable to share this song.");
+    }
+  }, [song]);
+
   return (
     <article
-      className="group glass-panel relative rounded-[22px] transition duration-300 hover:-translate-y-1 hover:border-teal-300/25 hover:bg-white/10 sm:rounded-[28px]"
+      className="group glass-panel relative rounded-[18px] transition duration-300 hover:-translate-y-1 hover:border-teal-300/25 hover:bg-white/[0.09] sm:rounded-[22px]"
       onPointerEnter={() => onHover(song)}
       onPointerDown={() => onHover(song)}
       onTouchStart={() => onHover(song)}
       onFocusCapture={() => onHover(song)}
     >
       <div className="flex w-full flex-col">
-        <div className="relative aspect-square overflow-hidden rounded-t-[22px] sm:rounded-t-[28px]">
+        <div className="relative aspect-square overflow-hidden rounded-t-[18px] sm:rounded-t-[22px]">
           <Image
             src={song.thumbnail}
             alt={song.title}
             fill
-            sizes="(max-width: 640px) 44vw, (max-width: 1024px) 200px, 220px"
+            sizes="(max-width: 640px) 38vw, (max-width: 1024px) 180px, 200px"
             quality={70}
             className="object-cover transition duration-500 group-hover:scale-105"
           />
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/5 to-transparent opacity-80" />
           <button type="button" onClick={() => onPlay(song)} className="absolute inset-0 z-[1]" aria-label={`Play ${song.title}`} />
           <div className="absolute left-3 right-3 top-3 z-[2] flex items-center justify-between sm:left-4 sm:right-4 sm:top-4">
-            <span className="rounded-full border border-white/10 bg-slate-950/60 px-2.5 py-1 text-[9px] uppercase tracking-[0.22em] text-white/75 backdrop-blur-md sm:px-3 sm:text-[10px] sm:tracking-[0.28em]">
+            <span className="rounded-full border border-white/10 bg-slate-950/60 px-2 py-1 text-[8px] uppercase tracking-[0.22em] text-white/75 backdrop-blur-md sm:px-2.5 sm:text-[9px] sm:tracking-[0.26em]">
               {song.duration}
             </span>
           </div>
@@ -115,10 +131,10 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
                 event.stopPropagation();
                 setMenuOpen((previous) => !previous);
               }}
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-white/90 backdrop-blur-md transition hover:bg-slate-950/90 sm:h-10 sm:w-10"
+              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-white/90 backdrop-blur-md transition hover:bg-slate-950/90 sm:h-9 sm:w-9"
               aria-label="More actions"
             >
-              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4 sm:h-5 sm:w-5">
+              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
                 <path fill="currentColor" d="M12 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4m0 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4m0 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4" />
               </svg>
             </button>
@@ -130,10 +146,10 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
               event.stopPropagation();
               onPlay(song);
             }}
-            className="absolute bottom-3 right-3 z-[3] flex h-11 w-11 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl transition duration-300 group-hover:scale-105 group-hover:bg-teal-300 sm:bottom-4 sm:right-4 sm:h-12 sm:w-12"
+            className="absolute bottom-3 right-3 z-[3] flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl transition duration-300 group-hover:scale-105 group-hover:bg-teal-300 sm:bottom-4 sm:right-4 sm:h-10 sm:w-10"
             aria-label={isActive && isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
           >
-            <svg aria-hidden viewBox="0 0 24 24" className="h-5 w-5 sm:h-6 sm:w-6">
+            <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px] sm:h-5 sm:w-5">
               {isActive && isPlaying ? (
                 <path fill="currentColor" d="M7 5h3v14H7zm7 0h3v14h-3z" />
               ) : (
@@ -142,17 +158,17 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
             </svg>
           </button>
           {isActive ? (
-            <div className="absolute bottom-3 left-3 z-[2] rounded-full border border-teal-300/35 bg-teal-300/[0.18] px-2.5 py-1 text-[9px] uppercase tracking-[0.22em] text-teal-100 sm:bottom-4 sm:left-4 sm:px-3 sm:text-[10px] sm:tracking-[0.28em]">
+            <div className="absolute bottom-3 left-3 z-[2] rounded-full border border-teal-300/35 bg-teal-300/[0.18] px-2 py-1 text-[8px] uppercase tracking-[0.22em] text-teal-100 sm:bottom-4 sm:left-4 sm:px-2.5 sm:text-[9px] sm:tracking-[0.26em]">
               {isPlaying ? "Playing" : "Selected"}
             </div>
           ) : null}
         </div>
 
-        <button type="button" onClick={() => onPlay(song)} className="flex flex-1 flex-col gap-1.5 p-3 text-left sm:gap-2 sm:p-4">
-          <h3 className="line-clamp-2 text-[14px] font-semibold tracking-tight text-white sm:text-base">{song.title}</h3>
-          <div className="mt-auto flex items-center justify-between gap-2 text-[12px] text-slate-300/80 sm:gap-3 sm:text-sm">
+        <button type="button" onClick={() => onPlay(song)} className="flex flex-1 flex-col gap-1.5 p-2.5 text-left sm:gap-2 sm:p-3">
+          <h3 className="line-clamp-2 text-[13px] font-semibold tracking-tight text-white sm:text-[15px]">{song.title}</h3>
+          <div className="mt-auto flex items-center justify-between gap-2 text-[11px] text-slate-300/80 sm:gap-3 sm:text-[13px]">
             <span className="line-clamp-1">{song.author}</span>
-            <span className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-slate-400 sm:text-xs sm:tracking-[0.22em]">{formatCompactCount(song.views)}</span>
+            <span className="shrink-0 text-[9px] uppercase tracking-[0.18em] text-slate-400 sm:text-[10px] sm:tracking-[0.2em]">{formatCompactCount(song.views)}</span>
           </div>
         </button>
       </div>
@@ -167,6 +183,18 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
                 left: `${menuPosition.left}px`
               }}
             >
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setMenuOpen(false);
+                  void handleShareSong();
+                }}
+                className="flex w-full items-center justify-between rounded-2xl px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-white/[0.08]"
+              >
+                <span>Share song</span>
+              </button>
               <button
                 type="button"
                 onClick={(event) => {
