@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" fill="#000"/>
+  <rect x="64" y="64" width="384" height="384" rx="96" fill="url(#bg)"/>
+  <text x="50%" y="54%" fill="#f8fafc" font-family="Avenir Next, Montserrat, sans-serif" font-size="170" font-weight="700" letter-spacing="-20" text-anchor="middle">SP</text>
+  <defs>
+    <linearGradient id="bg" x1="256" x2="256" y1="64" y2="448" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07111f"/>
+      <stop offset="1" stop-color="#020409"/>
+    </linearGradient>
+  </defs>
+</svg>
+

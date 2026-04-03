@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1170 2532">
+  <rect width="1170" height="2532" fill="#000"/>
+  <rect x="225" y="906" width="720" height="720" rx="172" fill="url(#panel)"/>
+  <text x="50%" y="51%" fill="#f8fafc" font-family="Avenir Next, Montserrat, sans-serif" font-size="280" font-weight="700" letter-spacing="-34" text-anchor="middle">SP</text>
+  <text x="50%" y="67%" fill="rgba(248,250,252,0.7)" font-family="Avenir Next, Montserrat, sans-serif" font-size="66" font-weight="600" letter-spacing="16" text-anchor="middle">SPASIBA</text>
+  <defs>
+    <linearGradient id="panel" x1="585" x2="585" y1="906" y2="1626" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#07111f"/>
+      <stop offset="1" stop-color="#020409"/>
+    </linearGradient>
+  </defs>
+</svg>
