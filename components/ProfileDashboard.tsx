@@ -8,7 +8,7 @@ import SongGrid from "@/components/SongGrid";
 import { audioController } from "@/lib/audio-controller";
 import { emitProfileUpdatedEvent, PROFILE_UPDATED_EVENT } from "@/lib/profile-events";
 import type { UserProfile } from "@/lib/types";
-import { clearProfileData, fetchProfile, saveProfileBasics, saveProfilePhoto } from "@/lib/profile-client";
+import { clearProfileData, fetchProfile, readCachedProfile, saveProfileBasics, saveProfilePhoto } from "@/lib/profile-client";
 import { playerActions } from "@/store/playerStore";
 
 const PROFILE_PREVIEW_LIMIT = 8;
@@ -56,14 +56,16 @@ async function buildProfilePhotoDataUrl(file: File) {
 }
 
 function ProfileDashboardComponent() {
+  const initialProfile = readCachedProfile();
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const hasLoadedOnceRef = useRef(initialProfile !== undefined);
+  const [profile, setProfile] = useState<UserProfile | null>(initialProfile ?? null);
+  const [loading, setLoading] = useState(initialProfile === undefined);
   const [saving, setSaving] = useState(false);
   const [photoSaving, setPhotoSaving] = useState(false);
   const [clearingScope, setClearingScope] = useState<"history" | "suggestions" | null>(null);
-  const [name, setName] = useState("");
-  const [username, setUsername] = useState("");
+  const [name, setName] = useState(initialProfile?.name || "");
+  const [username, setUsername] = useState(initialProfile?.username || "");
   const [error, setError] = useState<string | null>(null);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -96,17 +98,17 @@ function ProfileDashboardComponent() {
   }, [profile?.username]);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
 
     try {
-      const nextProfile = await fetchProfile({ force: true });
+      const nextProfile = await fetchProfile();
       setProfile(nextProfile);
       setName(nextProfile?.name || "");
       setUsername(nextProfile?.username || "");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load profile.");
     } finally {
+      hasLoadedOnceRef.current = true;
       setLoading(false);
     }
   }, []);
@@ -121,11 +123,9 @@ function ProfileDashboardComponent() {
     };
 
     window.addEventListener(PROFILE_UPDATED_EVENT, handleUpdate);
-    window.addEventListener("focus", handleUpdate);
 
     return () => {
       window.removeEventListener(PROFILE_UPDATED_EVENT, handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
     };
   }, [load]);
 
@@ -139,7 +139,7 @@ function ProfileDashboardComponent() {
       setProfile(nextProfile);
       setName(nextProfile.name || "");
       setUsername(nextProfile.username || "");
-      setMessage("Profile updated.");
+      setMessage("Saved on this device. Cloud syncs next time you open the app.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to save your profile.");
     } finally {
@@ -162,7 +162,7 @@ function ProfileDashboardComponent() {
       const nextPhotoDataUrl = await buildProfilePhotoDataUrl(file);
       const nextProfile = await saveProfilePhoto(nextPhotoDataUrl);
       setProfile(nextProfile);
-      setMessage("Profile photo updated.");
+      setMessage("Photo saved on this device. Cloud syncs next time you open the app.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to update your photo.");
     } finally {
@@ -179,7 +179,7 @@ function ProfileDashboardComponent() {
     try {
       const nextProfile = await saveProfilePhoto(null);
       setProfile(nextProfile);
-      setMessage("Profile photo removed.");
+      setMessage("Photo removed on this device. Cloud syncs next time you open the app.");
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to remove your photo.");
     } finally {

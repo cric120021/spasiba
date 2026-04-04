@@ -8,6 +8,7 @@ import Player from "@/components/Player";
 import PlayerBootstrap from "@/components/PlayerBootstrap";
 import PwaBootstrap from "@/components/PwaBootstrap";
 import SearchBar from "@/components/SearchBar";
+import SessionDataBootstrap from "@/components/SessionDataBootstrap";
 
 import "@/app/globals.css";
 
@@ -100,16 +101,19 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <div id="app">
           <PwaBootstrap />
           <PlayerBootstrap />
-          <Suspense
-            fallback={
-              <div className="app-header fixed inset-x-0 top-0 z-40 h-[116px] border-b border-white/8 bg-[#050816]/72 shadow-[0_18px_60px_rgba(0,0,0,0.42)] backdrop-blur-2xl sm:h-[76px]" />
-            }
-          >
-            <SearchBar />
-          </Suspense>
-          <main id="app-main" className="app-main mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
-            {children}
-          </main>
+          <SessionDataBootstrap />
+          <div id="app-scroll" className="app-scroll">
+            <Suspense
+              fallback={
+                <div className="app-header sticky top-0 z-40 h-[116px] border-b border-white/8 bg-[#050816]/72 shadow-[0_18px_60px_rgba(0,0,0,0.42)] sm:h-[76px]" />
+              }
+            >
+              <SearchBar />
+            </Suspense>
+            <main id="app-main" className="app-main mx-auto w-full max-w-7xl px-4 sm:px-6 lg:px-8">
+              {children}
+            </main>
+          </div>
           <Player />
           <InstallPrompt />
         </div>

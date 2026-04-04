@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { memo, useCallback, useEffect, useState } from "react";
+import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import SongGrid from "@/components/SongGrid";
+import SwipeActionTrackRow from "@/components/SwipeActionTrackRow";
+import { audioController } from "@/lib/audio-controller";
 import { PROFILE_UPDATED_EVENT } from "@/lib/profile-events";
-import { fetchProfile } from "@/lib/profile-client";
+import { emitProfileUpdatedEvent } from "@/lib/profile-events";
+import { fetchProfile, invalidateProfileCache, readCachedProfile } from "@/lib/profile-client";
 import type { Song, UserProfile } from "@/lib/types";
+import { playerActions } from "@/store/playerStore";
 
 type ProfileCollectionPageProps = {
   kind: "history" | "liked";
@@ -16,7 +20,7 @@ function getCollection(profile: UserProfile | null, kind: "history" | "liked") {
   if (!profile) {
       return {
         title: kind === "history" ? "Recently played" : "Liked songs",
-      subtitle: kind === "history" ? "Everything you listened to this month." : "Songs you marked with Like from the player.",
+      subtitle: kind === "history" ? "Everything you listened to this month." : "Songs you marked with Like stay here until you unlike them.",
         tracks: [] as Song[]
       };
   }
@@ -31,21 +35,22 @@ function getCollection(profile: UserProfile | null, kind: "history" | "liked") {
 
   return {
     title: "Liked songs",
-    subtitle: "Songs you marked with Like from the player.",
+    subtitle: "Songs you marked with Like stay here until you unlike them.",
     tracks: profile.likedSongs
   };
 }
 
 function ProfileCollectionPageComponent({ kind }: ProfileCollectionPageProps) {
-  const [profile, setProfile] = useState<UserProfile | null>(null);
-  const [loading, setLoading] = useState(true);
+  const initialProfile = readCachedProfile();
+  const [profile, setProfile] = useState<UserProfile | null>(initialProfile ?? null);
+  const [loading, setLoading] = useState(initialProfile === undefined);
   const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setError(null);
 
     try {
-      const nextProfile = await fetchProfile({ force: true });
+      const nextProfile = await fetchProfile();
       setProfile(nextProfile);
     } catch (requestError) {
       setError(requestError instanceof Error ? requestError.message : "Unable to load this section.");
@@ -64,15 +69,69 @@ function ProfileCollectionPageComponent({ kind }: ProfileCollectionPageProps) {
     };
 
     window.addEventListener(PROFILE_UPDATED_EVENT, handleUpdate);
-    window.addEventListener("focus", handleUpdate);
 
     return () => {
       window.removeEventListener(PROFILE_UPDATED_EVENT, handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
     };
   }, [load]);
 
   const collection = getCollection(profile, kind);
+  const tracks = useMemo(() => collection.tracks, [collection.tracks]);
+
+  const playTrack = useCallback(
+    (selectedTrack: Song) => {
+      const index = tracks.findIndex((track) => track.videoId === selectedTrack.videoId);
+      const queue = tracks.length ? tracks : [selectedTrack];
+      const currentIndex = index >= 0 ? index : 0;
+
+      void audioController.playSong(selectedTrack, queue, currentIndex);
+    },
+    [tracks]
+  );
+
+  const handleUnlikeTrack = useCallback(
+    async (videoId: string, title: string) => {
+      const response = await fetch(`/api/likes?videoId=${encodeURIComponent(videoId)}`, {
+        method: "DELETE",
+        credentials: "same-origin",
+        headers: {
+          Accept: "application/json"
+        }
+      });
+      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error || "Unable to remove this song from likes.");
+      }
+
+      invalidateProfileCache();
+      setProfile((previous) =>
+        previous
+          ? {
+              ...previous,
+              likedSongs: previous.likedSongs.filter((track) => track.videoId !== videoId)
+            }
+          : previous
+      );
+      audioController.recordTasteAction(
+        tracks.find((track) => track.videoId === videoId) || {
+          id: videoId,
+          videoId,
+          title,
+          thumbnail: "",
+          duration: "",
+          durationSeconds: 0,
+          author: "",
+          url: "",
+          views: 0
+        },
+        "unlike"
+      );
+      emitProfileUpdatedEvent();
+      playerActions.showToast(`Removed "${title}" from liked songs.`);
+    },
+    [tracks]
+  );
 
   return (
     <div className="space-y-8">
@@ -100,6 +159,29 @@ function ProfileCollectionPageComponent({ kind }: ProfileCollectionPageProps) {
         </div>
       ) : error ? (
         <div className="glass-panel rounded-[28px] px-6 py-10 text-center text-sm text-rose-200">{error}</div>
+      ) : kind === "liked" && tracks.length ? (
+        <section className="space-y-3">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-[21px] font-semibold tracking-tight text-white sm:text-[25px]">{collection.title}</h2>
+            <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-slate-300/72">
+              Forever
+            </span>
+          </div>
+          <p className="max-w-xl text-[12px] leading-5 text-slate-300/62 sm:text-[14px]">{collection.subtitle}</p>
+          <div className="space-y-2.5">
+            {tracks.map((track) => (
+              <SwipeActionTrackRow
+                key={`liked-${track.videoId}`}
+                song={track}
+                actionLabel="Unlike"
+                actionBusyLabel="Unliking..."
+                actionAriaLabel={`Unlike ${track.title}`}
+                onPlay={() => playTrack(track)}
+                onAction={() => handleUnlikeTrack(track.videoId, track.title)}
+              />
+            ))}
+          </div>
+        </section>
       ) : collection.tracks.length ? (
         <SongGrid title={collection.title} subtitle={collection.subtitle} tracks={collection.tracks} prefetchCount={2} />
       ) : (

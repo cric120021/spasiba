@@ -4,6 +4,7 @@ import { memo, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 
 import { audioController } from "@/lib/audio-controller";
+import { readPersistedCache, writePersistedCache } from "@/lib/client-persisted-cache";
 import type { SearchResponse, Song } from "@/lib/types";
 import { createQueryKey, scheduleIdleTask } from "@/lib/utils";
 
@@ -13,6 +14,11 @@ import SongGrid from "@/components/SongGrid";
 const searchCache = new Map<string, Song[]>();
 const pendingRequests = new Map<string, Promise<Song[]>>();
 const SEARCH_PRELOAD_COUNT = 1;
+const SEARCH_RESULTS_CACHE_TTL_MS = 1000 * 60 * 60 * 4;
+
+function getPersistedSearchCacheKey(query: string) {
+  return `search-results:${createQueryKey(query)}`;
+}
 
 async function fetchSearchResults(query: string): Promise<Song[]> {
   const key = createQueryKey(query);
@@ -20,6 +26,13 @@ async function fetchSearchResults(query: string): Promise<Song[]> {
 
   if (cached) {
     return cached;
+  }
+
+  const persisted = readPersistedCache<Song[]>(getPersistedSearchCacheKey(query));
+
+  if (persisted) {
+    searchCache.set(key, persisted);
+    return persisted;
   }
 
   const pending = pendingRequests.get(key);
@@ -42,6 +55,7 @@ async function fetchSearchResults(query: string): Promise<Song[]> {
 
       const payload = (await response.json()) as SearchResponse;
       searchCache.set(key, payload.results);
+      writePersistedCache(getPersistedSearchCacheKey(query), payload.results, SEARCH_RESULTS_CACHE_TTL_MS);
       return payload.results;
     })
     .finally(() => {

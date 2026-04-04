@@ -1,11 +1,12 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
 import { memo, useCallback } from "react";
 
 import { audioController } from "@/lib/audio-controller";
 import type { Playlist } from "@/lib/types";
+
+import ArtworkImage from "@/components/ArtworkImage";
 
 type SharedPlaylistViewProps = {
   playlist: Playlist;
@@ -37,7 +38,7 @@ function SharedPlaylistViewComponent({ playlist }: SharedPlaylistViewProps) {
           <div className="relative aspect-square bg-white/[0.04] md:w-[228px] md:min-w-[228px]">
             {playlist.coverTrack ? (
               <>
-                <Image src={playlist.coverTrack.thumbnail} alt={playlist.name} fill sizes="(max-width: 768px) 100vw, 228px" quality={75} className="object-cover" />
+                <ArtworkImage src={playlist.coverTrack.thumbnail} alt={playlist.name} fill sizes="(max-width: 768px) 100vw, 228px" quality={75} className="object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent" />
               </>
             ) : (
@@ -92,7 +93,7 @@ function SharedPlaylistViewComponent({ playlist }: SharedPlaylistViewProps) {
                 {index + 1}
               </div>
               <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[16px] border border-white/10 bg-white/[0.04]">
-                <Image src={track.thumbnail} alt={track.title} fill sizes="56px" quality={75} className="object-cover" />
+                <ArtworkImage src={track.thumbnail} alt={track.title} fill sizes="56px" quality={75} className="object-cover" />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="line-clamp-1 text-[14px] font-medium text-white sm:text-[15px]">{track.title}</p>

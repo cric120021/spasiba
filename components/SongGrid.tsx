@@ -60,15 +60,10 @@ function SongGridComponent({ title, subtitle, tracks, prefetchCount = 1 }: SongG
   }, []);
 
   return (
-    <section className="deferred-section space-y-3.5">
-      <div className="space-y-1">
-        <div className="flex items-center justify-between gap-3">
-          <h2 className="text-[21px] font-semibold tracking-tight text-white sm:text-[25px]">{title}</h2>
-          <span className="rounded-full border border-white/8 bg-white/[0.03] px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-slate-300/72">
-            Curated
-          </span>
-        </div>
-        {subtitle ? <p className="max-w-xl text-[12px] leading-5 text-slate-300/62 sm:text-[14px]">{subtitle}</p> : null}
+    <section className="deferred-section space-y-2.5">
+      <div className="space-y-0.5">
+        <h2 className="text-[20px] font-semibold tracking-tight text-white sm:text-[23px]">{title}</h2>
+        {subtitle ? <p className="max-w-xl text-[10px] leading-4 text-slate-300/46 sm:text-[12px]">{subtitle}</p> : null}
       </div>
 
       <div className="deferred-grid song-card-rail">

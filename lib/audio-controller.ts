@@ -1,6 +1,7 @@
 "use client";
 
 import { getDeviceInfo } from "@/lib/device";
+import { recordLocalHistorySong, updateLocalLikedSongs } from "@/lib/profile-client";
 import {
   applyEngagementToListenerProfile,
   createEmptyListenerProfile,
@@ -54,6 +55,7 @@ const VISITOR_ID_STORAGE_KEY = "spasiba_guest_id";
 const VISITOR_ID_COOKIE_KEY = "spasiba_guest_id";
 const VISITOR_ID_MAX_AGE_SECONDS = 60 * 60 * 24 * 365 * 10;
 const LISTENER_PROFILE_STORAGE_PREFIX = "spasiba_listener_profile";
+const ENGAGEMENT_QUEUE_STORAGE_PREFIX = "spasiba_engagement_queue";
 const STREAM_FRESH_BUFFER_MS = 30_000;
 const STREAM_CACHE_LIMIT = 48;
 const RELATED_QUEUE_CACHE_LIMIT = 48;
@@ -336,6 +338,10 @@ function getListenerProfileStorageKey(visitorId: string) {
   return `${LISTENER_PROFILE_STORAGE_PREFIX}:${visitorId}`;
 }
 
+function getEngagementQueueStorageKey(visitorId: string) {
+  return `${ENGAGEMENT_QUEUE_STORAGE_PREFIX}:${visitorId}`;
+}
+
 function loadStoredListenerProfile(visitorId: string) {
   if (typeof window === "undefined" || !visitorId) {
     return createEmptyListenerProfile();
@@ -360,6 +366,50 @@ function persistListenerProfile(visitorId: string, profile: ListenerProfile) {
   }
 
   window.localStorage.setItem(getListenerProfileStorageKey(visitorId), JSON.stringify(profile));
+}
+
+function loadStoredEngagementQueue(visitorId: string) {
+  if (typeof window === "undefined" || !visitorId) {
+    return [] as QueuedEngagementEvent[];
+  }
+
+  try {
+    const stored = window.localStorage.getItem(getEngagementQueueStorageKey(visitorId));
+
+    if (!stored) {
+      return [];
+    }
+
+    const parsed = JSON.parse(stored) as QueuedEngagementEvent[] | null;
+    return Array.isArray(parsed) ? parsed.slice(-MAX_PENDING_ENGAGEMENT_EVENTS) : [];
+  } catch {
+    return [];
+  }
+}
+
+function persistQueuedEngagementEvents(visitorId: string, events: QueuedEngagementEvent[]) {
+  if (typeof window === "undefined" || !visitorId) {
+    return;
+  }
+
+  try {
+    if (!events.length) {
+      window.localStorage.removeItem(getEngagementQueueStorageKey(visitorId));
+      return;
+    }
+
+    window.localStorage.setItem(getEngagementQueueStorageKey(visitorId), JSON.stringify(events.slice(-MAX_PENDING_ENGAGEMENT_EVENTS)));
+  } catch {
+    // Ignore local persistence failures.
+  }
+}
+
+function hasListenerProfileData(profile: ListenerProfile) {
+  return (
+    Object.keys(profile.artists || {}).length > 0 ||
+    Object.keys(profile.tracks || {}).length > 0 ||
+    Object.keys(profile.signals || {}).length > 0
+  );
 }
 
 function setListenerProfile(nextProfile: ListenerProfile, visitorId = listenerProfileVisitorId) {
@@ -390,32 +440,47 @@ function hydrateListenerProfile() {
   if (listenerProfileVisitorId !== visitorId) {
     listenerProfileVisitorId = visitorId;
     setListenerProfile(loadStoredListenerProfile(visitorId), visitorId);
+    queuedEngagementEvents = loadStoredEngagementQueue(visitorId);
   }
 
   if (!listenerProfileHydrationPromise) {
-    listenerProfileHydrationPromise = fetch("/api/engagement", {
-      method: "GET",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json"
-      }
-    })
-      .then(async (response) => {
-        if (!response.ok) {
-          throw new Error("Unable to load listener profile.");
+    if (queuedEngagementEvents.length) {
+      listenerProfileHydrationPromise = flushQueuedEngagementEvents()
+        .catch(() => {
+          // Keep local queue until the next open.
+        })
+        .finally(() => {
+          listenerProfileHydrationPromise = null;
+        });
+    } else if (!hasListenerProfileData(listenerProfile)) {
+      listenerProfileHydrationPromise = fetch("/api/engagement", {
+        method: "GET",
+        credentials: "same-origin",
+        cache: "no-store",
+        headers: {
+          Accept: "application/json"
         }
+      })
+        .then(async (response) => {
+          if (!response.ok) {
+            throw new Error("Unable to load listener profile.");
+          }
 
-        const payload = (await response.json().catch(() => null)) as { profile?: ListenerProfile | null } | null;
-        const serverProfile = normalizeListenerProfile(payload?.profile);
-        setListenerProfile(pickNewerListenerProfile(listenerProfile, serverProfile), visitorId);
-      })
-      .catch(() => {
-        // The local profile is enough to keep queueing fast.
-      })
-      .finally(() => {
+          const payload = (await response.json().catch(() => null)) as { profile?: ListenerProfile | null } | null;
+          const serverProfile = normalizeListenerProfile(payload?.profile);
+          setListenerProfile(pickNewerListenerProfile(listenerProfile, serverProfile), visitorId);
+        })
+        .catch(() => {
+          // The local profile is enough to keep queueing fast.
+        })
+        .finally(() => {
+          listenerProfileHydrationPromise = null;
+        });
+    } else {
+      listenerProfileHydrationPromise = Promise.resolve().finally(() => {
         listenerProfileHydrationPromise = null;
       });
+    }
   }
 
   return listenerProfileHydrationPromise;
@@ -490,7 +555,7 @@ function ensureEngagementListeners() {
   engagementListenersAttached = true;
 
   const handleLifecycleFlush = () => {
-    void flushQueuedEngagementEvents(true);
+    persistQueuedEngagementEvents(listenerProfileVisitorId, queuedEngagementEvents);
   };
 
   document.addEventListener("visibilitychange", () => {
@@ -529,6 +594,7 @@ async function flushQueuedEngagementEvents(useKeepAlive = false) {
 
   const batch = queuedEngagementEvents.slice(0, ENGAGEMENT_BATCH_LIMIT);
   queuedEngagementEvents = queuedEngagementEvents.slice(batch.length);
+  persistQueuedEngagementEvents(visitorId, queuedEngagementEvents);
 
   engagementFlushPromise = fetch("/api/engagement", {
     method: "POST",
@@ -552,6 +618,7 @@ async function flushQueuedEngagementEvents(useKeepAlive = false) {
     })
     .catch(() => {
       queuedEngagementEvents = [...batch, ...queuedEngagementEvents].slice(-MAX_PENDING_ENGAGEMENT_EVENTS);
+      persistQueuedEngagementEvents(visitorId, queuedEngagementEvents);
     })
     .finally(() => {
       engagementFlushPromise = null;
@@ -572,14 +639,16 @@ function recordEngagementAction(song: Song, action: EngagementAction, progress: 
   setListenerProfile(nextProfile, visitorId);
   ensureEngagementListeners();
 
-  queuedEngagementEvents = [...queuedEngagementEvents, { action, song, progress, signals }].slice(-MAX_PENDING_ENGAGEMENT_EVENTS);
-
-  if (queuedEngagementEvents.length >= ENGAGEMENT_BATCH_LIMIT) {
-    void flushQueuedEngagementEvents();
-    return;
+  if (action === "play_start") {
+    recordLocalHistorySong(song);
+  } else if (action === "like") {
+    updateLocalLikedSongs(song, true);
+  } else if (action === "unlike") {
+    updateLocalLikedSongs(song, false);
   }
 
-  scheduleEngagementFlush();
+  queuedEngagementEvents = [...queuedEngagementEvents, { action, song, progress, signals }].slice(-MAX_PENDING_ENGAGEMENT_EVENTS);
+  persistQueuedEngagementEvents(visitorId, queuedEngagementEvents);
 }
 
 function markPlaybackStarted(song: Song | null) {
@@ -3124,6 +3193,7 @@ export const audioController = {
     listenerProfileHydrationPromise = null;
     queuedEngagementEvents = [];
     clearEngagementFlushTimer();
+    persistQueuedEngagementEvents(visitorId, []);
     setListenerProfile(createEmptyListenerProfile(), visitorId);
     relatedQueueCache.clear();
     pendingRelatedQueueRequests.clear();

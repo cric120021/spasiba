@@ -5,6 +5,8 @@ import { getRelatedSongs, searchYouTube } from "@/lib/youtube";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const SEARCH_CACHE_CONTROL = "public, s-maxage=14400, stale-while-revalidate=604800";
+
 export async function GET(request: NextRequest) {
   const query = request.nextUrl.searchParams.get("q")?.trim() || "";
   const relatedTo = request.nextUrl.searchParams.get("relatedTo")?.trim() || "";
@@ -25,7 +27,7 @@ export async function GET(request: NextRequest) {
         },
         {
           headers: {
-            "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600"
+            "Cache-Control": SEARCH_CACHE_CONTROL
           }
         }
       );
@@ -62,7 +64,7 @@ export async function GET(request: NextRequest) {
       },
       {
         headers: {
-          "Cache-Control": "public, s-maxage=60, stale-while-revalidate=600"
+          "Cache-Control": SEARCH_CACHE_CONTROL
         }
       }
     );

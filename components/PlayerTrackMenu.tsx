@@ -6,6 +6,7 @@ import { memo, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRe
 import SaveToPlaylistButton from "@/components/SaveToPlaylistButton";
 import { audioController } from "@/lib/audio-controller";
 import { emitProfileUpdatedEvent } from "@/lib/profile-events";
+import { fetchProfile, readCachedProfile } from "@/lib/profile-client";
 import { shareSong } from "@/lib/song-share";
 import type { Song } from "@/lib/types";
 import { playerActions } from "@/store/playerStore";
@@ -50,8 +51,8 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
   const [open, setOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
   const [position, setPosition] = useState<MenuPosition | null>(null);
-  const [liked, setLiked] = useState(false);
-  const [loadingLikeState, setLoadingLikeState] = useState(true);
+  const [liked, setLiked] = useState(() => Boolean(readCachedProfile()?.likedSongs.some((track) => track.videoId === song.videoId)));
+  const [loadingLikeState, setLoadingLikeState] = useState(() => readCachedProfile() === undefined);
   const [togglingLike, setTogglingLike] = useState(false);
 
   useEffect(() => {
@@ -62,22 +63,13 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
     let cancelled = false;
     setLoadingLikeState(true);
 
-    void fetch(`/api/likes?videoId=${encodeURIComponent(song.videoId)}`, {
-      method: "GET",
-      credentials: "same-origin",
-      cache: "no-store",
-      headers: {
-        Accept: "application/json"
-      }
-    })
-      .then(async (response) => {
-        const payload = (await response.json().catch(() => null)) as { liked?: boolean } | null;
-
+    void fetchProfile()
+      .then((profile) => {
         if (cancelled) {
           return;
         }
 
-        setLiked(Boolean(payload?.liked));
+        setLiked(Boolean(profile?.likedSongs.some((track) => track.videoId === song.videoId)));
       })
       .catch(() => {
         if (!cancelled) {

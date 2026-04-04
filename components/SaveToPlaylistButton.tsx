@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -8,6 +7,8 @@ import { audioController } from "@/lib/audio-controller";
 import { fetchPlaylistsLibrary, notifyPlaylistsUpdated } from "@/lib/playlists-client";
 import type { Playlist, Song } from "@/lib/types";
 import { playerActions } from "@/store/playerStore";
+
+import ArtworkImage from "@/components/ArtworkImage";
 
 type SaveToPlaylistButtonProps = {
   song: Song;
@@ -302,7 +303,7 @@ function SaveToPlaylistButtonComponent({
           <div className="border-b border-white/8 bg-white/[0.02] p-6 sm:p-8 lg:border-b-0 lg:border-r">
             <div className="overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.04]">
               <div className="relative aspect-square">
-                <Image src={song.thumbnail} alt={song.title} fill sizes="(max-width: 1024px) 100vw, 360px" quality={75} className="object-cover" />
+                <ArtworkImage src={song.thumbnail} alt={song.title} fill sizes="(max-width: 1024px) 100vw, 360px" quality={75} className="object-cover" />
                 <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/15 to-transparent" />
                 <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-white/80 backdrop-blur-md">
                   {song.duration}

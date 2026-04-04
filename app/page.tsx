@@ -4,7 +4,7 @@ import { HOME_UI_VARIANT } from "@/lib/ui-config";
 import { DISCOVERY_SECTIONS, getTrendingSections } from "@/lib/youtube";
 
 export const runtime = "nodejs";
-export const revalidate = 900;
+export const revalidate = 43200;
 
 export default async function HomePage() {
   const sections = await getTrendingSections().catch(() =>

@@ -536,6 +536,54 @@ export async function addTrackToPlaylist(visitorId: string, playlistId: string, 
   );
 }
 
+export async function removeTrackFromPlaylist(visitorId: string, playlistId: string, videoId: string) {
+  if (!videoId.trim()) {
+    throw new Error("A valid video id is required.");
+  }
+
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  await ensureVisitor(visitorId);
+
+  const db = getDb();
+  const playlistResult = await db.execute({
+    sql: `
+      SELECT id
+      FROM playlists
+      WHERE id = ? AND visitor_id = ?
+      LIMIT 1
+    `,
+    args: [playlistId, visitorId]
+  });
+
+  if (!playlistResult.rows.length) {
+    throw new Error("Playlist not found.");
+  }
+
+  const timestamp = createTimestamp();
+
+  await db.batch(
+    [
+      {
+        sql: `
+          DELETE FROM playlist_tracks
+          WHERE playlist_id = ? AND video_id = ?
+        `,
+        args: [playlistId, videoId]
+      },
+      {
+        sql: `
+          UPDATE playlists
+          SET updated_at = ?
+          WHERE id = ?
+        `,
+        args: [timestamp, playlistId]
+      }
+    ],
+    "write"
+  );
+}
+
 export async function getVisitorPlaylistById(visitorId: string, playlistId: string): Promise<Playlist | null> {
   assertDatabaseConfigured();
   await ensureDbSchema();

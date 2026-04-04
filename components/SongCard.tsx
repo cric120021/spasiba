@@ -1,6 +1,5 @@
 "use client";
 
-import Image from "next/image";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 
@@ -10,6 +9,7 @@ import type { Song } from "@/lib/types";
 import { formatCompactCount } from "@/lib/utils";
 import { playerActions } from "@/store/playerStore";
 
+import ArtworkImage from "@/components/ArtworkImage";
 import SaveToPlaylistButton from "@/components/SaveToPlaylistButton";
 
 type SongCardProps = {
@@ -99,15 +99,15 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
 
   return (
     <article
-      className="group glass-panel relative rounded-[18px] transition duration-300 hover:-translate-y-1 hover:border-teal-300/25 hover:bg-white/[0.09] sm:rounded-[22px]"
+      className="group relative overflow-hidden rounded-[17px] bg-[#06090f] ring-1 ring-white/[0.04] shadow-[0_14px_34px_rgba(0,0,0,0.14)] transition duration-300 hover:bg-[#080d14] hover:ring-white/[0.07] sm:rounded-[18px]"
       onPointerEnter={() => onHover(song)}
       onPointerDown={() => onHover(song)}
       onTouchStart={() => onHover(song)}
       onFocusCapture={() => onHover(song)}
     >
       <div className="flex w-full flex-col">
-        <div className="relative aspect-square overflow-hidden rounded-t-[18px] sm:rounded-t-[22px]">
-          <Image
+        <div className="relative aspect-square overflow-hidden rounded-t-[17px] sm:rounded-t-[18px]">
+          <ArtworkImage
             src={song.thumbnail}
             alt={song.title}
             fill
@@ -115,14 +115,14 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
             quality={70}
             className="object-cover transition duration-500 group-hover:scale-105"
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/5 to-transparent opacity-80" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/8 to-transparent opacity-90" />
           <button type="button" onClick={() => onPlay(song)} className="absolute inset-0 z-[1]" aria-label={`Play ${song.title}`} />
-          <div className="absolute left-3 right-3 top-3 z-[2] flex items-center justify-between sm:left-4 sm:right-4 sm:top-4">
-            <span className="rounded-full border border-white/10 bg-slate-950/60 px-2 py-1 text-[8px] uppercase tracking-[0.22em] text-white/75 backdrop-blur-md sm:px-2.5 sm:text-[9px] sm:tracking-[0.26em]">
+          <div className="absolute left-2.5 right-2.5 top-2.5 z-[2] flex items-center justify-between sm:left-3 sm:right-3 sm:top-3">
+            <span className="rounded-full border border-white/8 bg-black/34 px-2 py-1 text-[7px] uppercase tracking-[0.16em] text-white/68 sm:px-2.5 sm:text-[8px] sm:tracking-[0.18em]">
               {song.duration}
             </span>
           </div>
-          <div className="absolute right-3 top-3 z-10 sm:right-4 sm:top-4">
+          <div className="absolute right-2.5 top-2.5 z-10 sm:right-3 sm:top-3">
             <button
               ref={menuButtonRef}
               type="button"
@@ -131,10 +131,10 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
                 event.stopPropagation();
                 setMenuOpen((previous) => !previous);
               }}
-              className="flex h-8 w-8 items-center justify-center rounded-full border border-white/10 bg-slate-950/70 text-white/90 backdrop-blur-md transition hover:bg-slate-950/90 sm:h-9 sm:w-9"
+              className="flex h-7.5 w-7.5 items-center justify-center rounded-full border border-white/8 bg-black/40 text-white/82 transition hover:bg-black/54 sm:h-8 sm:w-8"
               aria-label="More actions"
             >
-              <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
+              <svg aria-hidden viewBox="0 0 24 24" className="h-3.5 w-3.5">
                 <path fill="currentColor" d="M12 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4m0 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4m0 7a2 2 0 1 0 0-4a2 2 0 0 0 0 4" />
               </svg>
             </button>
@@ -146,10 +146,10 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
               event.stopPropagation();
               onPlay(song);
             }}
-            className="absolute bottom-3 right-3 z-[3] flex h-9 w-9 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl transition duration-300 group-hover:scale-105 group-hover:bg-teal-300 sm:bottom-4 sm:right-4 sm:h-10 sm:w-10"
+            className="absolute bottom-2.5 right-2.5 z-[3] flex h-7.5 w-7.5 items-center justify-center rounded-full border border-white/12 bg-black/46 text-white shadow-[0_10px_20px_rgba(0,0,0,0.22)] transition duration-300 group-hover:scale-105 group-hover:bg-black/58 sm:bottom-3 sm:right-3 sm:h-8 sm:w-8"
             aria-label={isActive && isPlaying ? `Pause ${song.title}` : `Play ${song.title}`}
           >
-            <svg aria-hidden viewBox="0 0 24 24" className="h-[18px] w-[18px] sm:h-5 sm:w-5">
+            <svg aria-hidden viewBox="0 0 24 24" className="h-[14px] w-[14px] sm:h-[16px] sm:w-[16px]">
               {isActive && isPlaying ? (
                 <path fill="currentColor" d="M7 5h3v14H7zm7 0h3v14h-3z" />
               ) : (
@@ -158,17 +158,17 @@ function SongCardComponent({ song, isActive, isPlaying, onPlay, onHover }: SongC
             </svg>
           </button>
           {isActive ? (
-            <div className="absolute bottom-3 left-3 z-[2] rounded-full border border-teal-300/35 bg-teal-300/[0.18] px-2 py-1 text-[8px] uppercase tracking-[0.22em] text-teal-100 sm:bottom-4 sm:left-4 sm:px-2.5 sm:text-[9px] sm:tracking-[0.26em]">
+            <div className="absolute bottom-2.5 left-2.5 z-[2] rounded-full border border-teal-300/18 bg-teal-300/[0.12] px-2 py-1 text-[7px] uppercase tracking-[0.16em] text-teal-100 sm:bottom-3 sm:left-3 sm:px-2.5 sm:text-[8px] sm:tracking-[0.18em]">
               {isPlaying ? "Playing" : "Selected"}
             </div>
           ) : null}
         </div>
 
-        <button type="button" onClick={() => onPlay(song)} className="flex flex-1 flex-col gap-1.5 p-2.5 text-left sm:gap-2 sm:p-3">
-          <h3 className="line-clamp-2 text-[13px] font-semibold tracking-tight text-white sm:text-[15px]">{song.title}</h3>
-          <div className="mt-auto flex items-center justify-between gap-2 text-[11px] text-slate-300/80 sm:gap-3 sm:text-[13px]">
-            <span className="line-clamp-1">{song.author}</span>
-            <span className="shrink-0 text-[9px] uppercase tracking-[0.18em] text-slate-400 sm:text-[10px] sm:tracking-[0.2em]">{formatCompactCount(song.views)}</span>
+        <button type="button" onClick={() => onPlay(song)} className="flex flex-1 flex-col gap-1 p-2.5 text-left sm:p-3">
+          <h3 className="line-clamp-2 text-[12px] font-semibold tracking-tight text-white sm:text-[14px]">{song.title}</h3>
+          <div className="mt-auto space-y-0.5 text-[10px] text-slate-300/68 sm:text-[12px]">
+            <p className="line-clamp-1">{song.author}</p>
+            <p className="text-[9px] uppercase tracking-[0.14em] text-slate-400/74 sm:text-[10px]">{formatCompactCount(song.views)}</p>
           </div>
         </button>
       </div>

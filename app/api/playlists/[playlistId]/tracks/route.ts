@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { addTrackToPlaylist } from "@/lib/playlists";
+import { addTrackToPlaylist, removeTrackFromPlaylist } from "@/lib/playlists";
 import type { Song } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -46,6 +46,49 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pl
     return NextResponse.json(
       {
         error: error instanceof Error ? error.message : "Unable to add track to playlist."
+      },
+      {
+        status: 500
+      }
+    );
+  }
+}
+
+export async function DELETE(request: NextRequest, context: { params: Promise<{ playlistId: string }> }) {
+  const visitorId = getVisitorId(request);
+
+  if (!visitorId) {
+    return NextResponse.json(
+      {
+        error: "Visitor id is missing."
+      },
+      {
+        status: 400
+      }
+    );
+  }
+
+  const { playlistId } = await context.params;
+  const videoId = request.nextUrl.searchParams.get("videoId")?.trim() || "";
+
+  if (!playlistId || !videoId) {
+    return NextResponse.json(
+      {
+        error: "A valid video id is required."
+      },
+      {
+        status: 400
+      }
+    );
+  }
+
+  try {
+    await removeTrackFromPlaylist(visitorId, playlistId, videoId);
+    return NextResponse.json({ ok: true });
+  } catch (error) {
+    return NextResponse.json(
+      {
+        error: error instanceof Error ? error.message : "Unable to remove track from playlist."
       },
       {
         status: 500

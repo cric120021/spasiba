@@ -1,14 +1,15 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
 import { PLAYLISTS_UPDATED_EVENT } from "@/lib/playlist-events";
-import { fetchPlaylistsLibrary, notifyPlaylistsUpdated } from "@/lib/playlists-client";
+import { fetchPlaylistsLibrary, notifyPlaylistsUpdated, readCachedPlaylistsLibrary } from "@/lib/playlists-client";
 import { playerActions } from "@/store/playerStore";
 import type { Playlist, PlaylistShareGrant } from "@/lib/types";
+
+import ArtworkImage from "@/components/ArtworkImage";
 
 type PlaylistResponse = {
   playlist?: Playlist;
@@ -244,12 +245,13 @@ function getMenuPosition(rect: DOMRect) {
 }
 
 function LibrarySectionComponent() {
+  const initialLibrary = readCachedPlaylistsLibrary();
   const router = useRouter();
   const prefetchedRoutesRef = useRef<Set<string>>(new Set());
   const [mounted, setMounted] = useState(false);
-  const [playlists, setPlaylists] = useState<Playlist[]>([]);
-  const [sharedPlaylists, setSharedPlaylists] = useState<Playlist[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [playlists, setPlaylists] = useState<Playlist[]>(() => initialLibrary?.playlists || []);
+  const [sharedPlaylists, setSharedPlaylists] = useState<Playlist[]>(() => initialLibrary?.sharedPlaylists || []);
+  const [loading, setLoading] = useState(() => initialLibrary === undefined);
   const [error, setError] = useState<string | null>(null);
   const [revokingPlaylistId, setRevokingPlaylistId] = useState<string | null>(null);
   const [menuState, setMenuState] = useState<MenuState | null>(null);
@@ -274,7 +276,6 @@ function LibrarySectionComponent() {
   const [deleteSaving, setDeleteSaving] = useState(false);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
 
     try {
@@ -297,11 +298,9 @@ function LibrarySectionComponent() {
     };
 
     window.addEventListener(PLAYLISTS_UPDATED_EVENT, handleUpdate);
-    window.addEventListener("focus", handleUpdate);
 
     return () => {
       window.removeEventListener(PLAYLISTS_UPDATED_EVENT, handleUpdate);
-      window.removeEventListener("focus", handleUpdate);
     };
   }, [load]);
 
@@ -925,7 +924,7 @@ function LibrarySectionComponent() {
                     <div className="relative aspect-[1/1.06] overflow-hidden bg-white/[0.04]">
                       {coverTrack ? (
                         <>
-                          <Image
+                          <ArtworkImage
                             src={coverTrack.thumbnail}
                             alt={playlist.name}
                             fill
@@ -1024,7 +1023,7 @@ function LibrarySectionComponent() {
                     <div className="relative aspect-[1/1.06] overflow-hidden bg-white/[0.04]">
                       {coverTrack ? (
                         <>
-                          <Image
+                          <ArtworkImage
                             src={coverTrack.thumbnail}
                             alt={playlist.name}
                             fill
