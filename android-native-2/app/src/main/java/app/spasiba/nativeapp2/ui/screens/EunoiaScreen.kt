@@ -739,7 +739,7 @@ fun EunoiaScreen(
                         OutlinedTextField(
                             value = inviteInputId,
                             onValueChange = { inviteInputId = it },
-                            placeholder = { Text("e.g. SPASIBA-A1B2C3", color = TextMuted) },
+                            placeholder = { Text("e.g. A1B2C3 or @A1B2C3", color = TextMuted) },
                             singleLine = true,
                             colors = OutlinedTextFieldDefaults.colors(
                                 focusedBorderColor = Color.White,

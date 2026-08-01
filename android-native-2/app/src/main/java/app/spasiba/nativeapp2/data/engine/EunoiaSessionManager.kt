@@ -288,7 +288,14 @@ class EunoiaSessionManager private constructor(private val context: Context) {
     }
 
     fun sendInvite(targetDeviceId: String) {
-        val trimmed = targetDeviceId.trim().uppercase()
+        var trimmed = targetDeviceId.trim()
+        if (trimmed.startsWith("@")) {
+            trimmed = trimmed.substring(1).trim()
+        }
+        if (!trimmed.startsWith("SPASIBA-", ignoreCase = true)) {
+            trimmed = "SPASIBA-${trimmed}"
+        }
+        trimmed = trimmed.uppercase()
         if (trimmed.isBlank()) return
 
         _sessionStatus.value = EunoiaSessionStatus.INVITE_SENT
