@@ -113,107 +113,88 @@ class EunoiaSessionManager private constructor(private val context: Context) {
     }
 
     private fun connectCloudServer() {
-        startCloudPolling()
-    }
+        val cloudUrl = System.getProperty("spasiba.eunoia.url")
+            ?: "wss://socketsbay.com/wss/v2/1/spasiba_eunoia/"
 
-    private fun startCloudPolling() {
-        scope.launch(Dispatchers.IO) {
-            val baseUrl = System.getProperty("spasiba.eunoia.url")
-                ?: "https://spasiba-fk0vtkc3o-cric120021-4555s-projects.vercel.app"
+        try {
+            val request = Request.Builder().url(cloudUrl).build()
+            cloudWebSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
+                override fun onOpen(ws: WebSocket, response: Response) {
+                    Log.d("EunoiaCloud", "Connected to Eunoia Cloud Signaling Server!")
+                }
 
-            while (true) {
-                try {
-                    val myId = _myDeviceId.value
-                    if (myId.isNotBlank()) {
-                        val pollUrl = "$baseUrl/api/eunoia/signal?deviceId=$myId"
-                        val req = Request.Builder().url(pollUrl).get().build()
-                        val resp = okHttpClient.newCall(req).execute()
+                override fun onMessage(ws: WebSocket, text: String) {
+                    Log.d("EunoiaCloud", "Received cloud payload: $text")
+                    runCatching {
+                        val json = JSONObject(text)
+                        val targetId = json.optString("targetId").uppercase()
+                        val fromId = json.optString("fromId").uppercase()
 
-                        if (resp.isSuccessful) {
-                            val bodyText = resp.body?.string() ?: ""
-                            if (bodyText.isNotBlank()) {
-                                val json = JSONObject(bodyText)
-                                val signals = json.optJSONArray("signals")
-                                if (signals != null && signals.length() > 0) {
-                                    for (i in 0 until signals.length()) {
-                                        val signalObj = signals.getJSONObject(i)
-                                        val from = signalObj.optString("fromId")
-                                        if (from.isNotBlank() && from == myId) continue
+                        val myId = _myDeviceId.value.uppercase()
+                        if (fromId.isNotBlank() && fromId == myId) return@runCatching
+                        if (targetId.isNotBlank() && targetId != myId) return@runCatching
 
-                                        val payload = signalObj.optJSONObject("payload") ?: continue
-                                        val msgType = payload.optString("type")
+                        val payload = json.optJSONObject("payload") ?: return@runCatching
+                        val msgType = payload.optString("type")
 
-                                        scope.launch(Dispatchers.Main) {
-                                            when (msgType) {
-                                                "INVITE" -> {
-                                                    _pendingInviteSender.value = from
-                                                    _sessionStatus.value = EunoiaSessionStatus.INVITE_RECEIVED
-                                                    showInviteNotification(from)
-                                                }
-                                                "ACCEPT" -> {
-                                                    _pendingInviteSender.value = null
-                                                    _partnerDeviceId.value = from
-                                                    _partnerName.value = "..."
-                                                    _sessionStatus.value = EunoiaSessionStatus.CONNECTED
-                                                }
-                                                "REJECT" -> {
-                                                    _pendingInviteSender.value = null
-                                                    _sessionStatus.value = EunoiaSessionStatus.REJECTED_BUSY
-                                                }
-                                                "CHAT_MSG" -> {
-                                                    val msgText = payload.optString("text")
-                                                    val newMsg = EunoiaChatMessage(
-                                                        id = UUID.randomUUID().toString(),
-                                                        senderId = from,
-                                                        senderName = "...",
-                                                        isPartner = true,
-                                                        messageText = msgText
-                                                    )
-                                                    _sessionMessages.value = _sessionMessages.value + newMsg
-                                                }
-                                                "REACTION" -> {
-                                                    val emoji = payload.optString("emoji")
-                                                    triggerFlyingReaction(emoji)
-                                                }
-                                            }
-                                        }
-                                    }
+                        scope.launch(Dispatchers.Main) {
+                            when (msgType) {
+                                "INVITE" -> {
+                                    _pendingInviteSender.value = fromId
+                                    _sessionStatus.value = EunoiaSessionStatus.INVITE_RECEIVED
+                                    showInviteNotification(fromId)
+                                }
+                                "ACCEPT" -> {
+                                    _pendingInviteSender.value = null
+                                    _partnerDeviceId.value = fromId
+                                    _partnerName.value = "..."
+                                    _sessionStatus.value = EunoiaSessionStatus.CONNECTED
+                                }
+                                "REJECT" -> {
+                                    _pendingInviteSender.value = null
+                                    _sessionStatus.value = EunoiaSessionStatus.REJECTED_BUSY
+                                }
+                                "CHAT_MSG" -> {
+                                    val msgText = payload.optString("text")
+                                    val newMsg = EunoiaChatMessage(
+                                        id = UUID.randomUUID().toString(),
+                                        senderId = fromId,
+                                        senderName = "...",
+                                        isPartner = true,
+                                        messageText = msgText
+                                    )
+                                    _sessionMessages.value = _sessionMessages.value + newMsg
+                                }
+                                "REACTION" -> {
+                                    val emoji = payload.optString("emoji")
+                                    triggerFlyingReaction(emoji)
                                 }
                             }
                         }
-                        resp.close()
                     }
-                } catch (e: Exception) {
-                    Log.e("EunoiaCloud", "Cloud Polling exception: ${e.message}")
                 }
-                delay(1500)
-            }
+
+                override fun onFailure(ws: WebSocket, t: Throwable, response: Response?) {
+                    Log.e("EunoiaCloud", "WebSocket failure: ${t.message}. Retrying in 3s...")
+                    scope.launch {
+                        delay(3000)
+                        connectCloudServer()
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            Log.e("EunoiaCloud", "Failed to connect to cloud signaling server: ${e.message}")
         }
     }
 
     private fun sendCloudRelay(targetId: String, payload: JSONObject) {
-        scope.launch(Dispatchers.IO) {
-            try {
-                val baseUrl = System.getProperty("spasiba.eunoia.url")
-                    ?: "https://spasiba-fk0vtkc3o-cric120021-4555s-projects.vercel.app"
-                val postUrl = "$baseUrl/api/eunoia/signal"
-
-                val requestBody = JSONObject().apply {
-                    put("targetId", targetId)
-                    put("fromId", _myDeviceId.value)
-                    put("payload", payload)
-                }.toString()
-
-                val body = okhttp3.RequestBody.create(null, requestBody)
-                val req = Request.Builder().url(postUrl).post(body).build()
-
-                val resp = okHttpClient.newCall(req).execute()
-                Log.d("EunoiaCloud", "Sent cloud relay to $targetId status=${resp.code}")
-                resp.close()
-            } catch (e: Exception) {
-                Log.e("EunoiaCloud", "Failed sending cloud relay: ${e.message}")
-            }
+        val relayMsg = JSONObject().apply {
+            put("targetId", targetId.uppercase())
+            put("fromId", _myDeviceId.value.uppercase())
+            put("payload", payload)
         }
+        cloudWebSocket?.send(relayMsg.toString())
+        Log.d("EunoiaCloud", "Sent cloud relay to $targetId")
     }
 
     private fun startSocketListener() {

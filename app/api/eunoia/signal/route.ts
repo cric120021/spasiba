@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDbSchema, getDb } from "@/lib/db";
-import { v4 as uuidv4 } from "uuid";
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,7 +12,7 @@ export async function POST(req: NextRequest) {
     }
 
     const db = getDb();
-    const id = uuidv4();
+    const id = crypto.randomUUID();
     const now = Date.now();
     const payloadJson = typeof payload === "string" ? payload : JSON.stringify(payload);
 
