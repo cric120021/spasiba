@@ -204,8 +204,7 @@ class EunoiaSessionManager private constructor(private val context: Context) {
                     put("payload", payload)
                 }.toString()
 
-                val mediaType = okhttp3.MediaType.parse("application/json; charset=utf-8")
-                val body = okhttp3.RequestBody.create(mediaType, requestBody)
+                val body = okhttp3.RequestBody.create(null, requestBody)
                 val req = Request.Builder().url(postUrl).post(body).build()
 
                 val resp = okHttpClient.newCall(req).execute()
