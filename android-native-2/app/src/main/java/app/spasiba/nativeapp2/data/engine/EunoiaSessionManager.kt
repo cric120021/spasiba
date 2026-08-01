@@ -116,7 +116,7 @@ class EunoiaSessionManager private constructor(private val context: Context) {
 
     private fun connectCloudServer() {
         val cloudUrl = System.getProperty("spasiba.eunoia.url")
-            ?: "wss://socketsbay.com/wss/v2/1/spasiba_eunoia/"
+            ?: "wss://ws.ifelse.io"
 
         try {
             val request = Request.Builder().url(cloudUrl).build()
