@@ -17,9 +17,6 @@ interface LikedSongDao {
     @Query("SELECT * FROM liked_songs ORDER BY addedAt DESC")
     fun getAllLikedSongs(): Flow<List<LikedSongEntity>>
 
-    @Query("SELECT * FROM liked_songs ORDER BY addedAt DESC")
-    suspend fun getAllLikedSongsSync(): List<LikedSongEntity>
-
     @Query("SELECT EXISTS(SELECT 1 FROM liked_songs WHERE id = :songId)")
     suspend fun isLiked(songId: String): Boolean
 }
