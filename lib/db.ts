@@ -168,8 +168,17 @@ export async function ensureDbSchema() {
               playlist_id TEXT NOT NULL,
               grantee_username TEXT NOT NULL,
               granted_by_visitor_id TEXT NOT NULL,
-              created_at INTEGER NOT NULL,
+              granted_at INTEGER NOT NULL,
               PRIMARY KEY (playlist_id, grantee_username)
+            )
+          `,
+          `
+            CREATE TABLE IF NOT EXISTS eunoia_signals (
+              id TEXT PRIMARY KEY,
+              target_id TEXT NOT NULL,
+              from_id TEXT NOT NULL,
+              payload_json TEXT NOT NULL,
+              created_at INTEGER NOT NULL
             )
           `,
           `CREATE INDEX IF NOT EXISTS playlists_visitor_id_idx ON playlists(visitor_id)`,
