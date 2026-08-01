@@ -323,7 +323,7 @@ function shouldGuardBackgroundPlayback() {
   return device.isStandalone && device.isIOS;
 }
 
-function shouldUseNativePlayback() {
+export function shouldUseNativePlayback() {
   return typeof window !== "undefined" && Boolean((window as any).SpasibaAndroid);
 }
 

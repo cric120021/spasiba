@@ -4,7 +4,7 @@ import Link from "next/link";
 import type { SyntheticEvent } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { audioController } from "@/lib/audio-controller";
+import { audioController, shouldUseNativePlayback } from "@/lib/audio-controller";
 import { getDeviceInfo } from "@/lib/device";
 import { useArtworkTheme } from "@/lib/use-artwork-theme";
 import { loadYouTubeIframeApi, type YouTubePlayer } from "@/lib/youtube-iframe";
