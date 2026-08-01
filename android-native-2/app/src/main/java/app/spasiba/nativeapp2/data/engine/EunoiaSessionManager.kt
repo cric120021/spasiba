@@ -138,6 +138,7 @@ class EunoiaSessionManager private constructor(private val context: Context) {
                     val type = json.optString("type")
                     if (type == "signal") {
                         val from = json.optString("from")
+                        if (from.isNotBlank() && from == _myDeviceId.value) return@runCatching
                         val payload = json.optJSONObject("payload") ?: return@runCatching
                         val msgType = payload.optString("type")
 
@@ -227,6 +228,11 @@ class EunoiaSessionManager private constructor(private val context: Context) {
                 val json = JSONObject(rawJson)
                 val type = json.optString("type")
                 val senderId = json.optString("senderId")
+
+                if (senderId.isNotBlank() && senderId == _myDeviceId.value) {
+                    socket.close()
+                    return@launch
+                }
 
                 scope.launch(Dispatchers.Main) {
                     when (type) {
