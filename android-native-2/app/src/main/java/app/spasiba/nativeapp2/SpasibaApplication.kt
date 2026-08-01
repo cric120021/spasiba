@@ -12,6 +12,7 @@ class SpasibaApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
+        app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(this)
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 YoutubeDL.getInstance().init(this@SpasibaApplication)
