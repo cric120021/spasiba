@@ -54,9 +54,15 @@ class MusicRepository(private val context: Context) {
 
     suspend fun searchSongs(query: String): List<Song> {
         if (query.isNotBlank()) {
-            searchHistoryDao.insertQuery(SearchHistoryEntity(query.trim()))
+            runCatching { searchHistoryDao.insertQuery(SearchHistoryEntity(query.trim())) }
         }
-        return YouTubeMusicApi.searchSongs(query)
+        return runCatching {
+            YouTubeMusicApi.searchSongs(query)
+        }.getOrElse {
+            val normalizedQuery = query.lowercase().trim()
+            val liked = likedSongDao.getAllLikedSongsSync().map { it.toSong() }
+            if (normalizedQuery.isBlank()) liked else liked.filter { it.title.lowercase().contains(normalizedQuery) || it.author.lowercase().contains(normalizedQuery) }
+        }
     }
 
     suspend fun resolveStreamResult(videoId: String): StreamingResult? {
