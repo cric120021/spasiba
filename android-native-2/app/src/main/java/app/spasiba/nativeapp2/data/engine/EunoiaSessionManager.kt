@@ -1,6 +1,7 @@
 package app.spasiba.nativeapp2.data.engine
 
 import android.content.Context
+import android.widget.Toast
 import android.provider.Settings
 import android.util.Log
 import app.spasiba.nativeapp2.data.api.YouTubeMusicApi
@@ -107,6 +108,7 @@ class EunoiaSessionManager private constructor(private val context: Context) {
             prefs.edit().putString("device_id", id).apply()
         }
         _myDeviceId.value = id ?: "SPASIBA-000000"
+        Log.e("EunoiaInit", "MY DEVICE ID IS: ${_myDeviceId.value}")
 
         startSocketListener()
         connectCloudServer()
@@ -411,6 +413,11 @@ class EunoiaSessionManager private constructor(private val context: Context) {
     }
 
     private fun showInviteNotification(from: String) {
+        scope.launch(Dispatchers.Main) {
+            runCatching {
+                Toast.makeText(context, "🎧 Incoming Eunoia Invite from $from", Toast.LENGTH_LONG).show()
+            }
+        }
         runCatching {
             val channelId = "eunoia_invites"
             val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
