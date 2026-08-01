@@ -2,7 +2,7 @@ import { createClient, type Client } from "@libsql/client";
 
 const DEFAULT_TURSO_DATABASE_URL = "libsql://music-app-db-jigar-23.aws-ap-south-1.turso.io";
 const SCHEMA_READY_KEY = "spasiba_schema";
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 const VISITOR_READY_TTL_MS = 1000 * 60 * 15;
 
 let client: Client | null = null;
@@ -181,6 +181,30 @@ export async function ensureDbSchema() {
               created_at INTEGER NOT NULL
             )
           `,
+          `
+            CREATE TABLE IF NOT EXISTS devices (
+              device_id TEXT PRIMARY KEY,
+              user_id TEXT,
+              fcm_token TEXT,
+              app_version TEXT,
+              last_seen INTEGER NOT NULL
+            )
+          `,
+          `
+            CREATE TABLE IF NOT EXISTS eunoia_sessions (
+              session_id TEXT PRIMARY KEY,
+              inviter_device_id TEXT NOT NULL,
+              invitee_device_id TEXT NOT NULL,
+              status TEXT NOT NULL,
+              current_song_json TEXT,
+              queue_json TEXT,
+              position_ms INTEGER NOT NULL DEFAULT 0,
+              is_playing INTEGER NOT NULL DEFAULT 0,
+              created_at INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL,
+              expires_at INTEGER NOT NULL
+            )
+          `,
           `CREATE INDEX IF NOT EXISTS playlists_visitor_id_idx ON playlists(visitor_id)`,
           `CREATE INDEX IF NOT EXISTS playlists_visitor_updated_idx ON playlists(visitor_id, updated_at DESC)`,
           `CREATE INDEX IF NOT EXISTS playlist_tracks_playlist_id_idx ON playlist_tracks(playlist_id)`,
@@ -192,7 +216,10 @@ export async function ensureDbSchema() {
           `CREATE INDEX IF NOT EXISTS shared_playlist_library_subscriber_idx ON shared_playlist_library(subscriber_visitor_id, created_at DESC)`,
           `CREATE INDEX IF NOT EXISTS shared_playlist_library_playlist_idx ON shared_playlist_library(playlist_id, created_at DESC)`,
           `CREATE INDEX IF NOT EXISTS playlist_share_grants_grantee_idx ON playlist_share_grants(grantee_username, created_at DESC)`,
-          `CREATE INDEX IF NOT EXISTS playlist_share_grants_playlist_idx ON playlist_share_grants(playlist_id, created_at DESC)`
+          `CREATE INDEX IF NOT EXISTS playlist_share_grants_playlist_idx ON playlist_share_grants(playlist_id, created_at DESC)`,
+          `CREATE INDEX IF NOT EXISTS eunoia_signals_target_idx ON eunoia_signals(target_id, created_at ASC)`,
+          `CREATE INDEX IF NOT EXISTS eunoia_sessions_inviter_idx ON eunoia_sessions(inviter_device_id, updated_at DESC)`,
+          `CREATE INDEX IF NOT EXISTS eunoia_sessions_invitee_idx ON eunoia_sessions(invitee_device_id, updated_at DESC)`
         ],
         "write"
       );
