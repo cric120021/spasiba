@@ -231,7 +231,7 @@ function callNativeBridge(action: string, ...args: unknown[]) {
   }
 
   try {
-    const native = window.SpasibaAndroid;
+    const native = (window as any).SpasibaAndroid;
     if (!native) {
       return false;
     }
@@ -306,15 +306,15 @@ function callNativeBridge(action: string, ...args: unknown[]) {
 
 function buildNativeQueuePayload(queue: Song[], currentIndex: number) {
   const tracks = queue.map((track) => ({
-    videoId: track.videoId || track.id,
+    videoId: (track as any).videoId || track.id,
     title: track.title,
     artist: track.author,
-    artworkUrl: track.artworkUrl || (track.videoId ? `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg` : "")
+    artworkUrl: track.thumbnail || ((track as any).videoId ? `https://i.ytimg.com/vi/${(track as any).videoId}/hqdefault.jpg` : "")
   }));
 
   return {
     queueJson: JSON.stringify(tracks),
-    activeVideoId: queue[currentIndex]?.videoId || queue[currentIndex]?.id || ""
+    activeVideoId: (queue[currentIndex] as any)?.videoId || queue[currentIndex]?.id || ""
   };
 }
 
@@ -3249,9 +3249,9 @@ export const audioController = {
 
     if (shouldUseNativePlayback()) {
       const payload = buildNativeQueuePayload(queue, currentIndex);
-      const artworkUrl = track.artworkUrl || (track.videoId ? `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg` : "");
+      const artworkUrl = track.thumbnail || ((track as any).videoId ? `https://i.ytimg.com/vi/${(track as any).videoId}/hqdefault.jpg` : "");
       callNativeBridge("setQueue", payload.queueJson, payload.activeVideoId);
-      callNativeBridge("play", track.videoId || track.id, track.title, track.author, artworkUrl);
+      callNativeBridge("play", (track as any).videoId || track.id, track.title, track.author, artworkUrl);
 
       const nextPlaybackQueue = buildPlaybackQueue(track, queue, currentIndex);
       playerActions.primePlayback(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
@@ -3599,6 +3599,12 @@ export const audioController = {
     markManualPauseRequested();
     audio.pause();
   },
+  resume() {
+    const { isPlaying } = getPlayerState();
+    if (!isPlaying) {
+      void this.togglePlayback();
+    }
+  },
   isActivelyPlaying() {
     const playerState = window.YT?.PlayerState;
 
@@ -3865,6 +3871,23 @@ export const audioController = {
       queue: nextQueue,
       currentIndex,
       currentSong
+    }));
+
+    syncHiddenYouTubeQueueWithState();
+    void prewarmUpcomingTracks(nextQueue, currentIndex);
+  },
+  removeFromQueue(index: number) {
+    const { queue, currentIndex } = getPlayerState();
+
+    if (index <= currentIndex || index < 0 || index >= queue.length) {
+      return;
+    }
+
+    const nextQueue = queue.filter((_, i) => i !== index);
+
+    setPlayerState((previous) => ({
+      ...previous,
+      queue: nextQueue
     }));
 
     syncHiddenYouTubeQueueWithState();

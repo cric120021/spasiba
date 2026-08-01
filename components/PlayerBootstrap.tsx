@@ -5,7 +5,7 @@ import { useEffect } from "react";
 import { audioController } from "@/lib/audio-controller";
 import { getDeviceInfo } from "@/lib/device";
 import { clearPlayerQueueSnapshot, readPlayerQueueSnapshot, writePlayerQueueSnapshot } from "@/lib/player-queue-cache";
-import { getPlayerState, playerActions, usePlayerStore } from "@/store/playerStore";
+import { getPlayerState, playerActions, setPlayerState, usePlayerStore } from "@/store/playerStore";
 
 const VISITOR_ID_STORAGE_KEY = "spasiba_guest_id";
 const VISITOR_ID_COOKIE_KEY = "spasiba_guest_id";
