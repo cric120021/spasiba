@@ -146,6 +146,7 @@ class EunoiaSessionManager private constructor(private val context: Context) {
                                 "INVITE" -> {
                                     _pendingInviteSender.value = from
                                     _sessionStatus.value = EunoiaSessionStatus.INVITE_RECEIVED
+                                    showInviteNotification(from)
                                 }
                                 "ACCEPT" -> {
                                     _pendingInviteSender.value = null
@@ -395,6 +396,45 @@ class EunoiaSessionManager private constructor(private val context: Context) {
         if (diff > 2000L) {
             Log.d("EunoiaSync", "Playback drift detected ($diff ms > 2000ms). Resyncing position to $partnerPositionMs")
             playerManager.seekTo(partnerPositionMs)
+        }
+    }
+
+    private fun showInviteNotification(from: String) {
+        runCatching {
+            val channelId = "eunoia_invites"
+            val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? android.app.NotificationManager ?: return
+
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O) {
+                val channel = android.app.NotificationChannel(
+                    channelId,
+                    "Eunoia Session Invites",
+                    android.app.NotificationManager.IMPORTANCE_HIGH
+                ).apply {
+                    description = "Notifications for incoming Eunoia listening invites"
+                }
+                notificationManager.createNotificationChannel(channel)
+            }
+
+            val intent = context.packageManager.getLaunchIntentForPackage(context.packageName)?.apply {
+                flags = android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP or android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = android.app.PendingIntent.getActivity(
+                context,
+                999,
+                intent,
+                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+
+            val notification = androidx.core.app.NotificationCompat.Builder(context, channelId)
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle("🎧 Eunoia Session Invite")
+                .setContentText("$from wants to listen together with you!")
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .setPriority(androidx.core.app.NotificationCompat.PRIORITY_HIGH)
+                .build()
+
+            notificationManager.notify(8888, notification)
         }
     }
 
