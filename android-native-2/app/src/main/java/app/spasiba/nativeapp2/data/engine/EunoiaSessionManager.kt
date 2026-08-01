@@ -113,8 +113,10 @@ class EunoiaSessionManager private constructor(private val context: Context) {
     }
 
     private fun connectCloudServer() {
+        val cloudUrl = System.getProperty("spasiba.eunoia.url")
+            ?: "wss://spasiba-fk0vtkc3o-cric120021-4555s-projects.vercel.app/ws"
         val request = Request.Builder()
-            .url("wss://stomach-post-standings-modification.trycloudflare.com/ws")
+            .url(cloudUrl)
             .build()
 
         cloudWebSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
