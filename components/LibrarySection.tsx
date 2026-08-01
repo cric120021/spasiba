@@ -4,8 +4,16 @@ import { useRouter } from "next/navigation";
 import { createPortal } from "react-dom";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 
-import { PLAYLISTS_UPDATED_EVENT } from "@/lib/playlist-events";
-import { fetchPlaylistsLibrary, notifyPlaylistsUpdated, readCachedPlaylistsLibrary } from "@/lib/playlists-client";
+import { emitPlaylistsUpdatedEvent, PLAYLISTS_UPDATED_EVENT } from "@/lib/playlist-events";
+import {
+  fetchPlaylistsLibrary,
+  primePlaylistsLibrary,
+  readCachedPlaylistsLibrary,
+  removeCachedOwnedPlaylist,
+  removeCachedSharedPlaylist,
+  upsertCachedOwnedPlaylist,
+  upsertCachedSharedPlaylist
+} from "@/lib/playlists-client";
 import { playerActions } from "@/store/playerStore";
 import type { Playlist, PlaylistShareGrant } from "@/lib/types";
 
@@ -127,6 +135,22 @@ async function deletePlaylistRequest(playlistId: string) {
 
   if (!response.ok) {
     throw new Error(payload?.error || "Unable to delete playlist.");
+  }
+}
+
+async function deleteSharedPlaylistRequest(shareToken: string) {
+  const response = await fetch(`/api/shared/${encodeURIComponent(shareToken)}/access`, {
+    method: "DELETE",
+    credentials: "same-origin",
+    headers: {
+      Accept: "application/json"
+    }
+  });
+
+  const payload = (await response.json().catch(() => null)) as BasicApiResponse | null;
+
+  if (!response.ok) {
+    throw new Error(payload?.error || "Unable to remove this shared playlist.");
   }
 }
 
@@ -274,12 +298,16 @@ function LibrarySectionComponent() {
   const [playlistToDelete, setPlaylistToDelete] = useState<Playlist | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const [deleteSaving, setDeleteSaving] = useState(false);
+  const [sharedPlaylistToDelete, setSharedPlaylistToDelete] = useState<Playlist | null>(null);
+  const [sharedDeleteError, setSharedDeleteError] = useState<string | null>(null);
+  const [sharedDeleteSaving, setSharedDeleteSaving] = useState(false);
 
   const load = useCallback(async () => {
     setError(null);
 
     try {
       const nextLibrary = await fetchPlaylistsLibrary();
+      primePlaylistsLibrary(nextLibrary, { emit: false });
       setPlaylists(nextLibrary.playlists);
       setSharedPlaylists(nextLibrary.sharedPlaylists);
     } catch (requestError) {
@@ -305,7 +333,7 @@ function LibrarySectionComponent() {
   }, [load]);
 
   useEffect(() => {
-    if (!menuState && !playlistToRename && !playlistToDelete && !playlistToShare && !codeModalOpen) {
+    if (!menuState && !playlistToRename && !playlistToDelete && !sharedPlaylistToDelete && !playlistToShare && !codeModalOpen) {
       return;
     }
 
@@ -321,6 +349,10 @@ function LibrarySectionComponent() {
           setPlaylistToDelete(null);
         }
 
+        if (!sharedDeleteSaving) {
+          setSharedPlaylistToDelete(null);
+        }
+
         if (!shareSaving) {
           setPlaylistToShare(null);
           setCodeModalOpen(false);
@@ -330,18 +362,11 @@ function LibrarySectionComponent() {
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [codeModalOpen, deleteSaving, menuState, playlistToDelete, playlistToRename, playlistToShare, renameSaving, shareSaving]);
+  }, [codeModalOpen, deleteSaving, menuState, playlistToDelete, playlistToRename, playlistToShare, renameSaving, shareSaving, sharedDeleteSaving, sharedPlaylistToDelete]);
 
   const openPlaylist = useCallback(
     (playlistId: string) => {
       router.push(`/library/${playlistId}`, { scroll: false });
-    },
-    [router]
-  );
-
-  const openSharedPlaylist = useCallback(
-    (shareToken: string) => {
-      router.push(`/shared/${shareToken}`, { scroll: false });
     },
     [router]
   );
@@ -356,6 +381,15 @@ function LibrarySectionComponent() {
       router.prefetch(route);
     },
     [router]
+  );
+
+  const openSharedPlaylist = useCallback(
+    (shareToken: string) => {
+      const route = `/shared/${shareToken}`;
+      prefetchRoute(route);
+      router.push(route, { scroll: false });
+    },
+    [prefetchRoute, router]
   );
 
   const openMenu = useCallback((playlist: Playlist, target: HTMLElement) => {
@@ -400,6 +434,19 @@ function LibrarySectionComponent() {
     }
   }, [playlistToShare, shareUrl]);
 
+  const handleCopyShareCode = useCallback(async () => {
+    if (!shareToken || !playlistToShare) {
+      return;
+    }
+
+    try {
+      const copied = await copyText(shareToken);
+      playerActions.showToast(copied ? `Copied ${playlistToShare.name} code.` : "Share code ready.");
+    } catch {
+      playerActions.showToast("Unable to copy the share code.");
+    }
+  }, [playlistToShare, shareToken]);
+
   const handleGrantShareAccess = useCallback(async () => {
     if (!playlistToShare) {
       return;
@@ -421,7 +468,14 @@ function LibrarySectionComponent() {
       setShareUrl(nextAccess.shareUrl);
       setShareGrants(nextAccess.grants);
       setShareUsername("");
-      notifyPlaylistsUpdated();
+      upsertCachedOwnedPlaylist(
+        {
+          ...playlistToShare,
+          shareToken: nextAccess.shareToken
+        },
+        { emit: false }
+      );
+      emitPlaylistsUpdatedEvent();
       playerActions.showToast(
         nextAccess.grantedUser
           ? `Shared ${playlistToShare.name} with @${nextAccess.grantedUser.username}.`
@@ -446,7 +500,7 @@ function LibrarySectionComponent() {
       try {
         const nextGrants = await revokeShareAccessRequest(playlistToShare.id, grant.username);
         setShareGrants(nextGrants);
-        notifyPlaylistsUpdated();
+        emitPlaylistsUpdatedEvent();
         playerActions.showToast(`Removed @${grant.username} from ${playlistToShare.name}.`);
       } catch (requestError) {
         setShareError(requestError instanceof Error ? requestError.message : "Unable to revoke access.");
@@ -470,11 +524,15 @@ function LibrarySectionComponent() {
 
     try {
       const result = await unlockSharedCodeRequest(trimmedCode);
-      notifyPlaylistsUpdated();
+      if (result.playlist) {
+        upsertCachedSharedPlaylist(result.playlist, { emit: false });
+      }
+      emitPlaylistsUpdatedEvent();
       setCodeModalOpen(false);
       setShareCodeInput("");
       playerActions.showToast(`Opened ${result.playlist?.name || "shared playlist"}.`);
       if (result.shareToken) {
+        prefetchRoute(`/shared/${result.shareToken}`);
         openSharedPlaylist(result.shareToken);
       }
     } catch (requestError) {
@@ -482,7 +540,7 @@ function LibrarySectionComponent() {
     } finally {
       setCodeSaving(false);
     }
-  }, [openSharedPlaylist, shareCodeInput]);
+  }, [openSharedPlaylist, prefetchRoute, shareCodeInput]);
 
   const startRename = useCallback((playlist: Playlist) => {
     setMenuState(null);
@@ -509,7 +567,8 @@ function LibrarySectionComponent() {
     try {
       const updatedPlaylist = await renamePlaylistRequest(playlistToRename.id, trimmedName);
       setPlaylists((previous) => previous.map((playlist) => (playlist.id === updatedPlaylist.id ? updatedPlaylist : playlist)));
-      notifyPlaylistsUpdated();
+      upsertCachedOwnedPlaylist(updatedPlaylist, { emit: false });
+      emitPlaylistsUpdatedEvent();
       playerActions.showToast(`Renamed to ${updatedPlaylist.name}.`);
       setPlaylistToRename(null);
     } catch (requestError) {
@@ -525,6 +584,11 @@ function LibrarySectionComponent() {
     setPlaylistToDelete(playlist);
   }, []);
 
+  const startSharedDelete = useCallback((playlist: Playlist) => {
+    setSharedDeleteError(null);
+    setSharedPlaylistToDelete(playlist);
+  }, []);
+
   const confirmDelete = useCallback(async () => {
     if (!playlistToDelete) {
       return;
@@ -536,7 +600,8 @@ function LibrarySectionComponent() {
     try {
       await deletePlaylistRequest(playlistToDelete.id);
       setPlaylists((previous) => previous.filter((playlist) => playlist.id !== playlistToDelete.id));
-      notifyPlaylistsUpdated();
+      removeCachedOwnedPlaylist(playlistToDelete.id, { emit: false });
+      emitPlaylistsUpdatedEvent();
       playerActions.showToast(`Deleted ${playlistToDelete.name}.`);
       setPlaylistToDelete(null);
     } catch (requestError) {
@@ -546,29 +611,47 @@ function LibrarySectionComponent() {
     }
   }, [playlistToDelete]);
 
+  const confirmSharedDelete = useCallback(async () => {
+    if (!sharedPlaylistToDelete?.shareToken) {
+      return;
+    }
+
+    setSharedDeleteSaving(true);
+    setSharedDeleteError(null);
+
+    try {
+      await deleteSharedPlaylistRequest(sharedPlaylistToDelete.shareToken);
+      setSharedPlaylists((previous) => previous.filter((playlist) => playlist.id !== sharedPlaylistToDelete.id));
+      removeCachedSharedPlaylist(sharedPlaylistToDelete.id, { emit: false });
+      emitPlaylistsUpdatedEvent();
+      playerActions.showToast(`Removed ${sharedPlaylistToDelete.name} from your shared playlists.`);
+      setSharedPlaylistToDelete(null);
+    } catch (requestError) {
+      setSharedDeleteError(requestError instanceof Error ? requestError.message : "Unable to remove this shared playlist.");
+    } finally {
+      setSharedDeleteSaving(false);
+    }
+  }, [sharedPlaylistToDelete]);
+
   const handleRevokeShare = useCallback(async (playlist: Playlist) => {
     setMenuState(null);
     setRevokingPlaylistId(playlist.id);
 
     try {
       await revokeShareRequest(playlist.id);
-      setPlaylists((previous) =>
-        previous.map((entry) =>
-          entry.id === playlist.id
-            ? {
-                ...entry,
-                shareToken: null
-              }
-            : entry
-        )
-      );
+      const nextPlaylist = {
+        ...playlist,
+        shareToken: null
+      } satisfies Playlist;
+      setPlaylists((previous) => previous.map((entry) => (entry.id === playlist.id ? nextPlaylist : entry)));
       if (playlistToShare?.id === playlist.id) {
         setShareGrants([]);
         setShareToken("");
         setShareUrl(null);
         setPlaylistToShare(null);
       }
-      notifyPlaylistsUpdated();
+      upsertCachedOwnedPlaylist(nextPlaylist, { emit: false });
+      emitPlaylistsUpdatedEvent();
       playerActions.showToast(`Stopped sharing ${playlist.name}.`);
     } catch (error) {
       playerActions.showToast(error instanceof Error ? error.message : "Unable to revoke sharing.");
@@ -638,43 +721,45 @@ function LibrarySectionComponent() {
 
   const renameModal = playlistToRename ? (
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/86 px-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[160] overflow-y-auto overscroll-contain bg-slate-950/86 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-6"
       onClick={() => !renameSaving && setPlaylistToRename(null)}
     >
-      <div
-        className="w-full max-w-md rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Rename playlist"
-      >
-        <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Edit playlist</p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Rename {playlistToRename.name}</h3>
-        <p className="mt-3 text-sm leading-6 text-slate-300/78">Give this playlist a cleaner title. Your songs stay exactly where they are.</p>
-        <input
-          value={renameValue}
-          onChange={(event) => setRenameValue(event.target.value)}
-          placeholder="Late night drive"
-          className="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
-        />
-        {renameError ? <p className="mt-3 text-sm text-rose-200">{renameError}</p> : null}
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => setPlaylistToRename(null)}
-            disabled={renameSaving}
-            className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void submitRename()}
-            disabled={renameSaving}
-            className="flex-1 rounded-2xl border border-white/12 bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
-          >
-            {renameSaving ? "Saving..." : "Save name"}
-          </button>
+      <div className="flex min-h-full items-start justify-center py-4 sm:items-center sm:py-8">
+        <div
+          className="w-full max-w-md max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] overflow-y-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Rename playlist"
+        >
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Edit playlist</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Rename {playlistToRename.name}</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-300/78">Give this playlist a cleaner title. Your songs stay exactly where they are.</p>
+          <input
+            value={renameValue}
+            onChange={(event) => setRenameValue(event.target.value)}
+            placeholder="Late night drive"
+            className="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
+          />
+          {renameError ? <p className="mt-3 text-sm text-rose-200">{renameError}</p> : null}
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setPlaylistToRename(null)}
+              disabled={renameSaving}
+              className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void submitRename()}
+              disabled={renameSaving}
+              className="flex-1 rounded-2xl border border-white/12 bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
+            >
+              {renameSaving ? "Saving..." : "Save name"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -682,37 +767,81 @@ function LibrarySectionComponent() {
 
   const deleteModal = playlistToDelete ? (
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/86 px-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[160] overflow-y-auto overscroll-contain bg-slate-950/86 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-6"
       onClick={() => !deleteSaving && setPlaylistToDelete(null)}
     >
-      <div
-        className="w-full max-w-md rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Delete playlist"
-      >
-        <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Delete playlist</p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Delete {playlistToDelete.name}?</h3>
-        <p className="mt-3 text-sm leading-6 text-slate-300/78">This removes the playlist and all songs saved inside it. This action cannot be undone.</p>
-        {deleteError ? <p className="mt-3 text-sm text-rose-200">{deleteError}</p> : null}
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => setPlaylistToDelete(null)}
-            disabled={deleteSaving}
-            className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void confirmDelete()}
-            disabled={deleteSaving}
-            className="flex-1 rounded-2xl border border-rose-300/20 bg-rose-400/12 px-4 py-3 text-sm font-medium text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-wait disabled:opacity-70"
-          >
-            {deleteSaving ? "Deleting..." : "Delete playlist"}
-          </button>
+      <div className="flex min-h-full items-start justify-center py-4 sm:items-center sm:py-8">
+        <div
+          className="w-full max-w-md max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] overflow-y-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Delete playlist"
+        >
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Delete playlist</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Delete {playlistToDelete.name}?</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-300/78">This removes the playlist and all songs saved inside it. This action cannot be undone.</p>
+          {deleteError ? <p className="mt-3 text-sm text-rose-200">{deleteError}</p> : null}
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setPlaylistToDelete(null)}
+              disabled={deleteSaving}
+              className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmDelete()}
+              disabled={deleteSaving}
+              className="flex-1 rounded-2xl border border-rose-300/20 bg-rose-400/12 px-4 py-3 text-sm font-medium text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-wait disabled:opacity-70"
+            >
+              {deleteSaving ? "Deleting..." : "Delete playlist"}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  ) : null;
+
+  const sharedDeleteModal = sharedPlaylistToDelete ? (
+    <div
+      className="fixed inset-0 z-[160] overflow-y-auto overscroll-contain bg-slate-950/86 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-6"
+      onClick={() => !sharedDeleteSaving && setSharedPlaylistToDelete(null)}
+    >
+      <div className="flex min-h-full items-start justify-center py-4 sm:items-center sm:py-8">
+        <div
+          className="w-full max-w-md max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] overflow-y-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Remove shared playlist"
+        >
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Remove shared playlist</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Remove {sharedPlaylistToDelete.name}?</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-300/78">
+            This removes the playlist from your shared library and revokes your access. You would need the owner to share it again before you can open it later.
+          </p>
+          {sharedDeleteError ? <p className="mt-3 text-sm text-rose-200">{sharedDeleteError}</p> : null}
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setSharedPlaylistToDelete(null)}
+              disabled={sharedDeleteSaving}
+              className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void confirmSharedDelete()}
+              disabled={sharedDeleteSaving}
+              className="flex-1 rounded-2xl border border-rose-300/20 bg-rose-400/12 px-4 py-3 text-sm font-medium text-rose-100 transition hover:bg-rose-400/18 disabled:cursor-wait disabled:opacity-70"
+            >
+              {sharedDeleteSaving ? "Removing..." : "Remove access"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -720,120 +849,130 @@ function LibrarySectionComponent() {
 
   const shareModal = playlistToShare ? (
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/86 px-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[160] overflow-y-auto overscroll-contain bg-slate-950/86 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-6"
       onClick={() => !shareSaving && setPlaylistToShare(null)}
     >
-      <div
-        className="w-full max-w-2xl rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Share playlist access"
-      >
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
-          <div>
-            <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Share access</p>
-            <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Share {playlistToShare.name}</h3>
-            <p className="mt-3 text-sm leading-6 text-slate-300/78">
-              Add usernames who can open this playlist, then give them the code so it appears in their shared library.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => setPlaylistToShare(null)}
-            className="rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120]"
-          >
-            Close
-          </button>
-        </div>
-
-        <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Share code</p>
-            <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="flex-1 rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-base font-semibold tracking-[0.22em] text-white">
-                {shareLoading ? "Loading..." : shareToken || "No code yet"}
-              </div>
-              <button
-                type="button"
-                onClick={() => void handleCopyShareLink()}
-                disabled={!shareUrl || shareLoading}
-                className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                Copy link
-              </button>
-            </div>
-            <p className="mt-3 text-xs leading-5 text-slate-400">Your friend opens Spasiba, taps Enter code, and uses this code after you add their username here.</p>
-          </div>
-
-          <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
-            <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Add username</p>
-            <div className="mt-3 flex flex-col gap-3">
-              <input
-                value={shareUsername}
-                onChange={(event) => setShareUsername(event.target.value)}
-                placeholder="friend_username"
-                className="w-full rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => void handleGrantShareAccess()}
-                disabled={shareSaving || shareLoading}
-                className="rounded-2xl border border-teal-300/25 bg-teal-300/12 px-4 py-3 text-sm font-medium text-teal-100 transition hover:bg-teal-300/18 disabled:cursor-wait disabled:opacity-70"
-              >
-                {shareSaving ? "Saving..." : "Add access"}
-              </button>
-            </div>
-          </div>
-        </div>
-
-        {shareError ? <p className="mt-4 text-sm text-rose-200">{shareError}</p> : null}
-
-        <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
-          <div className="flex items-center justify-between gap-3">
+      <div className="flex min-h-full items-start justify-center py-4 sm:items-center sm:py-8">
+        <div
+          className="w-full max-w-2xl max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] overflow-y-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Share playlist access"
+        >
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
             <div>
-              <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">People with access</p>
-              <p className="mt-2 text-sm text-slate-300/78">Revoke any person and the playlist disappears from their shared section.</p>
+              <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Share access</p>
+              <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Share {playlistToShare.name}</h3>
+              <p className="mt-3 text-sm leading-6 text-slate-300/78">
+                Add usernames who can open this playlist, then give them the code so it appears in their shared library.
+              </p>
             </div>
-            <div className="rounded-full border border-white/10 bg-slate-950/55 px-3 py-1.5 text-[10px] uppercase tracking-[0.22em] text-slate-300">
-              {shareGrants.length} users
+            <button
+              type="button"
+              onClick={() => setPlaylistToShare(null)}
+              className="rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120]"
+            >
+              Close
+            </button>
+          </div>
+
+          <div className="mt-6 grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+            <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Share code</p>
+              <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-center">
+                <div className="flex-1 rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-base font-semibold tracking-[0.22em] text-white">
+                  {shareLoading ? "Loading..." : shareToken || "No code yet"}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyShareCode()}
+                  disabled={!shareToken || shareLoading}
+                  className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Copy code
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void handleCopyShareLink()}
+                  disabled={!shareUrl || shareLoading}
+                  className="rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-3 text-sm font-medium text-white transition hover:bg-white/[0.1] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  Copy link
+                </button>
+              </div>
+              <p className="mt-3 text-xs leading-5 text-slate-400">Your friend opens Spasiba, taps Enter code, and uses this code after you add their username here.</p>
+            </div>
+
+            <div className="rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+              <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Add username</p>
+              <div className="mt-3 flex flex-col gap-3">
+                <input
+                  value={shareUsername}
+                  onChange={(event) => setShareUsername(event.target.value)}
+                  placeholder="friend_username"
+                  className="w-full rounded-2xl border border-white/10 bg-slate-950/55 px-4 py-3 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleGrantShareAccess()}
+                  disabled={shareSaving || shareLoading}
+                  className="rounded-2xl border border-teal-300/25 bg-teal-300/12 px-4 py-3 text-sm font-medium text-teal-100 transition hover:bg-teal-300/18 disabled:cursor-wait disabled:opacity-70"
+                >
+                  {shareSaving ? "Saving..." : "Add access"}
+                </button>
+              </div>
             </div>
           </div>
 
-          {shareLoading ? (
-            <div className="mt-4 space-y-3">
-              <div className="shimmer h-16 rounded-2xl" />
-              <div className="shimmer h-16 rounded-2xl" />
+          {shareError ? <p className="mt-4 text-sm text-rose-200">{shareError}</p> : null}
+
+          <div className="mt-6 rounded-[24px] border border-white/10 bg-white/[0.04] p-5">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">People with access</p>
+                <p className="mt-2 text-sm text-slate-300/78">Revoke any person and the playlist disappears from their shared section.</p>
+              </div>
+              <div className="rounded-full border border-white/10 bg-slate-950/55 px-3 py-1.5 text-[10px] uppercase tracking-[0.22em] text-slate-300">
+                {shareGrants.length} users
+              </div>
             </div>
-          ) : shareGrants.length ? (
-            <div className="mt-4 space-y-3">
-              {shareGrants.map((grant) => (
-                <div
-                  key={`${playlistToShare.id}-${grant.username}`}
-                  className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
-                >
-                  <div>
-                    <p className="text-sm font-medium text-white">@{grant.username}</p>
-                    <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
-                      {grant.displayName ? `${grant.displayName} • ` : ""}added {new Date(grant.createdAt).toLocaleDateString()}
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => void handleRevokeShareAccess(grant)}
-                    disabled={shareSaving}
-                    className="rounded-2xl border border-rose-300/18 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-100 transition hover:bg-rose-400/16 disabled:cursor-wait disabled:opacity-70"
+
+            {shareLoading ? (
+              <div className="mt-4 space-y-3">
+                <div className="shimmer h-16 rounded-2xl" />
+                <div className="shimmer h-16 rounded-2xl" />
+              </div>
+            ) : shareGrants.length ? (
+              <div className="mt-4 space-y-3">
+                {shareGrants.map((grant) => (
+                  <div
+                    key={`${playlistToShare.id}-${grant.username}`}
+                    className="flex flex-col gap-3 rounded-2xl border border-white/10 bg-slate-950/45 px-4 py-4 sm:flex-row sm:items-center sm:justify-between"
                   >
-                    Revoke
-                  </button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/35 px-4 py-5 text-sm text-slate-300/72">
-              No usernames added yet.
-            </div>
-          )}
+                    <div>
+                      <p className="text-sm font-medium text-white">@{grant.username}</p>
+                      <p className="mt-1 text-xs uppercase tracking-[0.18em] text-slate-400">
+                        {grant.displayName ? `${grant.displayName} • ` : ""}added {new Date(grant.createdAt).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void handleRevokeShareAccess(grant)}
+                      disabled={shareSaving}
+                      className="rounded-2xl border border-rose-300/18 bg-rose-400/10 px-4 py-3 text-sm font-medium text-rose-100 transition hover:bg-rose-400/16 disabled:cursor-wait disabled:opacity-70"
+                    >
+                      Revoke
+                    </button>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <div className="mt-4 rounded-2xl border border-dashed border-white/10 bg-slate-950/35 px-4 py-5 text-sm text-slate-300/72">
+                No usernames added yet.
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
@@ -841,43 +980,45 @@ function LibrarySectionComponent() {
 
   const codeModal = codeModalOpen ? (
     <div
-      className="fixed inset-0 z-[160] flex items-center justify-center bg-slate-950/86 px-4 backdrop-blur-xl"
+      className="fixed inset-0 z-[160] overflow-y-auto overscroll-contain bg-slate-950/86 px-4 py-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] backdrop-blur-xl sm:px-6"
       onClick={() => !codeSaving && setCodeModalOpen(false)}
     >
-      <div
-        className="w-full max-w-md rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
-        onClick={(event) => event.stopPropagation()}
-        role="dialog"
-        aria-modal="true"
-        aria-label="Enter share code"
-      >
-        <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Shared playlist</p>
-        <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Enter code</h3>
-        <p className="mt-3 text-sm leading-6 text-slate-300/78">Use the code your friend shared with your username-enabled profile.</p>
-        <input
-          value={shareCodeInput}
-          onChange={(event) => setShareCodeInput(event.target.value)}
-          placeholder="AB12CD34EF"
-          className="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base uppercase tracking-[0.2em] text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
-        />
-        {codeError ? <p className="mt-3 text-sm text-rose-200">{codeError}</p> : null}
-        <div className="mt-5 flex gap-3">
-          <button
-            type="button"
-            onClick={() => setCodeModalOpen(false)}
-            disabled={codeSaving}
-            className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
-          >
-            Cancel
-          </button>
-          <button
-            type="button"
-            onClick={() => void handleUnlockCode()}
-            disabled={codeSaving}
-            className="flex-1 rounded-2xl border border-white/12 bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
-          >
-            {codeSaving ? "Opening..." : "Open playlist"}
-          </button>
+      <div className="flex min-h-full items-start justify-center py-4 sm:items-center sm:py-8">
+        <div
+          className="w-full max-w-md max-h-[calc(100dvh_-_2rem_-_env(safe-area-inset-top)_-_env(safe-area-inset-bottom))] overflow-y-auto rounded-[30px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] p-6 shadow-[0_30px_120px_rgba(0,0,0,0.6)]"
+          onClick={(event) => event.stopPropagation()}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Enter share code"
+        >
+          <p className="text-[11px] uppercase tracking-[0.28em] text-slate-400">Shared playlist</p>
+          <h3 className="mt-3 text-2xl font-semibold tracking-tight text-white">Enter code</h3>
+          <p className="mt-3 text-sm leading-6 text-slate-300/78">Use the code your friend shared with your username-enabled profile.</p>
+          <input
+            value={shareCodeInput}
+            onChange={(event) => setShareCodeInput(event.target.value)}
+            placeholder="AB12CD34EF"
+            className="mt-5 w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base uppercase tracking-[0.2em] text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
+          />
+          {codeError ? <p className="mt-3 text-sm text-rose-200">{codeError}</p> : null}
+          <div className="mt-5 flex gap-3">
+            <button
+              type="button"
+              onClick={() => setCodeModalOpen(false)}
+              disabled={codeSaving}
+              className="flex-1 rounded-2xl border border-white/10 bg-[#050816] px-4 py-3 text-sm font-medium text-slate-100 transition hover:bg-[#0a1120] disabled:cursor-wait disabled:opacity-70"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void handleUnlockCode()}
+              disabled={codeSaving}
+              className="flex-1 rounded-2xl border border-white/12 bg-white px-4 py-3 text-sm font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
+            >
+              {codeSaving ? "Opening..." : "Open playlist"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
@@ -1014,6 +1155,17 @@ function LibrarySectionComponent() {
                 >
                   <button
                     type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      startSharedDelete(playlist);
+                    }}
+                    className="absolute right-3 top-3 z-10 rounded-full border border-white/10 bg-slate-950/78 px-2.5 py-1 text-[9px] uppercase tracking-[0.18em] text-rose-100/88 backdrop-blur-md transition hover:border-rose-200/25 hover:bg-rose-400/12"
+                    aria-label={`Remove ${playlist.name} from shared playlists`}
+                  >
+                    Delete
+                  </button>
+                  <button
+                    type="button"
                     onClick={() => playlist.shareToken && openSharedPlaylist(playlist.shareToken)}
                     onPointerEnter={() => playlist.shareToken && prefetchRoute(`/shared/${playlist.shareToken}`)}
                     onFocus={() => playlist.shareToken && prefetchRoute(`/shared/${playlist.shareToken}`)}
@@ -1062,6 +1214,7 @@ function LibrarySectionComponent() {
       {mounted && menu ? createPortal(menu, document.body) : null}
       {mounted && renameModal ? createPortal(renameModal, document.body) : null}
       {mounted && deleteModal ? createPortal(deleteModal, document.body) : null}
+      {mounted && sharedDeleteModal ? createPortal(sharedDeleteModal, document.body) : null}
       {mounted && shareModal ? createPortal(shareModal, document.body) : null}
       {mounted && codeModal ? createPortal(codeModal, document.body) : null}
     </>

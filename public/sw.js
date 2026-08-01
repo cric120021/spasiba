@@ -1,4 +1,4 @@
-const CACHE_NAME = "spasiba-shell-v8";
+const CACHE_NAME = "spasiba-shell-v10";
 const SEARCH_CACHE_NAME = "spasiba-search-v1";
 const CATEGORY_FEED_CACHE_NAME = "spasiba-category-feed-v2";
 const ARTWORK_CACHE_NAME = "spasiba-artwork-v1";

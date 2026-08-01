@@ -5,7 +5,8 @@ import { memo, useCallback, useMemo, useState } from "react";
 
 import { audioController } from "@/lib/audio-controller";
 import type { Playlist } from "@/lib/types";
-import { notifyPlaylistsUpdated } from "@/lib/playlists-client";
+import { emitPlaylistsUpdatedEvent } from "@/lib/playlist-events";
+import { upsertCachedOwnedPlaylist } from "@/lib/playlists-client";
 import { playerActions } from "@/store/playerStore";
 
 import ArtworkImage from "@/components/ArtworkImage";
@@ -68,14 +69,17 @@ function PlaylistDetailViewComponent({ playlist }: PlaylistDetailViewProps) {
           Accept: "application/json"
         }
       });
-      const payload = (await response.json().catch(() => null)) as { error?: string } | null;
+      const payload = (await response.json().catch(() => null)) as { error?: string; playlist?: Playlist | null } | null;
 
       if (!response.ok) {
         throw new Error(payload?.error || "Unable to remove this song from the playlist.");
       }
 
       setTracks((previous) => previous.filter((track) => track.videoId !== videoId));
-      notifyPlaylistsUpdated();
+      if (payload?.playlist) {
+        upsertCachedOwnedPlaylist(payload.playlist, { emit: false });
+      }
+      emitPlaylistsUpdatedEvent();
       playerActions.showToast(`Removed "${title}" from ${playlistView.name}.`);
     },
     [playlistView.id, playlistView.name]

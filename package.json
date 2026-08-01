@@ -6,12 +6,19 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "cap:sync": "cap sync android",
+    "cap:open": "cap open android",
+    "android:debug": "cd android && ./gradlew assembleDebug",
+    "android-native:debug": "cd android-native && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleDebug"
   },
   "engines": {
     "node": ">=20.0.0"
   },
   "dependencies": {
+    "@capacitor/android": "^8.3.0",
+    "@capacitor/cli": "^8.3.0",
+    "@capacitor/core": "^8.3.0",
     "@distube/ytdl-core": "^4.16.12",
     "@libsql/client": "^0.17.2",
     "@tailwindcss/postcss": "^4.1.4",

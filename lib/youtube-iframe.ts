@@ -13,12 +13,14 @@ export type YouTubePlayer = {
   getVideoLoadedFraction: () => number;
   loadPlaylist?: (playlist: string[] | { playlist: string[]; index?: number; startSeconds?: number }) => void;
   loadVideoById: (videoId: string, startSeconds?: number) => void;
+  mute?: () => void;
   nextVideo?: () => void;
   pauseVideo: () => void;
   playVideo: () => void;
   previousVideo?: () => void;
   seekTo: (seconds: number, allowSeekAhead?: boolean) => void;
   setVolume: (volume: number) => void;
+  unMute?: () => void;
 };
 
 declare global {

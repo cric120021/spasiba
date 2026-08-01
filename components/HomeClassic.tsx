@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo } from "react";
 import { useRouter } from "next/navigation";
 
 import { audioController } from "@/lib/audio-controller";
-import { prefetchCategoryFeed } from "@/lib/home-category-feed-client";
 import { HOME_CATEGORY_CHIPS } from "@/lib/home-category-chips";
 import type { Song, TrendingSection } from "@/lib/types";
 import { formatCompactCount } from "@/lib/utils";
@@ -63,7 +62,6 @@ export default function HomeClassic({ sections }: HomeClassicProps) {
 
   const prefetchCategoryPage = useCallback(
     (categoryId: string) => {
-      prefetchCategoryFeed(categoryId);
       router.prefetch(`/category/${categoryId}`);
     },
     [router]

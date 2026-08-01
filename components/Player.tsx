@@ -5,16 +5,21 @@ import type { SyntheticEvent } from "react";
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import { audioController } from "@/lib/audio-controller";
+import { getDeviceInfo } from "@/lib/device";
+import { useArtworkTheme } from "@/lib/use-artwork-theme";
 import { loadYouTubeIframeApi, type YouTubePlayer } from "@/lib/youtube-iframe";
 import { formatPlaybackTime } from "@/lib/utils";
 import { playerActions, setPlayerState, usePlayerStore } from "@/store/playerStore";
 
-import ArtworkImage from "@/components/ArtworkImage";
 import PlayerTrackMenu from "@/components/PlayerTrackMenu";
+import QueueTrackItem from "@/components/QueueTrackItem";
+import Artwork from "@/components/ui/Artwork";
+import PlayerSurface from "@/components/ui/PlayerSurface";
 
 type PlayerMode = "audio" | "video";
 
 function PlayerComponent() {
+  const isIOS = useMemo(() => getDeviceInfo().isIOS, []);
   const currentSong = usePlayerStore((state) => state.currentSong);
   const queue = usePlayerStore((state) => state.queue);
   const currentIndex = usePlayerStore((state) => state.currentIndex);
@@ -39,6 +44,10 @@ function PlayerComponent() {
   const videoContainerRef = useRef<HTMLDivElement | null>(null);
   const videoPlayerRef = useRef<YouTubePlayer | null>(null);
   const videoSyncIntervalRef = useRef<number | null>(null);
+  const videoAutoplayRetryTimeoutRef = useRef<number | null>(null);
+  const videoAutoplayPendingRef = useRef(false);
+  const videoAutoplayAttemptsRef = useRef(0);
+  const videoShouldUnmuteOnPlayRef = useRef(false);
   const shouldResumeAudioRef = useRef(false);
 
   const progressPercent = useMemo(() => `${Math.max(progress * 100, 0)}%`, [progress]);
@@ -71,6 +80,7 @@ function PlayerComponent() {
     }),
     []
   );
+  const playerTheme = useArtworkTheme(currentSong?.thumbnail || null);
 
   const stopPropagation = useCallback((event: SyntheticEvent) => {
     event.stopPropagation();
@@ -84,6 +94,22 @@ function PlayerComponent() {
     window.clearInterval(videoSyncIntervalRef.current);
     videoSyncIntervalRef.current = null;
   }, []);
+
+  const clearVideoAutoplayRetry = useCallback(() => {
+    if (videoAutoplayRetryTimeoutRef.current === null) {
+      return;
+    }
+
+    window.clearTimeout(videoAutoplayRetryTimeoutRef.current);
+    videoAutoplayRetryTimeoutRef.current = null;
+  }, []);
+
+  const resetVideoAutoplayState = useCallback(() => {
+    clearVideoAutoplayRetry();
+    videoAutoplayPendingRef.current = false;
+    videoAutoplayAttemptsRef.current = 0;
+    videoShouldUnmuteOnPlayRef.current = false;
+  }, [clearVideoAutoplayRetry]);
 
   const syncVideoStore = useCallback(() => {
     const videoPlayer = videoPlayerRef.current;
@@ -110,6 +136,7 @@ function PlayerComponent() {
   }, []);
 
   const destroyVideoPlayer = useCallback(() => {
+    resetVideoAutoplayState();
     stopVideoSync();
 
     if (videoPlayerRef.current) {
@@ -120,7 +147,54 @@ function PlayerComponent() {
     if (videoContainerRef.current) {
       videoContainerRef.current.innerHTML = "";
     }
-  }, [stopVideoSync]);
+  }, [resetVideoAutoplayState, stopVideoSync]);
+
+  const requestVideoAutoplay = useCallback(
+    (player: YouTubePlayer) => {
+      const maxAttempts = isIOS ? 5 : 3;
+      const scheduleRetry = () => {
+        clearVideoAutoplayRetry();
+        videoAutoplayRetryTimeoutRef.current = window.setTimeout(() => {
+          videoAutoplayRetryTimeoutRef.current = null;
+
+          if (videoPlayerRef.current !== player || !videoAutoplayPendingRef.current) {
+            return;
+          }
+
+          const playerState = window.YT?.PlayerState;
+
+          if (playerState && player.getPlayerState() === playerState.PLAYING) {
+            return;
+          }
+
+          requestVideoAutoplay(player);
+        }, 260);
+      };
+
+      if (!videoAutoplayPendingRef.current) {
+        videoAutoplayPendingRef.current = true;
+        videoAutoplayAttemptsRef.current = 0;
+        videoShouldUnmuteOnPlayRef.current = false;
+      }
+
+      if (videoAutoplayAttemptsRef.current >= maxAttempts) {
+        return;
+      }
+
+      videoAutoplayAttemptsRef.current += 1;
+
+      if (isIOS) {
+        videoShouldUnmuteOnPlayRef.current = true;
+        player.mute?.();
+        player.setVolume(0);
+      }
+
+      audioController.suspendUnderlyingForVisibleVideoMode();
+      player.playVideo();
+      scheduleRetry();
+    },
+    [clearVideoAutoplayRetry, isIOS]
+  );
 
   const startVideoSync = useCallback(() => {
     stopVideoSync();
@@ -136,6 +210,7 @@ function PlayerComponent() {
 
     destroyVideoPlayer();
     setMode("audio");
+    audioController.restoreAfterVisibleVideoMode();
     audioController.seekToSeconds(resumeAt);
 
     if (shouldResume) {
@@ -232,6 +307,19 @@ function PlayerComponent() {
     [currentIndex, draggingQueueIndex]
   );
 
+  const handleQueueMove = useCallback(
+    (upcomingIndex: number, direction: -1 | 1) => {
+      const targetUpcomingIndex = upcomingIndex + direction;
+
+      if (targetUpcomingIndex < 0 || targetUpcomingIndex >= upcomingQueue.length) {
+        return;
+      }
+
+      audioController.reorderQueue(currentIndex + 1 + upcomingIndex, currentIndex + 1 + targetUpcomingIndex);
+    },
+    [currentIndex, upcomingQueue.length]
+  );
+
   const handleModeChange = useCallback(
     (nextMode: PlayerMode) => {
       if (!currentSong || nextMode === mode) {
@@ -239,9 +327,9 @@ function PlayerComponent() {
       }
 
       if (nextMode === "video") {
-        shouldResumeAudioRef.current = isPlaying || isLoading;
+        shouldResumeAudioRef.current = audioController.isActivelyPlaying() || isPlaying || isLoading;
         setVideoStartAt(Math.floor(currentTime));
-        audioController.pause();
+        audioController.prepareForVisibleVideoMode();
         setMode("video");
         return;
       }
@@ -264,14 +352,26 @@ function PlayerComponent() {
       destroyVideoPlayer();
       setExpanded(false);
       setMode("audio");
+      audioController.restoreAfterVisibleVideoMode();
       shouldResumeAudioRef.current = false;
       return;
     }
 
     setMode("audio");
+    audioController.restoreAfterVisibleVideoMode();
     shouldResumeAudioRef.current = false;
     destroyVideoPlayer();
   }, [currentSong?.id, destroyVideoPlayer]);
+
+  useEffect(() => {
+    if (!expanded || !currentSong || mode !== "audio") {
+      return;
+    }
+
+    void loadYouTubeIframeApi().catch(() => {
+      // Best-effort prewarm for video mode only.
+    });
+  }, [currentSong, expanded, mode]);
 
   useEffect(() => {
     if (!expanded || mode !== "video" || !currentSong || !videoContainerRef.current) {
@@ -303,6 +403,9 @@ function PlayerComponent() {
             playsinline: 1,
             rel: 0,
             modestbranding: 1,
+            fs: 1,
+            iv_load_policy: 3,
+            disablekb: 0,
             start: Math.max(Math.floor(videoStartAt), 0),
             enablejsapi: 1,
             origin: window.location.origin
@@ -316,17 +419,23 @@ function PlayerComponent() {
               }
 
               if (shouldResumeAudioRef.current) {
-                event.target.playVideo();
+                requestVideoAutoplay(event.target);
               } else {
-                setPlayerState((previous) => ({
-                  ...previous,
-                  isLoading: false,
-                  isPlaying: false
-                }));
+                if (!shouldUseNativePlayback()) {
+                  setPlayerState((previous) => ({
+                    ...previous,
+                    isLoading: false,
+                    isPlaying: false
+                  }));
+                }
                 syncVideoStore();
               }
             },
             onStateChange: (event) => {
+              if (shouldUseNativePlayback()) {
+                return;
+              }
+
               const playerState = window.YT?.PlayerState;
 
               if (!playerState) {
@@ -334,6 +443,15 @@ function PlayerComponent() {
               }
 
               if (event.data === playerState.PLAYING) {
+                const shouldUnmuteAfterStart = videoShouldUnmuteOnPlayRef.current;
+                resetVideoAutoplayState();
+                if (shouldUnmuteAfterStart) {
+                  event.target.unMute?.();
+                  event.target.setVolume(volume * 100);
+                }
+
+                audioController.completeVisibleVideoModeStart();
+                shouldResumeAudioRef.current = false;
                 setPlayerState((previous) => ({
                   ...previous,
                   isPlaying: true,
@@ -344,6 +462,22 @@ function PlayerComponent() {
               }
 
               if (event.data === playerState.PAUSED) {
+                if (videoAutoplayPendingRef.current) {
+                  if (videoAutoplayAttemptsRef.current < (isIOS ? 5 : 3)) {
+                    setPlayerState((previous) => ({
+                      ...previous,
+                      isLoading: true
+                    }));
+                    requestVideoAutoplay(event.target);
+                    return;
+                  }
+
+                  resetVideoAutoplayState();
+                } else {
+                  clearVideoAutoplayRetry();
+                  videoShouldUnmuteOnPlayRef.current = false;
+                }
+
                 setPlayerState((previous) => ({
                   ...previous,
                   isPlaying: false,
@@ -364,6 +498,7 @@ function PlayerComponent() {
               }
 
               if (event.data === playerState.ENDED) {
+                resetVideoAutoplayState();
                 stopVideoSync();
                 setPlayerState((previous) => ({
                   ...previous,
@@ -379,6 +514,7 @@ function PlayerComponent() {
               syncVideoStore();
             },
             onError: () => {
+              resetVideoAutoplayState();
               stopVideoSync();
               setPlayerState((previous) => ({
                 ...previous,
@@ -406,7 +542,21 @@ function PlayerComponent() {
       cancelled = true;
       destroyVideoPlayer();
     };
-  }, [currentSong, destroyVideoPlayer, expanded, mode, startVideoSync, stopVideoSync, syncVideoStore, videoStartAt, volume]);
+  }, [
+    clearVideoAutoplayRetry,
+    currentSong,
+    destroyVideoPlayer,
+    expanded,
+    isIOS,
+    mode,
+    requestVideoAutoplay,
+    resetVideoAutoplayState,
+    startVideoSync,
+    stopVideoSync,
+    syncVideoStore,
+    videoStartAt,
+    volume
+  ]);
 
   useEffect(() => {
     return () => {
@@ -434,17 +584,18 @@ function PlayerComponent() {
     <>
       {expanded && currentSong ? (
         <div
-          className="fixed inset-0 z-[70] overflow-hidden overscroll-contain bg-[#030612]/92 px-3 pb-[calc(10px+env(safe-area-inset-bottom))] pt-[calc(10px+env(safe-area-inset-top))] backdrop-blur-2xl sm:px-6 sm:py-6"
+          className="fixed inset-0 z-[70] overflow-y-auto overscroll-contain bg-[#030612]/92 pb-[env(safe-area-inset-bottom)] pt-[env(safe-area-inset-top)] backdrop-blur-2xl"
           onClick={handleCloseExpanded}
+          style={playerTheme.style}
         >
           <div
-            className="mx-auto flex h-full min-h-0 w-full max-w-[560px] flex-col gap-3 sm:gap-4"
+            className="flex min-h-full w-full flex-col gap-0"
             onClick={stopPropagation}
           >
-            <div className="relative shrink-0 overflow-hidden rounded-[28px] border border-white/8 bg-[linear-gradient(180deg,rgba(8,12,20,0.98),rgba(5,8,14,0.98))] p-4 shadow-[0_36px_120px_rgba(0,0,0,0.5)] sm:rounded-[34px] sm:p-5">
+            <div className="relative shrink-0 overflow-hidden border border-white/8 border-x-0 border-t-0 bg-[linear-gradient(180deg,rgba(8,12,20,0.98),rgba(5,8,14,0.98))] px-4 pb-4 pt-3 shadow-[0_36px_120px_rgba(0,0,0,0.5)] sm:px-6 sm:pb-5 sm:pt-4">
               {mode === "audio" ? (
-                <div className="pointer-events-none absolute inset-x-6 top-8 h-40 overflow-hidden rounded-full opacity-40 blur-3xl">
-                  <ArtworkImage src={currentSong.thumbnail} alt="" fill sizes="320px" quality={55} className="object-cover scale-125" />
+                <div className="pointer-events-none absolute inset-x-6 top-8 h-40 overflow-hidden rounded-full opacity-55 blur-3xl">
+                  <div className="h-full w-full rounded-full" style={{ background: "radial-gradient(circle, var(--ui-accent-glow) 0%, transparent 70%)" }} />
                 </div>
               ) : null}
 
@@ -503,23 +654,26 @@ function PlayerComponent() {
               <div className="relative mt-4 flex justify-center">
                 {mode === "video" ? (
                   <div
-                    className="overflow-hidden rounded-[24px] bg-black sm:rounded-[28px]"
+                    className="relative overflow-hidden rounded-[24px] bg-black sm:rounded-[28px]"
                     style={expandedVideoSize}
                   >
-                    <div ref={videoContainerRef} className="h-full w-full" />
+                    <div className="relative h-full w-full overflow-hidden">
+                      <div ref={videoContainerRef} className="absolute inset-0 h-full w-full" />
+                    </div>
                   </div>
                 ) : (
                   <div
-                    className="relative overflow-hidden rounded-[24px] bg-white/[0.05] shadow-[0_18px_60px_rgba(0,0,0,0.35)] sm:rounded-[28px]"
+                    className="relative ui-artwork-aura overflow-hidden rounded-[24px] bg-white/[0.05] shadow-[0_18px_60px_rgba(0,0,0,0.35)] sm:rounded-[28px]"
                     style={expandedArtworkSize}
                   >
-                    <ArtworkImage
+                    <Artwork
                       src={currentSong.thumbnail}
                       alt={currentSong.title}
-                      fill
                       sizes="(max-width: 640px) 72vw, 380px"
                       quality={75}
-                      className="object-cover"
+                      className="relative z-[1] h-full w-full"
+                      imageClassName="object-cover"
+                      radius="surface"
                     />
                   </div>
                 )}
@@ -547,7 +701,7 @@ function PlayerComponent() {
               <div className="relative mt-4 space-y-2.5">
                 <div className="relative h-2.5 overflow-hidden rounded-full bg-white/8">
                   <div className="absolute inset-y-0 left-0 rounded-full bg-white/[0.15]" style={{ width: bufferedPercent }} />
-                  <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-teal-300 to-sky-400" style={{ width: progressPercent }} />
+                  <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: progressPercent }} />
                   <input
                     type="range"
                     min={0}
@@ -580,7 +734,7 @@ function PlayerComponent() {
                 <button
                   type="button"
                   onClick={handleTogglePlayback}
-                  className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl shadow-black/45 transition hover:scale-[1.02] hover:bg-teal-300 sm:h-20 sm:w-20"
+                  className="flex h-16 w-16 items-center justify-center rounded-full bg-white text-slate-950 shadow-xl shadow-black/45 transition hover:scale-[1.02] hover:bg-slate-200 sm:h-20 sm:w-20"
                   aria-label={isPlaying ? "Pause" : "Play"}
                 >
                   {isLoading ? (
@@ -608,25 +762,12 @@ function PlayerComponent() {
                 </button>
               </div>
 
-              <div className="relative mt-4 flex items-center gap-3 rounded-full border border-white/8 bg-white/[0.03] px-4 py-2">
-                <span className="text-[10px] uppercase tracking-[0.24em] text-slate-400">Volume</span>
-                <input
-                  type="range"
-                  min={0}
-                  max={100}
-                  value={Math.round(volume * 100)}
-                  onChange={(event) => handleVolume(Number(event.target.value))}
-                  className="w-full"
-                  aria-label="Volume"
-                />
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-hidden rounded-[24px] border border-white/8 bg-[rgba(8,12,20,0.94)] p-4 shadow-[0_24px_80px_rgba(0,0,0,0.28)] sm:rounded-[30px] sm:p-5">
-              <div className="flex items-start justify-between gap-3">
+              <div className="mt-8 flex items-center justify-between border-t border-white/10 pt-5">
                 <div>
                   <p className="text-[10px] uppercase tracking-[0.22em] text-slate-400 sm:text-[11px] sm:tracking-[0.28em]">Your queue</p>
-                  <p className="mt-2 text-[13px] text-slate-300/72 sm:text-sm">Tap any song to jump there. Drag to change what plays next.</p>
+                  <p className="mt-2 text-[13px] text-slate-300/72 sm:text-sm">
+                    Swipe left to remove. Click or long click for options (like, add to playlist, details).
+                  </p>
                 </div>
                 {queueSource === "playlist" ? (
                   <button
@@ -635,9 +776,9 @@ function PlayerComponent() {
                       event.stopPropagation();
                       audioController.setPlaylistMixEnabled(!playlistMixEnabled);
                     }}
-                    className={`shrink-0 rounded-full border px-4 py-2 text-[11px] uppercase tracking-[0.22em] transition ${
+                    className={`shrink-0 rounded-full border px-4 py-2 text-[11px] font-bold uppercase tracking-[0.22em] transition ${
                       playlistMixEnabled
-                        ? "border-teal-300/30 bg-teal-300/14 text-teal-100"
+                        ? "border-white bg-white text-slate-950"
                         : "border-white/10 bg-white/[0.04] text-slate-200"
                     }`}
                   >
@@ -646,19 +787,26 @@ function PlayerComponent() {
                 ) : null}
               </div>
 
-              <div className="mt-4 h-full max-h-full space-y-3 overflow-y-auto pr-1 sm:pr-2">
+              <div className="mt-4 space-y-3">
                 {upcomingQueue.length > 0 ? (
                   upcomingQueue.map((track, index) => (
-                    <div
+                    <QueueTrackItem
                       key={`${track.id}-${index}`}
-                      role="button"
-                      tabIndex={0}
-                      onClick={() => void audioController.playSong(track, queue, currentIndex + index + 1, queueContext)}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter" || event.key === " ") {
-                          event.preventDefault();
-                          void audioController.playSong(track, queue, currentIndex + index + 1, queueContext);
-                        }
+                      track={track}
+                      index={index}
+                      totalItems={upcomingQueue.length}
+                      isDragging={draggingQueueIndex === index}
+                      isDropTarget={dropQueueIndex === index}
+                      onPlayNow={() => void audioController.playSong(track, queue, currentIndex + index + 1, queueContext)}
+                      onRemove={() => audioController.removeFromQueue(currentIndex + index + 1)}
+                      onMove={(dir) => handleQueueMove(index, dir)}
+                      onDragStart={() => {
+                        setDraggingQueueIndex(index);
+                        setDropQueueIndex(index);
+                      }}
+                      onDragEnd={() => {
+                        setDraggingQueueIndex(null);
+                        setDropQueueIndex(null);
                       }}
                       onDragOver={(event) => {
                         event.preventDefault();
@@ -669,47 +817,7 @@ function PlayerComponent() {
                         event.preventDefault();
                         handleQueueDrop(index);
                       }}
-                      className={`flex w-full items-center gap-3 rounded-[18px] border px-3 py-3 text-left transition ${
-                        dropQueueIndex === index
-                          ? "border-teal-300/35 bg-teal-300/[0.12]"
-                          : "border-white/8 bg-white/[0.03] hover:bg-white/[0.08]"
-                      }`}
-                    >
-                      <button
-                        type="button"
-                        draggable
-                        onClick={(event) => event.stopPropagation()}
-                        onDragStart={(event) => {
-                          setDraggingQueueIndex(index);
-                          setDropQueueIndex(index);
-                          event.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => {
-                          setDraggingQueueIndex(null);
-                          setDropQueueIndex(null);
-                        }}
-                        className="shrink-0 cursor-grab rounded-full border border-white/10 bg-white/[0.04] p-2 text-slate-300 active:cursor-grabbing"
-                        aria-label={`Reorder ${track.title}`}
-                      >
-                        <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
-                          <path
-                            fill="currentColor"
-                            d="M9 6a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m0 7a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m0 7a1.5 1.5 0 1 1 0-3A1.5 1.5 0 0 1 9 20m6-14a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m0 7a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3m0 7a1.5 1.5 0 1 1 0-3a1.5 1.5 0 0 1 0 3"
-                          />
-                        </svg>
-                      </button>
-
-                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-[16px] bg-white/[0.05]">
-                        <ArtworkImage src={track.thumbnail} alt={track.title} fill sizes="48px" quality={70} className="object-cover" />
-                      </div>
-
-                      <div className="min-w-0 flex-1">
-                        <p className="line-clamp-1 text-[13px] font-medium text-white sm:text-sm">{track.title}</p>
-                        <p className="mt-1 line-clamp-1 text-xs text-slate-400">{track.author}</p>
-                      </div>
-
-                      <span className="shrink-0 text-[10px] uppercase tracking-[0.18em] text-slate-300 sm:text-xs sm:tracking-[0.22em]">{track.duration}</span>
-                    </div>
+                    />
                   ))
                 ) : (
                   <div className="rounded-[18px] border border-dashed border-white/10 bg-white/[0.03] px-4 py-5 text-[13px] text-slate-300/75 sm:text-sm">
@@ -733,11 +841,10 @@ function PlayerComponent() {
       ) : null}
 
       {currentSong ? (
-      <div className="app-player-dock fixed inset-x-0 bottom-0 z-50">
+      <div className="app-player-dock fixed inset-x-0 bottom-0 z-50" style={playerTheme.style}>
         <div className="pointer-events-none absolute inset-x-0 bottom-0 h-full bg-[linear-gradient(180deg,rgba(3,6,18,0),rgba(3,6,18,0.82)_28%,rgba(3,6,18,0.97))] backdrop-blur-xl" />
-        <div className="relative px-3 pb-[calc(12px+env(safe-area-inset-bottom))] pt-2 sm:px-4 sm:pb-[calc(16px+env(safe-area-inset-bottom))] sm:pt-3">
-        <div
-          className="glass-panel-strong mx-auto flex max-w-7xl cursor-pointer flex-col gap-3 rounded-[22px] p-3 transition hover:bg-[rgba(16,24,38,0.96)] sm:gap-4 sm:rounded-[28px] sm:p-5"
+        <PlayerSurface
+          className="glass-panel-strong flex w-full cursor-pointer flex-col gap-3 rounded-none border-x-0 border-b-0 px-4 pb-[calc(env(safe-area-inset-bottom)+12px)] pt-3 transition hover:bg-[rgba(16,24,38,0.96)] sm:gap-4 sm:px-6 sm:pb-[calc(env(safe-area-inset-bottom)+16px)] sm:pt-4"
           onClick={() => {
             setExpanded(true);
           }}
@@ -746,7 +853,14 @@ function PlayerComponent() {
             <div className="flex min-w-0 flex-1 items-center gap-4">
               <div className="relative h-14 w-14 overflow-hidden rounded-[18px] bg-white/[0.06] sm:h-16 sm:w-16 sm:rounded-2xl">
                 {currentSong ? (
-                  <ArtworkImage src={currentSong.thumbnail} alt={currentSong.title} fill sizes="(max-width: 640px) 56px, 64px" quality={70} className="object-cover" />
+                  <Artwork
+                    src={currentSong.thumbnail}
+                    alt={currentSong.title}
+                    sizes="(max-width: 640px) 56px, 64px"
+                    quality={70}
+                    className="h-full w-full"
+                    imageClassName="object-cover"
+                  />
                 ) : (
                   <div className="flex h-full items-center justify-center text-slate-500">
                     <svg aria-hidden viewBox="0 0 24 24" className="h-6 w-6 sm:h-7 sm:w-7">
@@ -849,7 +963,7 @@ function PlayerComponent() {
           <div className="space-y-2" onClick={stopPropagation}>
             <div className="relative h-2 overflow-hidden rounded-full bg-white/8">
               <div className="absolute inset-y-0 left-0 rounded-full bg-white/[0.15]" style={{ width: bufferedPercent }} />
-              <div className="absolute inset-y-0 left-0 rounded-full bg-gradient-to-r from-teal-300 to-sky-400" style={{ width: progressPercent }} />
+              <div className="absolute inset-y-0 left-0 rounded-full bg-white" style={{ width: progressPercent }} />
               <input
                 type="range"
                 min={0}
@@ -869,8 +983,7 @@ function PlayerComponent() {
           </div>
 
           {error && !isLoading ? <p className="text-sm text-rose-200">{error}</p> : null}
-        </div>
-        </div>
+        </PlayerSurface>
       </div>
       ) : null}
     </>

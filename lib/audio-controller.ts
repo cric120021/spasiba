@@ -2,6 +2,9 @@
 
 import { getDeviceInfo } from "@/lib/device";
 import { recordLocalHistorySong, updateLocalLikedSongs } from "@/lib/profile-client";
+import { ensureRecommendationSession, recordRecommendationEvent } from "@/lib/recommendation-session";
+import { fetchSearchResponseWithBudget } from "@/lib/search-client";
+import { isSafeModeEnabled, noteNetworkFailure, noteNetworkSuccess } from "@/lib/resource-governor";
 import {
   applyEngagementToListenerProfile,
   createEmptyListenerProfile,
@@ -10,14 +13,24 @@ import {
   normalizeListenerProfile,
   pickNewerListenerProfile
 } from "@/lib/listener-profile";
-import type { EngagementAction, EngagementPayload, ListenerProfile, SearchResponse, Song, StreamCandidate, StreamResponse } from "@/lib/types";
+import type { EngagementAction, EngagementPayload, ListenerProfile, Song, StreamCandidate, StreamResponse } from "@/lib/types";
 import { loadYouTubeIframeApi, type YouTubePlayer } from "@/lib/youtube-iframe";
+import {
+  cacheSearchResponse as cachePersistentSearchResponse,
+  cacheStreamResponse,
+  readCachedSearchResponse as readPersistentSearchResponse,
+  readCachedStreamResponse,
+  readListenerProfileSnapshot,
+  readRecommendationTrackPool,
+  writeListenerProfileSnapshot
+} from "@/lib/zero-waste-idb";
 import {
   clamp,
   extractExpiryTimestamp,
   getMeaningfulSongTokens,
   getPrimaryArtistName,
-  normalizeSongTitle
+  normalizeSongTitle,
+  scheduleIdleTask
 } from "@/lib/utils";
 import { getPlayerState, playerActions, setPlayerState } from "@/store/playerStore";
 
@@ -58,7 +71,7 @@ const LISTENER_PROFILE_STORAGE_PREFIX = "spasiba_listener_profile";
 const ENGAGEMENT_QUEUE_STORAGE_PREFIX = "spasiba_engagement_queue";
 const STREAM_FRESH_BUFFER_MS = 30_000;
 const STREAM_CACHE_LIMIT = 48;
-const RELATED_QUEUE_CACHE_LIMIT = 48;
+const RELATED_QUEUE_CACHE_LIMIT = 96;
 const PRELOAD_AUDIO_LIMIT = 6;
 const NEXT_TRACK_PRELOAD_COUNT = 2;
 const IOS_NEXT_TRACK_PRELOAD_COUNT = 6;
@@ -70,7 +83,6 @@ const PLAYBACK_ATTEMPT_TIMEOUT_MS = 12_000;
 const PLAYBACK_COMPLETE_THRESHOLD = 0.92;
 const SKIP_EARLY_THRESHOLD = 0.22;
 const SKIP_MID_THRESHOLD = 0.72;
-const DEFERRED_YOUTUBE_QUEUE_SYNC_SECONDS = 8;
 const UPCOMING_QUEUE_TARGET = 10;
 const MAX_PLAYBACK_QUEUE_LENGTH = 80;
 const PREVIOUS_CONTEXT_LIMIT = 2;
@@ -84,9 +96,14 @@ const SMART_QUEUE_MIN_YOUTUBE_DOMINANCE = 8;
 const SEARCH_CANDIDATE_BANK_LIMIT = 100;
 const MAX_QUEUE_TRACK_DURATION_SECONDS = 8 * 60;
 const QUEUE_DURATION_MULTIPLIER = 2.15;
-const ENGAGEMENT_BATCH_LIMIT = 12;
-const ENGAGEMENT_BATCH_FLUSH_DELAY_MS = 1_800;
-const MAX_PENDING_ENGAGEMENT_EVENTS = 48;
+const RECENT_SESSION_REPEAT_WINDOW = 12;
+const RECENT_SESSION_ARTIST_PENALTY = 16;
+const ENGAGEMENT_BATCH_LIMIT = 30;
+const ENGAGEMENT_BATCH_FLUSH_DELAY_MS = 45_000;
+const MAX_PENDING_ENGAGEMENT_EVENTS = 96;
+const RELATED_QUEUE_PERSISTED_TTL_MS = 1000 * 60 * 60 * 24 * 3;
+const DEFERRED_QUEUE_ENHANCEMENT_DELAY_MS = 1_400;
+const DEFERRED_QUEUE_ENHANCEMENT_IDLE_TIMEOUT_MS = 2_000;
 const TITLE_VARIANT_PATTERN =
   /\b(lyrics?|lyric|live|remix|slowed|reverb|cover|karaoke|shorts?|sped\s*up|bass\s*boosted|instrumental|nightcore|edit|edit\s*audio|mashup|mix|mega\s*mix|playlist|jukebox|non[\s-]*stop|reels?|status|whatsapp|tiktok|capcut|dialogue|scene|meme|template|bgm|ringtone)\b/i;
 const LOW_QUALITY_QUEUE_PATTERN =
@@ -130,6 +147,14 @@ const SIGNAL_QUERY_TEMPLATES: Record<QueueSignal, readonly string[]> = {
   "indie-non-film": ["indie official audio", "alt pop official audio", "independent pop official audio"]
 };
 
+const NETWORK_ENGAGEMENT_ACTIONS = new Set<EngagementAction>([
+  "play_start",
+  "skip_early",
+  "skip_mid",
+  "skip_late",
+  "complete"
+]);
+
 function touchMapEntry<T>(cache: Map<string, T>, key: string, value: T) {
   cache.delete(key);
   cache.set(key, value);
@@ -159,6 +184,10 @@ let hiddenYouTubePlayerPromise: Promise<YouTubePlayer> | null = null;
 let hiddenYouTubePlayerMount: HTMLDivElement | null = null;
 let youtubeSyncInterval: number | null = null;
 let activePlaybackEngine: "audio" | "youtube" = "audio";
+let hiddenYouTubeMutedForVisibleVideo = false;
+let htmlAudioMutedForVisibleVideo = false;
+let visibleVideoModeActive = false;
+let visibleVideoModeSuspendingUnderlying = false;
 let preferEmbeddedPlayback = false;
 let browserYoutubeClientPromise: Promise<any> | null = null;
 let lastLoadedYouTubeQueueKey = "";
@@ -170,7 +199,11 @@ let listenerProfileVisitorId = "";
 let listenerProfileHydrationPromise: Promise<void> | null = null;
 let backgroundPlaybackGuardUntil = 0;
 let backgroundPlaybackResumeAttempts = 0;
+let manualPauseRequested = false;
 let pendingPlaybackErrorTimeout: number | null = null;
+let deferredQueueEnhancementTimeout: number | null = null;
+let cancelDeferredQueueEnhancementIdleTask: (() => void) | null = null;
+let deferredQueueEnhancementTrackId: string | null = null;
 let currentPlaybackSession: {
   song: Song;
   started: boolean;
@@ -192,9 +225,106 @@ function isHostedRuntime() {
   return hostname !== "localhost" && hostname !== "127.0.0.1" && hostname !== "::1";
 }
 
+function callNativeBridge(action: string, ...args: unknown[]) {
+  if (!shouldUseNativePlayback()) {
+    return false;
+  }
+
+  try {
+    const native = window.SpasibaAndroid;
+    if (!native) {
+      return false;
+    }
+
+    switch (action) {
+      case "play": {
+        const [videoId, title, artist, artworkUrl] = args as [string, string, string, string];
+        if (artworkUrl && typeof native.playCachedAudioWithArtwork === "function") {
+          native.playCachedAudioWithArtwork(videoId, title, artist, artworkUrl);
+        } else if (typeof native.playCachedAudio === "function") {
+          native.playCachedAudio(videoId, title, artist);
+        }
+        return true;
+      }
+      case "pause": {
+        if (typeof native.pauseCachedAudio === "function") {
+          native.pauseCachedAudio();
+        }
+        return true;
+      }
+      case "resume": {
+        if (typeof native.resumeCachedAudio === "function") {
+          native.resumeCachedAudio();
+        }
+        return true;
+      }
+      case "stop": {
+        if (typeof native.stopCachedAudio === "function") {
+          native.stopCachedAudio();
+        }
+        return true;
+      }
+      case "seek": {
+        if (typeof native.seekCachedAudio === "function") {
+          native.seekCachedAudio(args[0] as number);
+        }
+        return true;
+      }
+      case "setVolume": {
+        if (typeof native.setCachedAudioVolume === "function") {
+          native.setCachedAudioVolume(args[0] as number);
+        }
+        return true;
+      }
+      case "setQueue": {
+        if (typeof native.setCachedAudioQueue === "function") {
+          const [queueJson, activeVideoId] = args as [string, string];
+          native.setCachedAudioQueue(queueJson, activeVideoId);
+        }
+        return true;
+      }
+      case "snapshot": {
+        if (typeof native.nativePlaybackSnapshot === "function") {
+          const raw = native.nativePlaybackSnapshot();
+          if (raw) {
+            try {
+              return JSON.parse(raw);
+            } catch {
+              return null;
+            }
+          }
+        }
+        return null;
+      }
+      default:
+        return false;
+    }
+  } catch {
+    return false;
+  }
+}
+
+function buildNativeQueuePayload(queue: Song[], currentIndex: number) {
+  const tracks = queue.map((track) => ({
+    videoId: track.videoId || track.id,
+    title: track.title,
+    artist: track.author,
+    artworkUrl: track.artworkUrl || (track.videoId ? `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg` : "")
+  }));
+
+  return {
+    queueJson: JSON.stringify(tracks),
+    activeVideoId: queue[currentIndex]?.videoId || queue[currentIndex]?.id || ""
+  };
+}
+
 function shouldGuardBackgroundPlayback() {
   const device = getDeviceInfo();
-  return device.isStandalone && (device.isAndroid || device.isIOS);
+  return device.isStandalone && device.isIOS;
+}
+
+function shouldUseNativePlayback() {
+  return typeof window !== "undefined" && Boolean((window as any).SpasibaAndroid);
 }
 
 function armBackgroundPlaybackGuard() {
@@ -211,8 +341,20 @@ function clearBackgroundPlaybackGuard() {
   backgroundPlaybackResumeAttempts = 0;
 }
 
+function markManualPauseRequested() {
+  manualPauseRequested = true;
+}
+
+function clearManualPauseRequested() {
+  manualPauseRequested = false;
+}
+
 function shouldResumeBackgroundPlayback() {
   if (!shouldGuardBackgroundPlayback()) {
+    return false;
+  }
+
+  if (manualPauseRequested) {
     return false;
   }
 
@@ -254,6 +396,73 @@ function queuePlaybackError(message: string, delayMs = 900) {
     pendingPlaybackErrorTimeout = null;
     playerActions.setError(message);
     playerActions.setPlayback(false);
+  }, delayMs);
+}
+
+function clearDeferredQueueEnhancement() {
+  if (typeof window !== "undefined" && deferredQueueEnhancementTimeout !== null) {
+    window.clearTimeout(deferredQueueEnhancementTimeout);
+  }
+
+  deferredQueueEnhancementTimeout = null;
+
+  if (cancelDeferredQueueEnhancementIdleTask) {
+    cancelDeferredQueueEnhancementIdleTask();
+    cancelDeferredQueueEnhancementIdleTask = null;
+  }
+
+  deferredQueueEnhancementTrackId = null;
+}
+
+async function runDeferredQueueEnhancement(trackId: string) {
+  const stateBeforeFill = getPlayerState();
+
+  if (stateBeforeFill.currentSong?.id !== trackId) {
+    return;
+  }
+
+  const nextQueue = await fillSmartQueue(
+    stateBeforeFill.currentSong,
+    stateBeforeFill.queue,
+    stateBeforeFill.currentIndex
+  );
+  const stateAfterFill = getPlayerState();
+
+  if (stateAfterFill.currentSong?.id !== trackId) {
+    return;
+  }
+
+  const queueToPrewarm = stateAfterFill.queue.length > 0 ? stateAfterFill.queue : nextQueue;
+  const currentIndexToPrewarm =
+    stateAfterFill.currentIndex >= 0 ? stateAfterFill.currentIndex : stateBeforeFill.currentIndex;
+
+  if (queueToPrewarm.length === 0 || currentIndexToPrewarm < 0) {
+    return;
+  }
+
+  await prewarmUpcomingTracks(queueToPrewarm, currentIndexToPrewarm);
+}
+
+function scheduleDeferredQueueEnhancement(trackId: string, delayMs = DEFERRED_QUEUE_ENHANCEMENT_DELAY_MS) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  clearDeferredQueueEnhancement();
+  deferredQueueEnhancementTrackId = trackId;
+  deferredQueueEnhancementTimeout = window.setTimeout(() => {
+    deferredQueueEnhancementTimeout = null;
+    cancelDeferredQueueEnhancementIdleTask = scheduleIdleTask(() => {
+      cancelDeferredQueueEnhancementIdleTask = null;
+      const scheduledTrackId = deferredQueueEnhancementTrackId;
+      deferredQueueEnhancementTrackId = null;
+
+      if (!scheduledTrackId) {
+        return;
+      }
+
+      void runDeferredQueueEnhancement(scheduledTrackId);
+    }, DEFERRED_QUEUE_ENHANCEMENT_IDLE_TIMEOUT_MS);
   }, delayMs);
 }
 
@@ -418,6 +627,7 @@ function setListenerProfile(nextProfile: ListenerProfile, visitorId = listenerPr
   if (visitorId) {
     listenerProfileVisitorId = visitorId;
     persistListenerProfile(visitorId, listenerProfile);
+    void writeListenerProfileSnapshot(listenerProfile, visitorId);
   }
 }
 
@@ -453,15 +663,22 @@ function hydrateListenerProfile() {
           listenerProfileHydrationPromise = null;
         });
     } else if (!hasListenerProfileData(listenerProfile)) {
-      listenerProfileHydrationPromise = fetch("/api/engagement", {
-        method: "GET",
-        credentials: "same-origin",
-        cache: "no-store",
-        headers: {
-          Accept: "application/json"
-        }
-      })
-        .then(async (response) => {
+      listenerProfileHydrationPromise = readListenerProfileSnapshot(visitorId)
+        .then(async (storedSnapshot) => {
+          if (storedSnapshot && hasListenerProfileData(storedSnapshot)) {
+            setListenerProfile(pickNewerListenerProfile(listenerProfile, storedSnapshot), visitorId);
+            return;
+          }
+
+          const response = await fetch("/api/engagement", {
+            method: "GET",
+            credentials: "same-origin",
+            cache: "no-store",
+            headers: {
+              Accept: "application/json"
+            }
+          });
+
           if (!response.ok) {
             throw new Error("Unable to load listener profile.");
           }
@@ -605,7 +822,8 @@ async function flushQueuedEngagementEvents(useKeepAlive = false) {
       Accept: "application/json"
     },
     body: JSON.stringify({
-      events: batch
+      events: batch,
+      profile: listenerProfile
     })
   })
     .then(async (response) => {
@@ -647,8 +865,35 @@ function recordEngagementAction(song: Song, action: EngagementAction, progress: 
     updateLocalLikedSongs(song, false);
   }
 
-  queuedEngagementEvents = [...queuedEngagementEvents, { action, song, progress, signals }].slice(-MAX_PENDING_ENGAGEMENT_EVENTS);
+  if (!NETWORK_ENGAGEMENT_ACTIONS.has(action)) {
+    return;
+  }
+
+  recordRecommendationEvent(song, action, signals);
+
+  const nextEvent = {
+    action,
+    song,
+    progress,
+    signals
+  };
+  const lastQueuedEvent = queuedEngagementEvents[queuedEngagementEvents.length - 1];
+
+  queuedEngagementEvents =
+    lastQueuedEvent &&
+    lastQueuedEvent.action === nextEvent.action &&
+    lastQueuedEvent.song.id === nextEvent.song.id &&
+    (lastQueuedEvent.progress ?? null) === (nextEvent.progress ?? null)
+      ? queuedEngagementEvents
+      : [...queuedEngagementEvents, nextEvent].slice(-MAX_PENDING_ENGAGEMENT_EVENTS);
   persistQueuedEngagementEvents(visitorId, queuedEngagementEvents);
+
+  if (queuedEngagementEvents.length >= ENGAGEMENT_BATCH_LIMIT) {
+    void flushQueuedEngagementEvents();
+    return;
+  }
+
+  scheduleEngagementFlush();
 }
 
 function markPlaybackStarted(song: Song | null) {
@@ -715,8 +960,12 @@ function stopYouTubeSync() {
   youtubeSyncInterval = null;
 }
 
-function syncYouTubeTiming() {
+function syncYouTubeTiming(flushPendingQueueSync = true) {
   if (!hiddenYouTubePlayer || activePlaybackEngine !== "youtube") {
+    return;
+  }
+
+  if (visibleVideoModeActive) {
     return;
   }
 
@@ -725,7 +974,9 @@ function syncYouTubeTiming() {
   const bufferedFraction = hiddenYouTubePlayer.getVideoLoadedFraction?.() || 0;
   playerActions.setTiming(currentTime, duration, duration > 0 ? duration * bufferedFraction : 0);
   notePlaybackProgress(currentTime, duration);
-  void flushPendingHiddenYouTubeQueueSync();
+  if (flushPendingQueueSync) {
+    void flushPendingHiddenYouTubeQueueSync();
+  }
 }
 
 function startYouTubeSync() {
@@ -750,6 +1001,53 @@ function stopHtmlAudioPlayback() {
 function pauseYouTubePlayback() {
   hiddenYouTubePlayer?.pauseVideo();
   stopYouTubeSync();
+}
+
+function muteHiddenYouTubeForVisibleVideoMode() {
+  if (!hiddenYouTubePlayer) {
+    return;
+  }
+
+  hiddenYouTubeMutedForVisibleVideo = true;
+
+  if (hiddenYouTubePlayer.mute) {
+    hiddenYouTubePlayer.mute();
+    return;
+  }
+
+  hiddenYouTubePlayer.setVolume(0);
+}
+
+function muteHtmlAudioForVisibleVideoMode() {
+  const audio = getAudio();
+  htmlAudioMutedForVisibleVideo = true;
+  audio.muted = true;
+}
+
+function restoreHiddenYouTubeAfterVisibleVideoMode() {
+  if (!hiddenYouTubeMutedForVisibleVideo || !hiddenYouTubePlayer) {
+    return;
+  }
+
+  hiddenYouTubeMutedForVisibleVideo = false;
+  hiddenYouTubePlayer.unMute?.();
+  hiddenYouTubePlayer.setVolume(getPlayerState().volume * 100);
+}
+
+function restoreHtmlAudioAfterVisibleVideoMode() {
+  if (!htmlAudioMutedForVisibleVideo) {
+    return;
+  }
+
+  htmlAudioMutedForVisibleVideo = false;
+  getAudio().muted = false;
+}
+
+function restoreUnderlyingPlaybackAfterVisibleVideoMode() {
+  visibleVideoModeActive = false;
+  visibleVideoModeSuspendingUnderlying = false;
+  restoreHiddenYouTubeAfterVisibleVideoMode();
+  restoreHtmlAudioAfterVisibleVideoMode();
 }
 
 function resetPlaybackTimingState() {
@@ -811,8 +1109,7 @@ function syncCurrentSongFromYouTubePlayer() {
   }));
   playerActions.rememberSessionTrack(nextTrack);
 
-  void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-  void fillSmartQueue(nextTrack, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+  scheduleDeferredQueueEnhancement(nextTrack.id);
 }
 
 function loadYouTubePlaybackQueue(player: YouTubePlayer, queue: Song[], currentIndex: number, startSeconds = 0) {
@@ -858,11 +1155,11 @@ async function flushPendingHiddenYouTubeQueueSync(force = false) {
     return false;
   }
 
-  const currentTime = hiddenYouTubePlayer.getCurrentTime() || 0;
-
-  if (!force && getPlayerState().isPlaying && currentTime < DEFERRED_YOUTUBE_QUEUE_SYNC_SECONDS) {
+  if (!force && getPlayerState().isPlaying) {
     return false;
   }
+
+  const currentTime = hiddenYouTubePlayer.getCurrentTime() || 0;
 
   const nextSync = pendingHiddenYouTubeQueueSync;
   pendingHiddenYouTubeQueueSync = null;
@@ -1002,6 +1299,7 @@ async function ensureHiddenYouTubePlayer() {
               if (event.data === playerState.PLAYING) {
                 clearPendingPlaybackError();
                 clearBackgroundPlaybackGuard();
+                clearManualPauseRequested();
                 syncCurrentSongFromYouTubePlayer();
                 markPlaybackStarted(getPlayerState().currentSong);
                 playerActions.setPlayback(true);
@@ -1012,6 +1310,11 @@ async function ensureHiddenYouTubePlayer() {
               }
 
               if (event.data === playerState.PAUSED) {
+                if (visibleVideoModeSuspendingUnderlying) {
+                  stopYouTubeSync();
+                  return;
+                }
+
                 if (shouldResumeBackgroundPlayback()) {
                   noteBackgroundPlaybackResumeAttempt();
                   playerActions.setLoading(true);
@@ -1023,8 +1326,9 @@ async function ensureHiddenYouTubePlayer() {
                 syncCurrentSongFromYouTubePlayer();
                 playerActions.setPlayback(false);
                 playerActions.setLoading(false);
-                syncYouTubeTiming();
+                syncYouTubeTiming(false);
                 stopYouTubeSync();
+                void flushPendingHiddenYouTubeQueueSync(true);
                 return;
               }
 
@@ -1468,21 +1772,21 @@ async function fetchRelatedSongs(track: Song, queue: Song[], limit = UPCOMING_QU
     return pending.then((tracks) => tracks.slice(0, limit));
   }
 
-  const youtubeFetchLimit = Math.max(SMART_QUEUE_PRIMARY_FETCH_LIMIT, limit + 8);
-  const request = fetch(`/api/search?relatedTo=${encodeURIComponent(track.videoId)}&limit=${youtubeFetchLimit}`, {
-    method: "GET",
-    headers: {
-      Accept: "application/json"
-    }
-  })
-    .then(async (response) => {
-      if (!response.ok) {
-        throw new Error("Unable to load related songs.");
-      }
+  const persisted = await readPersistentSearchResponse(cacheKey, true);
 
-      const payload = (await response.json()) as SearchResponse;
-      return payload.results;
-    })
+  if (persisted?.results?.length) {
+    touchMapEntry(relatedQueueCache, cacheKey, persisted.results);
+    pruneMapEntries(relatedQueueCache, RELATED_QUEUE_CACHE_LIMIT);
+    return persisted.results.slice(0, limit);
+  }
+
+  const youtubeFetchLimit = Math.max(SMART_QUEUE_PRIMARY_FETCH_LIMIT, limit + 8);
+  const request = fetchSearchResponseWithBudget({
+    relatedTo: track.videoId,
+    limit: youtubeFetchLimit,
+    purpose: "related"
+  })
+    .then((payload) => payload.results)
     .then(async (youtubeRelated) => {
       const cleanedRelated = appendDistinctTracks(track, [], youtubeRelated, youtubeFetchLimit);
       const minYoutubeResultThreshold = Math.min(limit, Math.max(4, Math.ceil(limit * 0.7)));
@@ -1490,76 +1794,66 @@ async function fetchRelatedSongs(track: Song, queue: Song[], limit = UPCOMING_QU
       if (cleanedRelated.length >= limit || cleanedRelated.length >= minYoutubeResultThreshold) {
         touchMapEntry(relatedQueueCache, cacheKey, cleanedRelated);
         pruneMapEntries(relatedQueueCache, RELATED_QUEUE_CACHE_LIMIT);
+        void cachePersistentSearchResponse(
+          cacheKey,
+          {
+            query: track.title,
+            results: cleanedRelated,
+            cachedAt: new Date().toISOString()
+          },
+          { related: true, ttlMs: RELATED_QUEUE_PERSISTED_TTL_MS }
+        );
         return cleanedRelated.slice(0, limit);
       }
 
       if (youtubeRelated.length > 0 && cleanedRelated.length > 0) {
         touchMapEntry(relatedQueueCache, cacheKey, cleanedRelated);
         pruneMapEntries(relatedQueueCache, RELATED_QUEUE_CACHE_LIMIT);
+        void cachePersistentSearchResponse(
+          cacheKey,
+          {
+            query: track.title,
+            results: cleanedRelated,
+            cachedAt: new Date().toISOString()
+          },
+          { related: true, ttlMs: RELATED_QUEUE_PERSISTED_TTL_MS }
+        );
         return cleanedRelated.slice(0, limit);
       }
 
-      const queries = buildQueueSearchBankQueries(track, signals);
-      const fallbackInjectionLimit = cleanedRelated.length === 0 ? Math.min(2, limit) : Math.min(SMART_QUEUE_FALLBACK_INJECTION_LIMIT, Math.max(limit - cleanedRelated.length, 0));
-
-      if (fallbackInjectionLimit <= 0 || queries.length === 0) {
-        touchMapEntry(relatedQueueCache, cacheKey, cleanedRelated);
-        pruneMapEntries(relatedQueueCache, RELATED_QUEUE_CACHE_LIMIT);
-        return cleanedRelated.slice(0, limit);
-      }
-
-      const fallbackResults = await Promise.allSettled(
-        queries.map(async (query, index) => {
-          const response = await fetch(
-            `/api/search?q=${encodeURIComponent(query)}&limit=${SEARCH_CANDIDATE_BANK_LIMIT}&pages=4&category=music`,
-            {
-            method: "GET",
-            headers: {
-              Accept: "application/json"
-            }
-            }
-          );
-
-          if (!response.ok) {
-            throw new Error("Unable to build the next-song queue.");
-          }
-
-          const payload = (await response.json()) as SearchResponse;
-          return {
-            query,
-            results: payload.results,
-            weight: index === 0 ? 8 : index === 1 ? 6 : 4
-          };
-        })
-      );
-
-      const mergedCandidates = fallbackResults.flatMap((result) => (result.status === "fulfilled" ? result.value.results : []));
+      const fallbackCandidates = Array.from(relatedQueueCache.values()).flat();
       const appearanceCounts = new Map<string, number>();
-      const weightedFallbackCandidates: Song[] = [];
 
-      for (const result of fallbackResults) {
-        if (result.status !== "fulfilled") {
-          continue;
-        }
-
-        for (const [rank, candidate] of result.value.results.entries()) {
-          const currentWeight = appearanceCounts.get(candidate.id) || 0;
-          appearanceCounts.set(candidate.id, currentWeight + Math.max(1, result.value.weight - Math.floor(rank / 8)));
-          weightedFallbackCandidates.push(candidate);
-        }
+      for (const [rank, candidate] of fallbackCandidates.entries()) {
+        appearanceCounts.set(candidate.id, Math.max(1, 6 - Math.floor(rank / 10)));
       }
 
-      if (youtubeRelated.length === 0 && mergedCandidates.length === 0) {
+      if (youtubeRelated.length === 0 && fallbackCandidates.length === 0) {
         throw new Error("Unable to build the next-song queue.");
       }
 
       const relatedTracks = [
         ...cleanedRelated,
-        ...rankRelatedSongs(track, weightedFallbackCandidates, fallbackInjectionLimit, cleanedRelated, appearanceCounts)
-      ].slice(0, Math.max(cleanedRelated.length, Math.min(limit, cleanedRelated.length + fallbackInjectionLimit)));
+        ...rankRelatedSongs(
+          track,
+          fallbackCandidates,
+          Math.max(0, Math.min(SMART_QUEUE_FALLBACK_INJECTION_LIMIT, limit - cleanedRelated.length)),
+          cleanedRelated,
+          appearanceCounts
+        )
+      ].slice(0, Math.max(cleanedRelated.length, Math.min(limit, cleanedRelated.length + SMART_QUEUE_FALLBACK_INJECTION_LIMIT)));
 
       touchMapEntry(relatedQueueCache, cacheKey, relatedTracks);
       pruneMapEntries(relatedQueueCache, RELATED_QUEUE_CACHE_LIMIT);
+      void cachePersistentSearchResponse(
+        cacheKey,
+        {
+          query: track.title,
+          results: relatedTracks,
+          cachedAt: new Date().toISOString()
+        },
+        { related: true, ttlMs: RELATED_QUEUE_PERSISTED_TTL_MS }
+      );
       return relatedTracks.slice(0, limit);
     })
     .finally(() => {
@@ -1673,6 +1967,37 @@ function getQueueDiversityPenalty(queue: Song[], candidate: Song) {
       penalty += Math.round(titleSimilarity * 42);
     } else if (titleSimilarity > 0.25) {
       penalty += Math.round(titleSimilarity * 18);
+    }
+  }
+
+  return penalty;
+}
+
+function getRecentSessionTracks(limit = RECENT_SESSION_REPEAT_WINDOW) {
+  const { sessionHistory } = getPlayerState();
+  return Array.isArray(sessionHistory) ? sessionHistory.slice(-Math.max(limit, 0)) : [];
+}
+
+function getRecentSessionRepeatPenalty(candidate: Song) {
+  const recentSessionTracks = getRecentSessionTracks();
+
+  if (!recentSessionTracks.length) {
+    return 0;
+  }
+
+  const candidateArtistKey = getArtistKey(candidate.author);
+  let penalty = 0;
+
+  for (const [index, recentTrack] of recentSessionTracks.slice().reverse().entries()) {
+    const recencyWeight = Math.max(1, RECENT_SESSION_REPEAT_WINDOW - index);
+
+    if (recentTrack.id === candidate.id || isLikelySameSong(recentTrack, candidate)) {
+      penalty += 120 + recencyWeight * 8;
+      continue;
+    }
+
+    if (candidateArtistKey && candidateArtistKey === getArtistKey(recentTrack.author)) {
+      penalty += RECENT_SESSION_ARTIST_PENALTY + recencyWeight * 2;
     }
   }
 
@@ -1811,6 +2136,7 @@ function scoreQueuePoolCandidate(rootTrack: Song, anchorTrack: Song, queue: Song
   score += getTrackQualityBoost(candidate);
   score += getListenerPreferenceScore(candidate);
   score -= getQueueDiversityPenalty(queue, candidate);
+  score -= getRecentSessionRepeatPenalty(candidate);
 
   if (candidateArtistKey && anchorArtistKey && candidateArtistKey !== anchorArtistKey) {
     score += 10;
@@ -1905,7 +2231,105 @@ async function buildChainedRelatedQueue(rootTrack: Song, queue: Song[], currentI
   return nextQueue;
 }
 
+function rankLocalTrackPoolForQueueFloor(rootTrack: Song, queue: Song[], candidates: Song[], limit: number) {
+  const recentSessionTracks = getRecentSessionTracks();
+  const recentArtistCounts = new Map<string, number>();
+
+  for (const track of recentSessionTracks) {
+    const artistKey = getArtistKey(track.author);
+
+    if (!artistKey) {
+      continue;
+    }
+
+    recentArtistCounts.set(artistKey, (recentArtistCounts.get(artistKey) || 0) + 1);
+  }
+
+  const rankedCandidates = candidates
+    .filter((candidate) => isQueueableTrack(candidate, rootTrack))
+    .filter((candidate) => !isLikelySameSong(rootTrack, candidate))
+    .filter(
+      (candidate) =>
+        !recentSessionTracks.some((recentTrack) => recentTrack.id === candidate.id || isLikelySameSong(recentTrack, candidate))
+    )
+    .sort((left, right) => {
+      const rightArtistPenalty = (recentArtistCounts.get(getArtistKey(right.author)) || 0) * RECENT_SESSION_ARTIST_PENALTY;
+      const leftArtistPenalty = (recentArtistCounts.get(getArtistKey(left.author)) || 0) * RECENT_SESSION_ARTIST_PENALTY;
+      const rightScore = scoreRelatedCandidate(rootTrack, right) + getTrackQualityBoost(right) + getListenerPreferenceScore(right) - rightArtistPenalty;
+      const leftScore = scoreRelatedCandidate(rootTrack, left) + getTrackQualityBoost(left) + getListenerPreferenceScore(left) - leftArtistPenalty;
+      return rightScore - leftScore;
+    });
+
+  return appendDistinctTracks(rootTrack, queue, rankedCandidates, queue.length + limit).slice(queue.length, queue.length + limit);
+}
+
+async function extendQueueFromLocalTrackPool(rootTrack: Song, queue: Song[], targetLength: number) {
+  if (queue.length >= targetLength) {
+    return queue;
+  }
+
+  const additionsNeeded = Math.max(0, targetLength - queue.length);
+
+  if (additionsNeeded === 0) {
+    return queue;
+  }
+
+  const trackPool = await readRecommendationTrackPool(SEARCH_CANDIDATE_BANK_LIMIT);
+
+  if (!trackPool.length) {
+    return queue;
+  }
+
+  let nextQueue = appendDistinctTracks(
+    rootTrack,
+    queue,
+    rankLocalTrackPoolForQueueFloor(rootTrack, queue, trackPool, additionsNeeded),
+    targetLength
+  );
+
+  if (nextQueue.length >= targetLength) {
+    return nextQueue;
+  }
+
+  const remainingNeeded = Math.max(0, targetLength - nextQueue.length);
+
+  if (remainingNeeded === 0) {
+    return nextQueue;
+  }
+
+  nextQueue = appendDistinctTracks(
+    rootTrack,
+    nextQueue,
+    rankRelatedSongs(rootTrack, trackPool, remainingNeeded, nextQueue),
+    targetLength
+  );
+
+  return nextQueue;
+}
+
+function syncLiveQueueStateIfCurrentTrack(trackId: string, queue: Song[], preferredCurrentIndex: number) {
+  if (!queue.length || getPlayerState().currentSong?.id !== trackId) {
+    return;
+  }
+
+  const locatedIndex = queue.findIndex((queuedTrack) => queuedTrack.id === trackId);
+  const nextCurrentIndex =
+    locatedIndex >= 0 ? locatedIndex : Math.max(0, Math.min(preferredCurrentIndex, queue.length - 1));
+
+  setPlayerState((previous) => ({
+    ...previous,
+    queue,
+    currentIndex: nextCurrentIndex
+  }));
+
+  syncHiddenYouTubeQueueWithState();
+}
+
 async function fillSmartQueue(track: Song, queue: Song[], currentIndex: number) {
+  if (isSafeModeEnabled()) {
+    return queue;
+  }
+
   const nextPlaybackQueue = buildPlaybackQueue(track, queue, currentIndex);
   const baseQueue = nextPlaybackQueue.queue;
   const baseCurrentIndex = nextPlaybackQueue.currentIndex;
@@ -1922,96 +2346,43 @@ async function fillSmartQueue(track: Song, queue: Song[], currentIndex: number) 
     return baseQueue;
   }
 
+  let nextQueue = [...baseQueue];
+  const primaryFetchLimit = Math.min(
+    SMART_QUEUE_PRIMARY_FETCH_LIMIT,
+    Math.max(UPCOMING_QUEUE_TARGET + 4, targetLength - baseCurrentIndex - 1)
+  );
+
   try {
-    let nextQueue = [...baseQueue];
-    const primaryFetchLimit = Math.min(
-      SMART_QUEUE_PRIMARY_FETCH_LIMIT,
-      Math.max(UPCOMING_QUEUE_TARGET + 4, targetLength - baseCurrentIndex - 1)
-    );
     const rootRelatedSongs = await fetchRelatedSongs(track, nextQueue, primaryFetchLimit);
     nextQueue = appendDistinctTracks(track, nextQueue, rootRelatedSongs, targetLength);
-
-    if (getPlayerState().currentSong?.id === track.id) {
-      const liveCurrentIndex = Math.max(
-        0,
-        nextQueue.findIndex((queuedTrack) => queuedTrack.id === track.id)
-      );
-
-      setPlayerState((previous) => ({
-        ...previous,
-        queue: nextQueue,
-        currentIndex: liveCurrentIndex
-      }));
-    }
-
-    let anchorTrack = nextQueue[nextQueue.length - 1] || track;
-    let noProgressPasses = 0;
-
-    while (nextQueue.length < targetLength && noProgressPasses < 3) {
-      const relatedSongs = await fetchRelatedSongs(
-        anchorTrack,
-        nextQueue,
-        Math.min(SMART_QUEUE_SECONDARY_FETCH_LIMIT, Math.max(4, targetLength - nextQueue.length + 1))
-      );
-      const extendedQueue = appendDistinctTracks(anchorTrack, nextQueue, relatedSongs, targetLength);
-
-      if (extendedQueue.length === nextQueue.length) {
-        noProgressPasses += 1;
-        anchorTrack = noProgressPasses === 1 ? track : nextQueue[Math.max(baseCurrentIndex, nextQueue.length - 1)] || track;
-        continue;
-      }
-
-      nextQueue = extendedQueue;
-      noProgressPasses = 0;
-      anchorTrack = nextQueue[nextQueue.length - 1] || anchorTrack;
-
-      if (getPlayerState().currentSong?.id === track.id) {
-        const liveCurrentIndex = Math.max(
-          0,
-          nextQueue.findIndex((queuedTrack) => queuedTrack.id === track.id)
-        );
-
-        setPlayerState((previous) => ({
-          ...previous,
-          queue: nextQueue,
-          currentIndex: liveCurrentIndex
-        }));
-      }
-    }
-
-    const remainingGap = targetLength - nextQueue.length;
-    const upcomingCount = Math.max(nextQueue.length - baseCurrentIndex - 1, 0);
-
-    if (remainingGap >= 3 && upcomingCount < SMART_QUEUE_MIN_YOUTUBE_DOMINANCE) {
-      const fallbackTargetLength = Math.min(targetLength, nextQueue.length + SMART_QUEUE_FALLBACK_INJECTION_LIMIT);
-      nextQueue = await buildChainedRelatedQueue(
-        track,
-        nextQueue,
-        Math.max(0, nextQueue.findIndex((queuedTrack) => queuedTrack.id === track.id)),
-        fallbackTargetLength
-      );
-    }
-
-    if (getPlayerState().currentSong?.id === track.id) {
-      const nextCurrentIndex = Math.max(
-        Math.min(baseCurrentIndex, nextQueue.length - 1),
-        nextQueue.findIndex((queuedTrack) => queuedTrack.id === track.id)
-      );
-
-      setPlayerState((previous) => ({
-        ...previous,
-        queue: nextQueue,
-        currentIndex: nextCurrentIndex
-      }));
-
-      syncHiddenYouTubeQueueWithState();
-      void prewarmUpcomingTracks(nextQueue, nextCurrentIndex);
-    }
-
-    return nextQueue;
+    syncLiveQueueStateIfCurrentTrack(track.id, nextQueue, baseCurrentIndex);
   } catch {
-    return baseQueue;
+    // Keep going with local-only recovery below.
   }
+
+  try {
+    nextQueue = await extendQueueFromLocalTrackPool(track, nextQueue, targetLength);
+    syncLiveQueueStateIfCurrentTrack(track.id, nextQueue, baseCurrentIndex);
+  } catch {
+    // Best-effort only.
+  }
+
+  if (nextQueue.length >= targetLength) {
+    return nextQueue;
+  }
+
+  try {
+    const currentIndexForChain = Math.max(
+      0,
+      nextQueue.findIndex((queuedTrack) => queuedTrack.id === track.id)
+    );
+    nextQueue = await buildChainedRelatedQueue(track, nextQueue, currentIndexForChain, targetLength);
+    syncLiveQueueStateIfCurrentTrack(track.id, nextQueue, currentIndexForChain);
+  } catch {
+    // Best-effort only.
+  }
+
+  return nextQueue.length > 0 ? nextQueue : baseQueue;
 }
 
 function getAudio() {
@@ -2050,6 +2421,10 @@ function getMediaErrorMessage(mediaError: MediaError | null, mimeType: string | 
 }
 
 function syncTiming() {
+  if (visibleVideoModeActive || shouldUseNativePlayback()) {
+    return;
+  }
+
   const audio = getAudio();
   playerActions.setTiming(audio.currentTime, audio.duration || 0, getBufferedProgress(audio));
   notePlaybackProgress(audio.currentTime, audio.duration || 0);
@@ -2179,6 +2554,18 @@ function rememberStream(trackId: string, stream: StreamResponse): StreamCacheVal
   return withBlobCandidate(trackId, value);
 }
 
+function getPersistedStreamTtl(stream: StreamResponse) {
+  if (!stream.expiresAt) {
+    return 1000 * 60 * 15;
+  }
+
+  return Math.max(1_000, stream.expiresAt - Date.now() - STREAM_FRESH_BUFFER_MS);
+}
+
+function persistResolvedStream(track: Song, resolved: StreamResponse) {
+  return cacheStreamResponse(track.videoId, resolved, getPersistedStreamTtl(resolved));
+}
+
 async function getBrowserYoutubeClient() {
   if (!browserYoutubeClientPromise) {
     browserYoutubeClientPromise = import("youtubei.js").then(({ Innertube }) =>
@@ -2278,6 +2665,16 @@ function getCachedResolvedStream(trackId: string) {
 
   touchMapEntry(streamCache, trackId, cached);
   return withBlobCandidate(trackId, cached);
+}
+
+async function getPersistedResolvedStream(track: Song) {
+  const cached = await readCachedStreamResponse(track.videoId);
+
+  if (!cached || !isFreshStream(cached)) {
+    return null;
+  }
+
+  return rememberStream(track.id, cached);
 }
 
 function seedStreamFromTrack(track: Song): StreamCacheValue | null {
@@ -2493,6 +2890,7 @@ function attachAudioListeners() {
   audio.addEventListener("playing", () => {
     clearPendingPlaybackError();
     clearBackgroundPlaybackGuard();
+    clearManualPauseRequested();
     markPlaybackStarted(getPlayerState().currentSong);
     playerActions.setPlayback(true);
     playerActions.setLoading(false);
@@ -2500,6 +2898,11 @@ function attachAudioListeners() {
   });
 
   audio.addEventListener("pause", () => {
+    if (visibleVideoModeSuspendingUnderlying) {
+      stopProgressLoop();
+      return;
+    }
+
     if (shouldResumeBackgroundPlayback()) {
       noteBackgroundPlaybackResumeAttempt();
       playerActions.setLoading(true);
@@ -2552,13 +2955,22 @@ async function fetchStream(track: Song): Promise<StreamCacheValue> {
   const seeded = seedStreamFromTrack(track);
 
   if (seeded) {
+    void persistResolvedStream(track, seeded);
     preloadResolvedTrack(track, seeded);
     return seeded;
+  }
+
+  const persisted = await getPersistedResolvedStream(track);
+
+  if (persisted) {
+    preloadResolvedTrack(track, persisted);
+    return persisted;
   }
 
   const browserResolved = await resolveBrowserSideStream(track);
 
   if (browserResolved) {
+    void persistResolvedStream(track, browserResolved);
     preloadResolvedTrack(track, browserResolved);
     return browserResolved;
   }
@@ -2582,9 +2994,15 @@ async function fetchStream(track: Song): Promise<StreamCacheValue> {
       }
 
       const payload = (await response.json()) as StreamResponse;
+      noteNetworkSuccess();
       const value = rememberStream(track.id, payload);
+      void persistResolvedStream(track, value);
       preloadResolvedTrack(track, value);
       return value;
+    })
+    .catch((error) => {
+      noteNetworkFailure();
+      throw error;
     })
     .finally(() => {
       pendingStreamRequests.delete(track.id);
@@ -2682,6 +3100,7 @@ async function playResolvedTrack(track: Song, resolved: StreamResponse) {
             audio.load();
           }
 
+          clearManualPauseRequested();
           void audio.play().then(finishResolve).catch(finishReject);
         });
 
@@ -2713,6 +3132,10 @@ async function prewarmUpcomingTracks(queue: Song[], currentIndex: number) {
 }
 
 async function playWithEmbeddedYouTube(track: Song, queue: Song[] = [track], currentIndex = 0, options?: PlaybackQueueContext) {
+  if (shouldUseNativePlayback()) {
+    return audioController.playSong(track, queue, currentIndex, options);
+  }
+
   const nextPlaybackQueue = buildPlaybackQueue(track, queue, currentIndex);
   const queueContext = getQueueContext(options);
   const sameTrack = getPlayerState().currentSong?.id === track.id && activePlaybackEngine === "youtube";
@@ -2734,11 +3157,11 @@ async function playWithEmbeddedYouTube(track: Song, queue: Song[] = [track], cur
     player.setVolume(getPlayerState().volume * 100);
 
     if (window.YT?.PlayerState && player.getPlayerState() !== window.YT.PlayerState.PLAYING) {
+      clearManualPauseRequested();
       player.playVideo();
     }
 
-    void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-    void fillSmartQueue(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+    scheduleDeferredQueueEnhancement(track.id);
     return;
   }
 
@@ -2748,14 +3171,15 @@ async function playWithEmbeddedYouTube(track: Song, queue: Song[] = [track], cur
   const player = await ensureHiddenYouTubePlayer();
   preferEmbeddedPlayback = true;
   activePlaybackEngine = "youtube";
+  restoreUnderlyingPlaybackAfterVisibleVideoMode();
   resetPlaybackTimingState();
   stopHtmlAudioPlayback();
   player.setVolume(getPlayerState().volume * 100);
   loadYouTubePlaybackQueue(player, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, 0);
+  clearManualPauseRequested();
   player.playVideo();
   syncYouTubeTiming();
-  void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-  void fillSmartQueue(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+  scheduleDeferredQueueEnhancement(track.id);
 }
 
 export const audioController = {
@@ -2763,6 +3187,7 @@ export const audioController = {
     attachAudioListeners();
     preferEmbeddedPlayback = isHostedRuntime() && shouldAllowEmbeddedFallback();
     void hydrateListenerProfile();
+    ensureRecommendationSession();
 
     if (isHostedRuntime() && shouldAllowEmbeddedFallback()) {
       warmEmbeddedPlayback();
@@ -2799,6 +3224,10 @@ export const audioController = {
   async prepareTrack(track: Song) {
     attachAudioListeners();
 
+    if (shouldUseNativePlayback()) {
+      return null;
+    }
+
     if (shouldUseEmbeddedPlayback()) {
       warmEmbeddedPlayback();
       return null;
@@ -2815,7 +3244,35 @@ export const audioController = {
   },
   async playSong(track: Song, queue: Song[] = [track], currentIndex = 0, options?: PlaybackQueueContext) {
     attachAudioListeners();
+    restoreUnderlyingPlaybackAfterVisibleVideoMode();
     const queueContext = getQueueContext(options);
+
+    if (shouldUseNativePlayback()) {
+      const payload = buildNativeQueuePayload(queue, currentIndex);
+      const artworkUrl = track.artworkUrl || (track.videoId ? `https://i.ytimg.com/vi/${track.videoId}/hqdefault.jpg` : "");
+      callNativeBridge("setQueue", payload.queueJson, payload.activeVideoId);
+      callNativeBridge("play", track.videoId || track.id, track.title, track.author, artworkUrl);
+
+      const nextPlaybackQueue = buildPlaybackQueue(track, queue, currentIndex);
+      playerActions.primePlayback(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
+      preparePlaybackTransition(track);
+
+      setPlayerState((prev) => ({
+        ...prev,
+        currentSong: track,
+        queue: nextPlaybackQueue.queue,
+        currentIndex: nextPlaybackQueue.currentIndex,
+        queueSource: queueContext.queueSource,
+        queueSourceLabel: queueContext.queueSourceLabel,
+        playlistBaseTrackIds: queueContext.playlistBaseTrackIds,
+        playlistMixEnabled: queueContext.playlistMixEnabled,
+        isPlaying: true,
+        isLoading: false,
+        error: null
+      }));
+      scheduleDeferredQueueEnhancement(track.id);
+      return;
+    }
 
     if (shouldUseEmbeddedPlayback()) {
       try {
@@ -2850,8 +3307,7 @@ export const audioController = {
       });
 
       if (!audio.paused) {
-        void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-        void fillSmartQueue(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+        scheduleDeferredQueueEnhancement(track.id);
         return;
       }
 
@@ -2864,8 +3320,7 @@ export const audioController = {
           await audio.play();
         }
 
-        void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-        void fillSmartQueue(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+        scheduleDeferredQueueEnhancement(track.id);
       } catch (error) {
         playerActions.setError(error instanceof Error ? error.message : "Playback failed.");
       }
@@ -2880,8 +3335,7 @@ export const audioController = {
       activePlaybackEngine = "audio";
       pauseYouTubePlayback();
       await playResolvedTrack(track, resolved);
-      void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-      void fillSmartQueue(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+      scheduleDeferredQueueEnhancement(track.id);
     } catch (error) {
       const message = error instanceof Error ? error.message : "Playback failed.";
       const canFallbackToEmbeddedPlayback = shouldAllowEmbeddedFallback();
@@ -2930,7 +3384,9 @@ export const audioController = {
     }
 
     if (!nextTrack) {
-      if (activePlaybackEngine === "youtube") {
+      if (shouldUseNativePlayback()) {
+        callNativeBridge("stop");
+      } else if (activePlaybackEngine === "youtube") {
         pauseYouTubePlayback();
       } else {
         const audio = getAudio();
@@ -2942,6 +3398,16 @@ export const audioController = {
     }
 
     preparePlaybackTransition(nextTrack);
+
+    if (shouldUseNativePlayback()) {
+      await this.playSong(nextTrack, queue, nextIndex, {
+        queueSource,
+        queueSourceLabel,
+        playlistBaseTrackIds,
+        playlistMixEnabled
+      });
+      return;
+    }
 
     if (activePlaybackEngine === "youtube" && hiddenYouTubePlayer?.nextVideo && isHiddenYouTubeQueueReady(queue, nextIndex)) {
       const nextPlaybackQueue = buildPlaybackQueue(nextTrack, queue, nextIndex);
@@ -2956,8 +3422,7 @@ export const audioController = {
       }));
       playerActions.rememberSessionTrack(nextTrack);
       rememberLoadedYouTubeQueueIndex(nextPlaybackQueue.currentIndex);
-      void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-      void fillSmartQueue(nextTrack, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+      scheduleDeferredQueueEnhancement(nextTrack.id);
       hiddenYouTubePlayer.nextVideo();
       return;
     }
@@ -2970,6 +3435,29 @@ export const audioController = {
     });
   },
   async playPrevious() {
+    if (shouldUseNativePlayback()) {
+      const { queue, currentIndex, queueSource, queueSourceLabel, playlistBaseTrackIds, playlistMixEnabled } = getPlayerState();
+      const previousIndex = currentIndex - 1;
+      const previousTrack = queue[previousIndex];
+
+      if (!previousTrack) {
+        if (shouldUseNativePlayback()) {
+          callNativeBridge("seek", 0);
+          return;
+        }
+        return;
+      }
+
+      preparePlaybackTransition(previousTrack);
+      await this.playSong(previousTrack, queue, previousIndex, {
+        queueSource,
+        queueSourceLabel,
+        playlistBaseTrackIds,
+        playlistMixEnabled
+      });
+      return;
+    }
+
     if (activePlaybackEngine === "youtube" && hiddenYouTubePlayer) {
       if (hiddenYouTubePlayer.getCurrentTime() > 5) {
         hiddenYouTubePlayer.seekTo(0, true);
@@ -3015,8 +3503,7 @@ export const audioController = {
       }));
       playerActions.rememberSessionTrack(previousTrack);
       rememberLoadedYouTubeQueueIndex(nextPlaybackQueue.currentIndex);
-      void prewarmUpcomingTracks(nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
-      void fillSmartQueue(previousTrack, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex);
+      scheduleDeferredQueueEnhancement(previousTrack.id);
       hiddenYouTubePlayer.previousVideo();
       return;
     }
@@ -3030,9 +3517,28 @@ export const audioController = {
   },
   async togglePlayback() {
     attachAudioListeners();
-    const currentSong = getPlayerState().currentSong;
+    const { currentSong, queue, currentIndex, queueSource, queueSourceLabel, playlistBaseTrackIds, playlistMixEnabled } = getPlayerState();
 
     if (!currentSong) {
+      return;
+    }
+
+    if (shouldUseNativePlayback()) {
+      const isPlaying = getPlayerState().isPlaying;
+
+      if (isPlaying) {
+        markManualPauseRequested();
+        callNativeBridge("pause");
+      } else {
+        clearManualPauseRequested();
+        callNativeBridge("resume");
+      }
+
+      setPlayerState((prev) => ({
+        ...prev,
+        isPlaying: !isPlaying,
+        isLoading: false
+      }));
       return;
     }
 
@@ -3054,8 +3560,11 @@ export const audioController = {
       const currentState = playerState ? player.getPlayerState() : null;
 
       if (playerState && currentState === playerState.PLAYING) {
+        markManualPauseRequested();
         player.pauseVideo();
       } else {
+        clearManualPauseRequested();
+        restoreHiddenYouTubeAfterVisibleVideoMode();
         player.playVideo();
       }
 
@@ -3070,7 +3579,15 @@ export const audioController = {
 
         if (cachedStream) {
           await playResolvedTrack(currentSong, cachedStream);
+        } else if (!audio.src) {
+          await this.playSong(currentSong, queue, currentIndex, {
+            queueSource,
+            queueSourceLabel,
+            playlistBaseTrackIds,
+            playlistMixEnabled
+          });
         } else {
+          clearManualPauseRequested();
           await audio.play();
         }
       } catch (error) {
@@ -3079,9 +3596,35 @@ export const audioController = {
       return;
     }
 
+    markManualPauseRequested();
     audio.pause();
   },
+  isActivelyPlaying() {
+    const playerState = window.YT?.PlayerState;
+
+    if (activePlaybackEngine === "youtube" && hiddenYouTubePlayer && playerState) {
+      const currentState = hiddenYouTubePlayer.getPlayerState();
+      return currentState === playerState.PLAYING || currentState === playerState.BUFFERING;
+    }
+
+    const audio = getAudio();
+    return !audio.paused && !audio.ended;
+  },
   seek(progress: number) {
+    if (shouldUseNativePlayback()) {
+      const duration = getPlayerState().duration;
+
+      if (!duration) {
+        return;
+      }
+
+      const safeProgress = clamp(progress, 0, 1);
+      const seconds = safeProgress * duration;
+      callNativeBridge("seek", seconds);
+      playerActions.setTiming(seconds, duration, duration * safeProgress);
+      return;
+    }
+
     if (activePlaybackEngine === "youtube" && hiddenYouTubePlayer) {
       const duration = hiddenYouTubePlayer.getDuration() || 0;
 
@@ -3105,15 +3648,48 @@ export const audioController = {
     audio.currentTime = audio.duration * safeProgress;
   },
   setVolume(volume: number) {
+    if (shouldUseNativePlayback()) {
+      const safeVolume = clamp(volume, 0, 1);
+      callNativeBridge("setVolume", Math.round(safeVolume * 100));
+      setPlayerState((prev) => ({ ...prev, volume: safeVolume }));
+      return;
+    }
+
     const audio = getAudio();
     const safeVolume = clamp(volume, 0, 1);
     audio.volume = safeVolume;
 
     if (hiddenYouTubePlayer) {
+      if (hiddenYouTubeMutedForVisibleVideo) {
+        return;
+      }
+
       hiddenYouTubePlayer.setVolume(safeVolume * 100);
     }
   },
-  pause() {
+  prepareForVisibleVideoMode() {
+    visibleVideoModeActive = true;
+
+    if (shouldUseNativePlayback()) {
+      callNativeBridge("pause");
+      return;
+    }
+
+    if (activePlaybackEngine === "youtube") {
+      muteHiddenYouTubeForVisibleVideoMode();
+      return;
+    }
+
+    muteHtmlAudioForVisibleVideoMode();
+  },
+  suspendUnderlyingForVisibleVideoMode() {
+    visibleVideoModeSuspendingUnderlying = true;
+
+    if (shouldUseNativePlayback()) {
+      callNativeBridge("pause");
+      return;
+    }
+
     if (activePlaybackEngine === "youtube") {
       pauseYouTubePlayback();
       return;
@@ -3121,7 +3697,33 @@ export const audioController = {
 
     getAudio().pause();
   },
+  completeVisibleVideoModeStart() {
+    visibleVideoModeSuspendingUnderlying = false;
+  },
+  pause() {
+    if (shouldUseNativePlayback()) {
+      markManualPauseRequested();
+      callNativeBridge("pause");
+      setPlayerState((prev) => ({ ...prev, isPlaying: false }));
+      return;
+    }
+
+    if (activePlaybackEngine === "youtube") {
+      markManualPauseRequested();
+      pauseYouTubePlayback();
+      return;
+    }
+
+    markManualPauseRequested();
+    getAudio().pause();
+  },
   seekToSeconds(seconds: number) {
+    if (shouldUseNativePlayback()) {
+      callNativeBridge("seek", Math.max(0, seconds));
+      playerActions.setTiming(seconds, getPlayerState().duration, seconds);
+      return;
+    }
+
     if (activePlaybackEngine === "youtube" && hiddenYouTubePlayer) {
       hiddenYouTubePlayer.seekTo(Math.max(0, seconds), true);
       syncYouTubeTiming();
@@ -3138,6 +3740,9 @@ export const audioController = {
     }
 
     syncTiming();
+  },
+  restoreAfterVisibleVideoMode() {
+    restoreUnderlyingPlaybackAfterVisibleVideoMode();
   },
   addToQueue(track: Song) {
     void hydrateListenerProfile();
@@ -3267,11 +3872,17 @@ export const audioController = {
   },
   closePlayer() {
     clearPendingPlaybackError();
+    clearDeferredQueueEnhancement();
     finalizePlaybackSession("switch");
     pendingHiddenYouTubeQueueSync = null;
     lastLoadedYouTubePlaylistIds = [];
     lastLoadedYouTubeQueueIndex = 0;
     lastLoadedYouTubeQueueKey = "";
+
+    if (shouldUseNativePlayback()) {
+      callNativeBridge("stop");
+    }
+
     stopYouTubeSync();
     pauseYouTubePlayback();
     stopHtmlAudioPlayback();

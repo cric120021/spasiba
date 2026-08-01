@@ -1,3 +1,5 @@
+import { unstable_cache } from "next/cache";
+
 import { createQueryKey } from "@/lib/utils";
 import { getHomeCategoryConfig, type HomeCategoryConfig, type HomeCategorySectionConfig } from "@/lib/home-category-chips";
 import { searchYouTube } from "@/lib/youtube";
@@ -11,10 +13,16 @@ export type HomeCategoryFeed = Omit<HomeCategoryConfig, "sections"> & {
   sections: CategoryFeedSection[];
 };
 
+type CacheTelemetry = {
+  onCacheHit?: () => void;
+  onCacheMiss?: () => void;
+};
+
 const CATEGORY_PAGE_FETCH_LIMIT = 18;
 const CATEGORY_SECTION_LIMIT = 12;
 const CATEGORY_ARTIST_CAP = 2;
-const CATEGORY_FEED_TTL_MS = 1000 * 60 * 60 * 6;
+const CATEGORY_MIN_VISIBLE_TRACKS = 4;
+const CATEGORY_FEED_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const CATEGORY_NOISE_PATTERN =
   /\b(reels?|shorts?|status|whatsapp|tiktok|capcut|edit\s*audio|dialogue|scene|meme|template|ringtone|reaction|review|trailer|teaser|speech|lecture|news|vlog|roast|prank|full\s*movie|behind\s*the\s*scenes|making\s*of|mashup|mega\s*mix|playlist|jukebox)\b/i;
 
@@ -48,6 +56,55 @@ function isGoodCategorySong(song: Song, section: HomeCategorySectionConfig) {
   }
 
   return true;
+}
+
+function appendDistinctCategoryTracks(baseTracks: Song[], additions: Song[], section: HomeCategorySectionConfig, limit: number) {
+  const nextTracks = [...baseTracks];
+  const seenIdentityKeys = new Set(baseTracks.map(getIdentityKey).filter(Boolean));
+  const seenTrackIds = new Set(baseTracks.map((track) => track.id));
+  const artistCounts = new Map<string, number>();
+
+  for (const track of baseTracks) {
+    const artistKey = getArtistKey(track);
+
+    if (!artistKey) {
+      continue;
+    }
+
+    artistCounts.set(artistKey, (artistCounts.get(artistKey) || 0) + 1);
+  }
+
+  for (const song of additions) {
+    if (!isGoodCategorySong(song, section)) {
+      continue;
+    }
+
+    const identityKey = getIdentityKey(song);
+
+    if (!identityKey || seenIdentityKeys.has(identityKey) || seenTrackIds.has(song.id)) {
+      continue;
+    }
+
+    const artistKey = getArtistKey(song);
+
+    if (artistKey && (artistCounts.get(artistKey) || 0) >= CATEGORY_ARTIST_CAP) {
+      continue;
+    }
+
+    nextTracks.push(song);
+    seenIdentityKeys.add(identityKey);
+    seenTrackIds.add(song.id);
+
+    if (artistKey) {
+      artistCounts.set(artistKey, (artistCounts.get(artistKey) || 0) + 1);
+    }
+
+    if (nextTracks.length >= limit) {
+      break;
+    }
+  }
+
+  return nextTracks;
 }
 
 async function getSectionTracks(section: HomeCategorySectionConfig) {
@@ -187,13 +244,7 @@ async function getFallbackSectionTracks(config: HomeCategoryConfig, section: Hom
   }
 }
 
-export async function getHomeCategoryFeed(categoryId: string): Promise<HomeCategoryFeed | null> {
-  const cached = categoryFeedCache.get(categoryId);
-
-  if (cached && cached.expiresAt > Date.now()) {
-    return cached.value;
-  }
-
+async function buildHomeCategoryFeed(categoryId: string): Promise<HomeCategoryFeed | null> {
   const config = getHomeCategoryConfig(categoryId);
 
   if (!config) {
@@ -218,10 +269,46 @@ export async function getHomeCategoryFeed(categoryId: string): Promise<HomeCateg
     })
   );
 
+  const pooledTracks = sections.flatMap((section) => section.tracks);
+  const stabilizedSections = sections
+    .map((section) => ({
+      ...section,
+      tracks:
+        section.tracks.length >= CATEGORY_MIN_VISIBLE_TRACKS
+          ? section.tracks
+          : appendDistinctCategoryTracks(section.tracks, pooledTracks, section, CATEGORY_MIN_VISIBLE_TRACKS)
+    }))
+    .filter((section) => section.tracks.length > 0);
+
   const feed = {
     ...config,
-    sections
+    sections: stabilizedSections
   };
+
+  return feed;
+}
+
+function loadCachedHomeCategoryFeed(categoryId: string) {
+  return unstable_cache(async () => buildHomeCategoryFeed(categoryId), ["spasiba-category-feed", categoryId], {
+    revalidate: Math.floor(CATEGORY_FEED_TTL_MS / 1000)
+  })();
+}
+
+export async function getHomeCategoryFeed(categoryId: string, telemetry?: CacheTelemetry): Promise<HomeCategoryFeed | null> {
+  const cached = categoryFeedCache.get(categoryId);
+
+  if (cached && cached.expiresAt > Date.now()) {
+    telemetry?.onCacheHit?.();
+    return cached.value;
+  }
+
+  telemetry?.onCacheMiss?.();
+
+  const feed = await loadCachedHomeCategoryFeed(categoryId);
+
+  if (!feed) {
+    return null;
+  }
 
   categoryFeedCache.set(categoryId, {
     value: feed,

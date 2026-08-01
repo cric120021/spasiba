@@ -1,14 +1,15 @@
 "use client";
 
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
-import { createPortal } from "react-dom";
 
 import { audioController } from "@/lib/audio-controller";
-import { fetchPlaylistsLibrary, notifyPlaylistsUpdated } from "@/lib/playlists-client";
+import { emitPlaylistsUpdatedEvent } from "@/lib/playlist-events";
+import { fetchPlaylistsLibrary, upsertCachedOwnedPlaylist } from "@/lib/playlists-client";
 import type { Playlist, Song } from "@/lib/types";
 import { playerActions } from "@/store/playerStore";
 
-import ArtworkImage from "@/components/ArtworkImage";
+import Artwork from "@/components/ui/Artwork";
+import ModalSheet from "@/components/ui/ModalSheet";
 
 type SaveToPlaylistButtonProps = {
   song: Song;
@@ -31,6 +32,7 @@ type PlaylistResponse = {
 
 type BasicApiResponse = {
   ok?: boolean;
+  playlist?: Playlist | null;
   error?: string;
 };
 
@@ -115,6 +117,8 @@ async function addSongToPlaylistRequest(playlistId: string, song: Song) {
   if (!response.ok) {
     throw new Error(payload?.error || "Unable to save song.");
   }
+
+  return payload?.playlist || null;
 }
 
 function SaveToPlaylistButtonComponent({
@@ -126,7 +130,6 @@ function SaveToPlaylistButtonComponent({
   onOpenChange,
   hideTrigger = false
 }: SaveToPlaylistButtonProps) {
-  const [mounted, setMounted] = useState(false);
   const [internalOpen, setInternalOpen] = useState(false);
   const [playlists, setPlaylists] = useState<Playlist[]>([]);
   const [newPlaylistName, setNewPlaylistName] = useState("");
@@ -147,11 +150,6 @@ function SaveToPlaylistButtonComponent({
     },
     [isControlled, onOpenChange]
   );
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
-
   const refreshPlaylists = useCallback(async (force = false) => {
     setLoading(true);
     setError(null);
@@ -183,27 +181,6 @@ function SaveToPlaylistButtonComponent({
     };
   }, [isOpen, refreshPlaylists]);
 
-  useEffect(() => {
-    if (!isOpen) {
-      return;
-    }
-
-    const previousOverflow = document.body.style.overflow;
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") {
-        setOpenState(false);
-      }
-    };
-
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [isOpen, setOpenState]);
-
   const playlistLabel = useMemo(() => (playlists.length === 1 ? "playlist" : "playlists"), [playlists.length]);
 
   const close = () => {
@@ -218,11 +195,16 @@ function SaveToPlaylistButtonComponent({
     setMessage(null);
 
     try {
-      await addSongToPlaylistRequest(playlistId, song);
+      const updatedPlaylist = await addSongToPlaylistRequest(playlistId, song);
       audioController.recordTasteAction(song, "playlist_add");
-      const nextPlaylists = await refreshPlaylists(true);
-      notifyPlaylistsUpdated();
-      const savedPlaylist = nextPlaylists.find((playlist) => playlist.id === playlistId);
+      if (updatedPlaylist) {
+        upsertCachedOwnedPlaylist(updatedPlaylist, { emit: false });
+        setPlaylists((previous) =>
+          previous.map((playlist) => (playlist.id === updatedPlaylist.id ? updatedPlaylist : playlist))
+        );
+      }
+      emitPlaylistsUpdatedEvent();
+      const savedPlaylist = updatedPlaylist || playlists.find((playlist) => playlist.id === playlistId) || null;
       playerActions.showToast(`Added "${song.title}" to ${playlistName || savedPlaylist?.name || "playlist"}.`);
       setMessage(`Added to ${playlistName || savedPlaylist?.name || "playlist"}.`);
       setTimeout(() => {
@@ -250,14 +232,15 @@ function SaveToPlaylistButtonComponent({
 
     try {
       const playlist = await createPlaylistRequest(trimmedName);
-      await addSongToPlaylistRequest(playlist.id, song);
+      const updatedPlaylist = await addSongToPlaylistRequest(playlist.id, song);
+      const finalPlaylist = updatedPlaylist || playlist;
       audioController.recordTasteAction(song, "playlist_add");
-      const nextPlaylists = await refreshPlaylists(true);
-      setPlaylists(nextPlaylists);
+      upsertCachedOwnedPlaylist(finalPlaylist, { emit: false });
+      setPlaylists((previous) => [finalPlaylist, ...previous.filter((entry) => entry.id !== finalPlaylist.id)]);
       setNewPlaylistName("");
-      notifyPlaylistsUpdated();
-      playerActions.showToast(`Created ${playlist.name} and added "${song.title}".`);
-      setMessage(`Created ${playlist.name} and added this song.`);
+      emitPlaylistsUpdatedEvent();
+      playerActions.showToast(`Created ${finalPlaylist.name} and added "${song.title}".`);
+      setMessage(`Created ${finalPlaylist.name} and added this song.`);
       setTimeout(() => {
         setOpenState(false);
         setMessage(null);
@@ -269,128 +252,112 @@ function SaveToPlaylistButtonComponent({
     }
   };
 
-  const modal = isOpen ? (
-    <div
-      className="fixed inset-0 z-[140] flex items-center justify-center bg-slate-950/90 px-4 py-6 backdrop-blur-xl sm:px-6"
-      onClick={close}
-      role="dialog"
-      aria-modal="true"
-      aria-label="Add to playlist"
+  const modal = (
+    <ModalSheet
+      open={isOpen}
+      onClose={close}
+      wide
+      title="Save song to a playlist"
+      subtitle="Create a new playlist or add this track to one you already have."
     >
-      <div
-        className="w-full max-w-4xl overflow-hidden rounded-[34px] border border-white/10 bg-[linear-gradient(180deg,rgba(13,20,34,0.98),rgba(8,12,22,0.98))] shadow-[0_40px_140px_rgba(0,0,0,0.7)]"
-        onClick={(event) => event.stopPropagation()}
-      >
-        <div className="border-b border-white/8 bg-white/[0.03] px-6 py-5 sm:px-8">
-          <div className="flex items-start justify-between gap-4">
-            <div>
-              <p className="text-[11px] uppercase tracking-[0.32em] text-slate-400">Spasiba</p>
-              <h3 className="mt-2 text-2xl font-semibold tracking-tight text-white sm:text-3xl">Save song to a playlist</h3>
-              <p className="mt-2 text-sm text-slate-300/75">Create a new playlist or add this track to one you already have.</p>
-            </div>
+      <div className="grid gap-0 lg:grid-cols-[360px_minmax(0,1fr)]">
+            <div className="border-b border-white/8 bg-white/[0.02] p-6 sm:p-8 lg:border-b-0 lg:border-r">
+              <div className="overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.04]">
+                <div className="relative aspect-square">
+                  <Artwork
+                    src={song.thumbnail}
+                    alt={song.title}
+                    sizes="(max-width: 1024px) 100vw, 360px"
+                    quality={75}
+                    className="h-full w-full"
+                    imageClassName="object-cover"
+                  />
+                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/15 to-transparent" />
+                  <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-white/80 backdrop-blur-md">
+                    {song.duration}
+                  </div>
+                </div>
 
-            <button
-              type="button"
-              onClick={close}
-              className="rounded-full border border-white/10 bg-white/[0.06] px-4 py-2 text-xs uppercase tracking-[0.24em] text-slate-200 transition hover:bg-white/[0.12]"
-            >
-              Close
-            </button>
-          </div>
-        </div>
-
-        <div className="grid max-h-[84vh] gap-0 overflow-y-auto lg:grid-cols-[360px_minmax(0,1fr)]">
-          <div className="border-b border-white/8 bg-white/[0.02] p-6 sm:p-8 lg:border-b-0 lg:border-r">
-            <div className="overflow-hidden rounded-[28px] border border-white/8 bg-white/[0.04]">
-              <div className="relative aspect-square">
-                <ArtworkImage src={song.thumbnail} alt={song.title} fill sizes="(max-width: 1024px) 100vw, 360px" quality={75} className="object-cover" />
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/15 to-transparent" />
-                <div className="absolute left-4 top-4 rounded-full border border-white/10 bg-slate-950/70 px-3 py-1 text-[10px] uppercase tracking-[0.28em] text-white/80 backdrop-blur-md">
-                  {song.duration}
+                <div className="space-y-3 p-5">
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Selected song</p>
+                  <h4 className="text-xl font-semibold tracking-tight text-white">{song.title}</h4>
+                  <p className="text-sm text-slate-300/75">{song.author}</p>
                 </div>
               </div>
 
-              <div className="space-y-3 p-5">
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Selected song</p>
-                <h4 className="text-xl font-semibold tracking-tight text-white">{song.title}</h4>
-                <p className="text-sm text-slate-300/75">{song.author}</p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-3">
-              <label className="block text-[11px] uppercase tracking-[0.24em] text-slate-400">Create playlist</label>
-              <div className="space-y-3">
-                <input
-                  value={newPlaylistName}
-                  onChange={(event) => setNewPlaylistName(event.target.value)}
-                  placeholder="Sunday drive"
-                  className="w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
-                />
-                <button
-                  type="button"
-                  onClick={() => void handleCreatePlaylist()}
-                  disabled={saving}
-                  className="flex w-full items-center justify-center rounded-2xl bg-white px-4 py-4 text-base font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
-                >
-                  {saving ? "Saving..." : "Create and add song"}
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div className="p-6 sm:p-8">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Your playlists</p>
-                <p className="mt-2 text-sm text-slate-300/75">
-                  {playlists.length} {playlistLabel} ready
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-6 space-y-4">
-              {loading ? (
-                <>
-                  <div className="shimmer h-24 rounded-[24px]" />
-                  <div className="shimmer h-24 rounded-[24px]" />
-                  <div className="shimmer h-24 rounded-[24px]" />
-                </>
-              ) : null}
-
-              {!loading && playlists.length === 0 ? (
-                <div className="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-center text-sm text-slate-300/75">
-                  No playlists yet. Create your first one on the left and this song will be added instantly.
+              <div className="mt-6 space-y-3">
+                <label className="block text-[11px] uppercase tracking-[0.24em] text-slate-400">Create playlist</label>
+                <div className="space-y-3">
+                  <input
+                    value={newPlaylistName}
+                    onChange={(event) => setNewPlaylistName(event.target.value)}
+                    placeholder="Sunday drive"
+                    className="w-full rounded-2xl border border-white/10 bg-white/[0.05] px-4 py-4 text-base text-white placeholder:text-slate-500 focus:border-teal-300/35 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void handleCreatePlaylist()}
+                    disabled={saving}
+                    className="flex w-full items-center justify-center rounded-2xl bg-white px-4 py-4 text-base font-medium text-slate-950 transition hover:bg-teal-300 disabled:cursor-wait disabled:opacity-70"
+                  >
+                    {saving ? "Saving..." : "Create and add song"}
+                  </button>
                 </div>
-              ) : null}
-
-              {!loading
-                ? playlists.map((playlist) => (
-                    <button
-                      key={playlist.id}
-                      type="button"
-                      onClick={() => void handleSaveToPlaylist(playlist.id, playlist.name)}
-                      disabled={saving}
-                      className="flex w-full items-center justify-between gap-4 rounded-[26px] border border-white/10 bg-white/[0.05] px-5 py-5 text-left transition hover:border-teal-300/25 hover:bg-white/[0.09] disabled:cursor-wait disabled:opacity-70"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-lg font-medium text-white">{playlist.name}</p>
-                        <p className="mt-2 text-xs uppercase tracking-[0.22em] text-slate-400">{playlist.trackCount} songs</p>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-950">
-                        Add song
-                      </span>
-                    </button>
-                  ))
-                : null}
+              </div>
             </div>
 
-            {message ? <p className="mt-5 text-sm text-teal-100">{message}</p> : null}
-            {error ? <p className="mt-5 text-sm text-rose-200">{error}</p> : null}
-          </div>
-        </div>
+            <div className="p-6 sm:p-8">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-[11px] uppercase tracking-[0.24em] text-slate-400">Your playlists</p>
+                  <p className="mt-2 text-sm text-slate-300/75">
+                    {playlists.length} {playlistLabel} ready
+                  </p>
+                </div>
+              </div>
+
+              <div className="mt-6 space-y-4">
+                {loading ? (
+                  <>
+                    <div className="shimmer h-24 rounded-[24px]" />
+                    <div className="shimmer h-24 rounded-[24px]" />
+                    <div className="shimmer h-24 rounded-[24px]" />
+                  </>
+                ) : null}
+
+                {!loading && playlists.length === 0 ? (
+                  <div className="rounded-[28px] border border-dashed border-white/10 bg-white/[0.03] px-6 py-8 text-center text-sm text-slate-300/75">
+                    No playlists yet. Create your first one on the left and this song will be added instantly.
+                  </div>
+                ) : null}
+
+                {!loading
+                  ? playlists.map((playlist) => (
+                      <button
+                        key={playlist.id}
+                        type="button"
+                        onClick={() => void handleSaveToPlaylist(playlist.id, playlist.name)}
+                        disabled={saving}
+                        className="flex w-full items-center justify-between gap-4 rounded-[26px] border border-white/10 bg-white/[0.05] px-5 py-5 text-left transition hover:border-teal-300/25 hover:bg-white/[0.09] disabled:cursor-wait disabled:opacity-70"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-lg font-medium text-white">{playlist.name}</p>
+                          <p className="mt-2 text-xs uppercase tracking-[0.22em] text-slate-400">{playlist.trackCount} songs</p>
+                        </div>
+                        <span className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-semibold uppercase tracking-[0.22em] text-slate-950">
+                          Add song
+                        </span>
+                      </button>
+                    ))
+                  : null}
+              </div>
+
+              {message ? <p className="mt-5 text-sm text-teal-100">{message}</p> : null}
+              {error ? <p className="mt-5 text-sm text-rose-200">{error}</p> : null}
+            </div>
       </div>
-    </div>
-  ) : null;
+    </ModalSheet>
+  );
 
   return (
     <>
@@ -413,7 +380,7 @@ function SaveToPlaylistButtonComponent({
           {label}
         </button>
       ) : null}
-      {mounted && modal ? createPortal(modal, document.body) : null}
+      {modal}
     </>
   );
 }

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getVisitorLikedSongs, isTrackLiked, likeTrack, unlikeTrack } from "@/lib/likes";
+import { invalidateVisitorProfileCache } from "@/lib/profile";
 import type { Song } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -55,6 +56,7 @@ export async function POST(request: NextRequest) {
 
   try {
     await likeTrack(visitorId, song);
+    invalidateVisitorProfileCache(visitorId, "full");
     return NextResponse.json({ ok: true, liked: true });
   } catch (error) {
     return NextResponse.json(
@@ -83,6 +85,7 @@ export async function DELETE(request: NextRequest) {
 
   try {
     await unlikeTrack(visitorId, videoId);
+    invalidateVisitorProfileCache(visitorId, "full");
     return NextResponse.json({ ok: true, liked: false });
   } catch (error) {
     return NextResponse.json(

@@ -1,5 +1,5 @@
-import { ensureDbSchema, getDb, hasDatabaseAuthToken } from "@/lib/db";
-import { getVisitorLikedSongs } from "@/lib/likes";
+import { ensureDbSchema, ensureVisitorRecord, getDb, hasDatabaseAuthToken } from "@/lib/db";
+import { getVisitorLikedSongsDbReady } from "@/lib/likes";
 import { normalizeUsername, validateUsername } from "@/lib/usernames";
 import type { ProfileSongEntry, UserProfile } from "@/lib/types";
 
@@ -16,14 +16,20 @@ type EngagementRow = {
   created_at: number;
 };
 
+type CachedProfileEntry = {
+  value: UserProfile;
+  expiresAt: number;
+};
+
+const PROFILE_SUMMARY_CACHE_TTL_MS = 1000 * 60 * 15;
+const PROFILE_FULL_CACHE_TTL_MS = 1000 * 60 * 10;
+const visitorProfileSummaryCache = new Map<string, CachedProfileEntry>();
+const visitorProfileFullCache = new Map<string, CachedProfileEntry>();
+
 function assertDatabaseConfigured() {
   if (!hasDatabaseAuthToken()) {
     throw new Error("Turso auth token is missing. Add TURSO_AUTH_TOKEN to continue.");
   }
-}
-
-function createTimestamp() {
-  return Date.now();
 }
 
 function rowNumber(value: unknown) {
@@ -56,19 +62,6 @@ function normalizeProfileImageDataUrl(value: string | null | undefined) {
   return trimmed;
 }
 
-async function ensureVisitor(visitorId: string) {
-  const db = getDb();
-
-  await db.execute({
-    sql: `
-      INSERT INTO visitors (id, created_at)
-      VALUES (?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `,
-    args: [visitorId, createTimestamp()]
-  });
-}
-
 function getMonthRange(referenceDate = new Date()) {
   const start = new Date(referenceDate.getFullYear(), referenceDate.getMonth(), 1);
   const end = new Date(referenceDate.getFullYear(), referenceDate.getMonth() + 1, 1);
@@ -81,6 +74,46 @@ function getMonthRange(referenceDate = new Date()) {
       year: "numeric"
     })
   };
+}
+
+function readCachedProfile(cache: Map<string, CachedProfileEntry>, visitorId: string) {
+  const cached = cache.get(visitorId);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    cache.delete(visitorId);
+    return null;
+  }
+
+  cache.delete(visitorId);
+  cache.set(visitorId, cached);
+  return cached.value;
+}
+
+function writeCachedProfile(cache: Map<string, CachedProfileEntry>, visitorId: string, profile: UserProfile, ttlMs: number) {
+  cache.set(visitorId, {
+    value: profile,
+    expiresAt: Date.now() + ttlMs
+  });
+
+  return profile;
+}
+
+export function invalidateVisitorProfileCache(visitorId: string, scope: "all" | "summary" | "full" = "all") {
+  if (!visitorId.trim()) {
+    return;
+  }
+
+  if (scope === "all" || scope === "summary") {
+    visitorProfileSummaryCache.delete(visitorId);
+  }
+
+  if (scope === "all" || scope === "full") {
+    visitorProfileFullCache.delete(visitorId);
+  }
 }
 
 function mapEngagementRowToSong(row: EngagementRow): ProfileSongEntry {
@@ -125,17 +158,29 @@ function buildMonthlyHistory(rows: EngagementRow[]) {
   }
 
   return Array.from(entries.values())
-    .sort((left, right) => Date.parse(right.lastListenedAt || "") - Date.parse(left.lastListenedAt || ""))
-    .slice(0, 48);
+    .sort((left, right) => Date.parse(right.lastListenedAt || "") - Date.parse(left.lastListenedAt || ""));
 }
 
-export async function getVisitorProfile(visitorId: string): Promise<UserProfile> {
-  assertDatabaseConfigured();
-  await ensureDbSchema();
-  await ensureVisitor(visitorId);
+function buildProfileSnapshot(
+  name: string,
+  username: string,
+  profileImageDataUrl: string | null,
+  monthLabel: string,
+  monthlyHistory: ProfileSongEntry[] = [],
+  likedSongs: ProfileSongEntry[] = []
+): UserProfile {
+  return {
+    name,
+    username,
+    profileImageDataUrl,
+    monthLabel,
+    monthlyHistory,
+    likedSongs
+  };
+}
 
+async function readVisitorBasics(visitorId: string) {
   const db = getDb();
-  const { start, end, label } = getMonthRange();
   const visitorResult = await db.execute({
     sql: `
       SELECT display_name, profile_image_data_url
@@ -146,9 +191,46 @@ export async function getVisitorProfile(visitorId: string): Promise<UserProfile>
     `,
     args: [visitorId]
   });
-  const name = rowString(visitorResult.rows[0]?.display_name).trim();
-  const username = rowString(visitorResult.rows[0]?.username).trim();
-  const profileImageDataUrl = rowString(visitorResult.rows[0]?.profile_image_data_url).trim() || null;
+
+  return {
+    name: rowString(visitorResult.rows[0]?.display_name).trim(),
+    username: rowString(visitorResult.rows[0]?.username).trim(),
+    profileImageDataUrl: rowString(visitorResult.rows[0]?.profile_image_data_url).trim() || null
+  };
+}
+
+export async function getVisitorProfileSummary(visitorId: string): Promise<UserProfile> {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  const cached = readCachedProfile(visitorProfileSummaryCache, visitorId);
+
+  if (cached) {
+    return cached;
+  }
+
+  const basics = await readVisitorBasics(visitorId);
+  const { label } = getMonthRange();
+
+  return writeCachedProfile(
+    visitorProfileSummaryCache,
+    visitorId,
+    buildProfileSnapshot(basics.name, basics.username, basics.profileImageDataUrl, label),
+    PROFILE_SUMMARY_CACHE_TTL_MS
+  );
+}
+
+export async function getVisitorProfile(visitorId: string): Promise<UserProfile> {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  const cached = readCachedProfile(visitorProfileFullCache, visitorId);
+
+  if (cached) {
+    return cached;
+  }
+
+  const { start, end, label } = getMonthRange();
+  const db = getDb();
+  const basics = await readVisitorBasics(visitorId);
 
   const monthEventsResult = await db.execute({
     sql: `
@@ -183,16 +265,21 @@ export async function getVisitorProfile(visitorId: string): Promise<UserProfile>
     created_at: rowNumber(row.created_at)
   }));
 
-  const likedSongs = await getVisitorLikedSongs(visitorId);
+  const likedSongs = await getVisitorLikedSongsDbReady(visitorId);
 
-  return {
-    name,
-    username,
-    profileImageDataUrl,
-    monthLabel: label,
-    monthlyHistory: buildMonthlyHistory(monthRows),
-    likedSongs
-  };
+  return writeCachedProfile(
+    visitorProfileFullCache,
+    visitorId,
+    buildProfileSnapshot(
+      basics.name,
+      basics.username,
+      basics.profileImageDataUrl,
+      label,
+      buildMonthlyHistory(monthRows),
+      likedSongs
+    ),
+    PROFILE_FULL_CACHE_TTL_MS
+  );
 }
 
 export async function updateVisitorProfile(
@@ -205,7 +292,7 @@ export async function updateVisitorProfile(
 ) {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
   const currentVisitorResult = await db.execute({
@@ -263,6 +350,8 @@ export async function updateVisitorProfile(
     throw error;
   }
 
+  invalidateVisitorProfileCache(visitorId);
+
   return {
     name: nextName,
     username: nextUsername,
@@ -307,7 +396,7 @@ export async function findVisitorByUsername(username: string) {
 export async function clearVisitorHistory(visitorId: string) {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
   await db.execute({
@@ -317,12 +406,14 @@ export async function clearVisitorHistory(visitorId: string) {
     `,
     args: [visitorId, "play_start", "skip_early", "skip_mid", "skip_late", "complete"]
   });
+
+  invalidateVisitorProfileCache(visitorId, "full");
 }
 
 export async function clearVisitorSuggestionData(visitorId: string) {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
   await db.execute({

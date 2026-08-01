@@ -1,4 +1,4 @@
-import { ensureDbSchema, getDb, hasDatabaseAuthToken } from "@/lib/db";
+import { ensureDbSchema, ensureVisitorRecord, getDb, hasDatabaseAuthToken } from "@/lib/db";
 import {
   applyEngagementToListenerProfile,
   createEmptyListenerProfile,
@@ -10,31 +10,48 @@ type EngagementInput = EngagementPayload & {
   signals?: string[];
 };
 
+type CachedListenerProfileEntry = {
+  value: ListenerProfile;
+  expiresAt: number;
+};
+
+const LISTENER_PROFILE_CACHE_TTL_MS = 1000 * 60 * 10;
+const listenerProfileCache = new Map<string, CachedListenerProfileEntry>();
+
 function assertDatabaseConfigured() {
   if (!hasDatabaseAuthToken()) {
     throw new Error("Turso auth token is missing. Add TURSO_AUTH_TOKEN to continue.");
   }
 }
 
-function createTimestamp() {
-  return Date.now();
-}
-
 function rowString(value: unknown) {
   return typeof value === "string" ? value : String(value || "");
 }
 
-async function ensureVisitor(visitorId: string) {
-  const db = getDb();
+function readCachedListenerProfile(visitorId: string) {
+  const cached = listenerProfileCache.get(visitorId);
 
-  await db.execute({
-    sql: `
-      INSERT INTO visitors (id, created_at)
-      VALUES (?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `,
-    args: [visitorId, createTimestamp()]
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    listenerProfileCache.delete(visitorId);
+    return null;
+  }
+
+  listenerProfileCache.delete(visitorId);
+  listenerProfileCache.set(visitorId, cached);
+  return cached.value;
+}
+
+function writeCachedListenerProfile(visitorId: string, profile: ListenerProfile) {
+  listenerProfileCache.set(visitorId, {
+    value: profile,
+    expiresAt: Date.now() + LISTENER_PROFILE_CACHE_TTL_MS
   });
+
+  return profile;
 }
 
 async function loadStoredListenerProfile(visitorId: string) {
@@ -67,11 +84,16 @@ export async function getVisitorListenerProfile(visitorId: string) {
     return createEmptyListenerProfile();
   }
 
+  const cached = readCachedListenerProfile(visitorId);
+
+  if (cached) {
+    return cached;
+  }
+
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
-  return loadStoredListenerProfile(visitorId);
+  return writeCachedListenerProfile(visitorId, await loadStoredListenerProfile(visitorId));
 }
 
 export async function recordVisitorEngagement(
@@ -81,7 +103,11 @@ export async function recordVisitorEngagement(
   return recordVisitorEngagementBatch(visitorId, [payload]);
 }
 
-export async function recordVisitorEngagementBatch(visitorId: string, payloads: EngagementInput[]) {
+export async function recordVisitorEngagementBatch(
+  visitorId: string,
+  payloads: EngagementInput[],
+  nextProfileInput?: ListenerProfile | null
+) {
   if (!visitorId.trim()) {
     return createEmptyListenerProfile();
   }
@@ -94,15 +120,20 @@ export async function recordVisitorEngagementBatch(visitorId: string, payloads: 
 
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
-  const currentProfile = await loadStoredListenerProfile(visitorId);
-  let nextProfile = currentProfile;
-  const batchTimestamp = createTimestamp();
+  const hasProvidedProfile = Boolean(nextProfileInput);
+  let nextProfile = hasProvidedProfile
+    ? normalizeListenerProfile(nextProfileInput as ListenerProfile)
+    : await loadStoredListenerProfile(visitorId);
+  const batchTimestamp = Date.now();
   const statements = validPayloads.map((payload, index) => {
     const signals = Array.from(new Set((payload.signals || []).filter(Boolean).map((signal) => signal.trim().toLowerCase())));
-    nextProfile = applyEngagementToListenerProfile(nextProfile, payload.song, payload.action, signals);
+
+    if (!hasProvidedProfile) {
+      nextProfile = applyEngagementToListenerProfile(nextProfile, payload.song, payload.action, signals);
+    }
 
     return {
       sql: `
@@ -156,5 +187,5 @@ export async function recordVisitorEngagementBatch(visitorId: string, payloads: 
 
   await db.batch(statements, "write");
 
-  return nextProfile;
+  return writeCachedListenerProfile(visitorId, nextProfile);
 }

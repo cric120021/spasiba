@@ -1,3 +1,8 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+}
+
 html,
 body {
   margin: 0;
@@ -28,13 +33,19 @@ body {
   align-items: center;
   justify-content: center;
   background:
-    radial-gradient(circle at top left, rgba(45, 212, 191, 0.16), transparent 28%),
-    radial-gradient(circle at top right, rgba(59, 130, 246, 0.18), transparent 30%),
+    radial-gradient(circle at top left, rgba(236, 72, 153, 0.17), transparent 28%),
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 30%),
     linear-gradient(180deg, #081325 0%, #040712 50%, #02030a 100%);
   z-index: 100;
   transition:
     opacity 360ms ease,
     visibility 360ms ease;
+}
+
+html.session-splash-seen #initial-loader {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
 }
 
 .initial-splash {
@@ -53,8 +64,8 @@ body {
   height: 220px;
   border-radius: 999px;
   background:
-    radial-gradient(circle, rgba(45, 212, 191, 0.24) 0%, rgba(45, 212, 191, 0.06) 42%, transparent 72%),
-    radial-gradient(circle at 68% 30%, rgba(59, 130, 246, 0.18), transparent 42%);
+    radial-gradient(circle, rgba(244, 114, 182, 0.22) 0%, rgba(244, 114, 182, 0.06) 42%, transparent 72%),
+    radial-gradient(circle at 68% 30%, rgba(96, 165, 250, 0.18), transparent 42%);
   filter: blur(14px);
   pointer-events: none;
 }
@@ -111,8 +122,8 @@ body {
   width: min(66vw, 220px);
   height: 2px;
   border-radius: 999px;
-  background: linear-gradient(90deg, rgba(45, 212, 191, 0.08) 0%, rgba(45, 212, 191, 0.92) 50%, rgba(45, 212, 191, 0.08) 100%);
-  box-shadow: 0 0 18px rgba(45, 212, 191, 0.14);
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.08) 0%, rgba(226, 232, 240, 0.82) 50%, rgba(96, 165, 250, 0.1) 100%);
+  box-shadow: 0 0 18px rgba(148, 163, 184, 0.12);
 }
 
 .initial-splash__tagline {
@@ -145,6 +156,14 @@ body.app-ready #initial-loader {
 }
 
 body.app-ready #initial-loader .initial-splash {
+  transform: translateY(8px) scale(1.01);
+  opacity: 0;
+  transition:
+    transform 360ms ease,
+    opacity 360ms ease;
+}
+
+html.session-splash-seen #initial-loader .initial-splash {
   transform: translateY(8px) scale(1.01);
   opacity: 0;
   transition:

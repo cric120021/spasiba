@@ -2,9 +2,10 @@ import { notFound } from "next/navigation";
 
 import CategoryFeedPage from "@/components/CategoryFeedPage";
 import { getHomeCategoryConfig, HOME_CATEGORY_CHIPS } from "@/lib/home-category-chips";
+import { getHomeCategoryFeed } from "@/lib/home-category-feed";
 
 export const runtime = "nodejs";
-export const revalidate = 21600;
+export const revalidate = 604800;
 export const dynamicParams = false;
 
 export function generateStaticParams() {
@@ -26,5 +27,11 @@ export default async function HomeCategoryPage({
     notFound();
   }
 
-  return <CategoryFeedPage categoryId={categoryId} />;
+  const initialFeed = await getHomeCategoryFeed(categoryId);
+
+  if (!initialFeed) {
+    notFound();
+  }
+
+  return <CategoryFeedPage categoryId={categoryId} initialFeed={initialFeed} />;
 }

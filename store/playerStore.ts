@@ -107,6 +107,36 @@ export const playerActions = {
   hydrate() {
     setPlayerState({ hydrated: true });
   },
+  restoreSnapshot(snapshot: {
+    queue: Song[];
+    currentIndex: number;
+    queueSource: "default" | "playlist";
+    queueSourceLabel: string | null;
+    playlistBaseTrackIds: string[];
+    playlistMixEnabled: boolean;
+  }) {
+    const queue = Array.isArray(snapshot.queue) ? snapshot.queue : [];
+    const currentIndex = queue.length ? Math.min(Math.max(0, snapshot.currentIndex), queue.length - 1) : -1;
+    const currentSong = currentIndex >= 0 ? queue[currentIndex] || null : null;
+
+    setPlayerState({
+      currentSong,
+      queue,
+      currentIndex,
+      sessionHistory: currentSong ? [currentSong] : [],
+      queueSource: snapshot.queueSource,
+      queueSourceLabel: snapshot.queueSourceLabel,
+      playlistBaseTrackIds: snapshot.playlistBaseTrackIds,
+      playlistMixEnabled: snapshot.playlistMixEnabled,
+      isPlaying: false,
+      isLoading: false,
+      currentTime: 0,
+      duration: 0,
+      progress: 0,
+      buffered: 0,
+      error: null
+    });
+  },
   primePlayback(
     song: Song,
     queue: Song[],

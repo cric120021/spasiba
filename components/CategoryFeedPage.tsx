@@ -1,9 +1,10 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import { audioController } from "@/lib/audio-controller";
-import { fetchCategoryFeed, prefetchCategoryFeed, readCachedCategoryFeed } from "@/lib/home-category-feed-client";
+import { fetchCategoryFeed, primeCategoryFeed, readCachedCategoryFeed } from "@/lib/home-category-feed-client";
 import { getHomeCategoryConfig, HOME_CATEGORY_CHIPS } from "@/lib/home-category-chips";
 import type { HomeCategoryFeed } from "@/lib/home-category-feed";
 import type { Song } from "@/lib/types";
@@ -14,6 +15,7 @@ import ArtworkImage from "@/components/ArtworkImage";
 
 type CategoryFeedPageProps = {
   categoryId: string;
+  initialFeed?: HomeCategoryFeed | null;
 };
 
 function CategoryHeroShelf({
@@ -341,12 +343,13 @@ function CategorySectionsSkeleton() {
   );
 }
 
-export default function CategoryFeedPage({ categoryId }: CategoryFeedPageProps) {
+export default function CategoryFeedPage({ categoryId, initialFeed = null }: CategoryFeedPageProps) {
+  const router = useRouter();
   const currentSongId = usePlayerStore((state) => state.currentSong?.id || null);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const categoryConfig = getHomeCategoryConfig(categoryId);
-  const [feed, setFeed] = useState<HomeCategoryFeed | null>(() => readCachedCategoryFeed(categoryId));
-  const [isLoading, setIsLoading] = useState(!feed);
+  const [feed, setFeed] = useState<HomeCategoryFeed | null>(() => readCachedCategoryFeed(categoryId) || initialFeed || null);
+  const [isLoading, setIsLoading] = useState(!(readCachedCategoryFeed(categoryId) || initialFeed));
   const adjacentCategories = useMemo(() => {
     const index = HOME_CATEGORY_CHIPS.findIndex((category) => category.id === categoryId);
 
@@ -361,8 +364,19 @@ export default function CategoryFeedPage({ categoryId }: CategoryFeedPageProps) 
 
   useEffect(() => {
     const cached = readCachedCategoryFeed(categoryId);
-    setFeed(cached);
-    setIsLoading(!cached);
+
+    if (cached) {
+      setFeed(cached);
+      setIsLoading(false);
+      return;
+    }
+
+    if (initialFeed) {
+      primeCategoryFeed(categoryId, initialFeed);
+      setFeed(initialFeed);
+      setIsLoading(false);
+      return;
+    }
 
     const controller = new AbortController();
 
@@ -382,7 +396,7 @@ export default function CategoryFeedPage({ categoryId }: CategoryFeedPageProps) 
     return () => {
       controller.abort();
     };
-  }, [categoryId]);
+  }, [categoryId, initialFeed]);
 
   useEffect(() => {
     const idleWindow = window as Window &
@@ -390,20 +404,20 @@ export default function CategoryFeedPage({ categoryId }: CategoryFeedPageProps) 
         requestIdleCallback?: (callback: () => void, options?: { timeout: number }) => number;
       };
 
-    const warmAdjacentFeeds = () => {
+    const warmAdjacentRoutes = () => {
       adjacentCategories.forEach((category) => {
-        prefetchCategoryFeed(category.id);
+        router.prefetch(`/category/${category.id}`);
       });
     };
 
     if (idleWindow.requestIdleCallback) {
-      idleWindow.requestIdleCallback(warmAdjacentFeeds, { timeout: 1400 });
+      idleWindow.requestIdleCallback(warmAdjacentRoutes, { timeout: 1400 });
       return;
     }
 
-    const timer = window.setTimeout(warmAdjacentFeeds, 250);
+    const timer = window.setTimeout(warmAdjacentRoutes, 250);
     return () => window.clearTimeout(timer);
-  }, [adjacentCategories]);
+  }, [adjacentCategories, router]);
 
   const playTrack = useCallback((song: Song, queue: Song[]) => {
     const queueIndex = queue.findIndex((track) => track.id === song.id);

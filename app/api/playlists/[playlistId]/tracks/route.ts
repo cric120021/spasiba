@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { addTrackToPlaylist, removeTrackFromPlaylist } from "@/lib/playlists";
+import { addTrackToPlaylist, getVisitorPlaylistById, removeTrackFromPlaylist } from "@/lib/playlists";
 import type { Song } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -41,7 +41,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ pl
 
   try {
     await addTrackToPlaylist(visitorId, playlistId, song);
-    return NextResponse.json({ ok: true });
+    const playlist = await getVisitorPlaylistById(visitorId, playlistId);
+    return NextResponse.json({ ok: true, playlist });
   } catch (error) {
     return NextResponse.json(
       {
@@ -84,7 +85,8 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
 
   try {
     await removeTrackFromPlaylist(visitorId, playlistId, videoId);
-    return NextResponse.json({ ok: true });
+    const playlist = await getVisitorPlaylistById(visitorId, playlistId);
+    return NextResponse.json({ ok: true, playlist });
   } catch (error) {
     return NextResponse.json(
       {

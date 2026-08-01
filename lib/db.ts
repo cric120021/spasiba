@@ -1,9 +1,13 @@
 import { createClient, type Client } from "@libsql/client";
 
 const DEFAULT_TURSO_DATABASE_URL = "libsql://music-app-db-jigar-23.aws-ap-south-1.turso.io";
+const SCHEMA_READY_KEY = "spasiba_schema";
+const SCHEMA_VERSION = 2;
+const VISITOR_READY_TTL_MS = 1000 * 60 * 15;
 
 let client: Client | null = null;
 let schemaPromise: Promise<void> | null = null;
+const visitorReadyCache = new Map<string, number>();
 
 function getDatabaseUrl() {
   return process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || DEFAULT_TURSO_DATABASE_URL;
@@ -30,13 +34,42 @@ export function hasDatabaseAuthToken() {
   return Boolean(getAuthToken());
 }
 
+async function isSchemaMarkedReady(db: Client) {
+  try {
+    const result = await db.execute({
+      sql: `
+        SELECT version
+        FROM schema_meta
+        WHERE key = ?
+        LIMIT 1
+      `,
+      args: [SCHEMA_READY_KEY]
+    });
+
+    return Number(result.rows[0]?.version || 0) >= SCHEMA_VERSION;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureDbSchema() {
   if (!schemaPromise) {
     schemaPromise = (async () => {
       const db = getDb();
 
+      if (await isSchemaMarkedReady(db)) {
+        return;
+      }
+
       await db.batch(
         [
+          `
+            CREATE TABLE IF NOT EXISTS schema_meta (
+              key TEXT PRIMARY KEY,
+              version INTEGER NOT NULL,
+              updated_at INTEGER NOT NULL
+            )
+          `,
           `
             CREATE TABLE IF NOT EXISTS visitors (
               id TEXT PRIMARY KEY,
@@ -52,6 +85,15 @@ export async function ensureDbSchema() {
               visitor_id TEXT NOT NULL,
               name TEXT NOT NULL,
               share_token TEXT,
+              track_count INTEGER NOT NULL DEFAULT 0,
+              cover_video_id TEXT,
+              cover_title TEXT,
+              cover_thumbnail TEXT,
+              cover_duration TEXT,
+              cover_duration_seconds INTEGER NOT NULL DEFAULT 0,
+              cover_author TEXT,
+              cover_url TEXT,
+              cover_views INTEGER NOT NULL DEFAULT 0,
               created_at INTEGER NOT NULL,
               updated_at INTEGER NOT NULL
             )
@@ -147,7 +189,18 @@ export async function ensureDbSchema() {
       );
 
       const playlistColumns = await db.execute("PRAGMA table_info(playlists)");
-      const hasShareTokenColumn = playlistColumns.rows.some((row) => String(row.name || "").toLowerCase() === "share_token");
+      const playlistColumnNames = new Set(playlistColumns.rows.map((row) => String(row.name || "").toLowerCase()));
+      const hasShareTokenColumn = playlistColumnNames.has("share_token");
+      const shouldBackfillPlaylistSummaries =
+        !playlistColumnNames.has("track_count") ||
+        !playlistColumnNames.has("cover_video_id") ||
+        !playlistColumnNames.has("cover_title") ||
+        !playlistColumnNames.has("cover_thumbnail") ||
+        !playlistColumnNames.has("cover_duration") ||
+        !playlistColumnNames.has("cover_duration_seconds") ||
+        !playlistColumnNames.has("cover_author") ||
+        !playlistColumnNames.has("cover_url") ||
+        !playlistColumnNames.has("cover_views");
       const visitorColumns = await db.execute("PRAGMA table_info(visitors)");
       const visitorColumnNames = new Set(visitorColumns.rows.map((row) => String(row.name || "").toLowerCase()));
       const engagementColumns = await db.execute("PRAGMA table_info(engagement_events)");
@@ -155,6 +208,42 @@ export async function ensureDbSchema() {
 
       if (!hasShareTokenColumn) {
         await db.execute("ALTER TABLE playlists ADD COLUMN share_token TEXT");
+      }
+
+      if (!playlistColumnNames.has("track_count")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN track_count INTEGER NOT NULL DEFAULT 0");
+      }
+
+      if (!playlistColumnNames.has("cover_video_id")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_video_id TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_title")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_title TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_thumbnail")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_thumbnail TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_duration")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_duration TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_duration_seconds")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_duration_seconds INTEGER NOT NULL DEFAULT 0");
+      }
+
+      if (!playlistColumnNames.has("cover_author")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_author TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_url")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_url TEXT");
+      }
+
+      if (!playlistColumnNames.has("cover_views")) {
+        await db.execute("ALTER TABLE playlists ADD COLUMN cover_views INTEGER NOT NULL DEFAULT 0");
       }
 
       if (!visitorColumnNames.has("display_name")) {
@@ -189,8 +278,91 @@ export async function ensureDbSchema() {
         await db.execute("ALTER TABLE engagement_events ADD COLUMN views INTEGER NOT NULL DEFAULT 0");
       }
 
-      await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS playlists_share_token_idx ON playlists(share_token)");
-      await db.execute("CREATE UNIQUE INDEX IF NOT EXISTS visitors_username_idx ON visitors(username)");
+      if (shouldBackfillPlaylistSummaries) {
+        await db.execute(`
+          UPDATE playlists
+          SET
+            track_count = COALESCE((
+              SELECT COUNT(*)
+              FROM playlist_tracks
+              WHERE playlist_tracks.playlist_id = playlists.id
+            ), 0),
+            cover_video_id = (
+              SELECT pt.video_id
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_title = (
+              SELECT pt.title
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_thumbnail = (
+              SELECT pt.thumbnail
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_duration = (
+              SELECT pt.duration
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_duration_seconds = COALESCE((
+              SELECT pt.duration_seconds
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ), 0),
+            cover_author = (
+              SELECT pt.author
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_url = (
+              SELECT pt.url
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ),
+            cover_views = COALESCE((
+              SELECT pt.views
+              FROM playlist_tracks AS pt
+              WHERE pt.playlist_id = playlists.id
+              ORDER BY pt.created_at DESC
+              LIMIT 1
+            ), 0)
+        `);
+      }
+
+      await db.batch(
+        [
+          "CREATE UNIQUE INDEX IF NOT EXISTS playlists_share_token_idx ON playlists(share_token)",
+          "CREATE UNIQUE INDEX IF NOT EXISTS visitors_username_idx ON visitors(username)",
+          {
+            sql: `
+              INSERT INTO schema_meta (key, version, updated_at)
+              VALUES (?, ?, ?)
+              ON CONFLICT(key) DO UPDATE SET
+                version = excluded.version,
+                updated_at = excluded.updated_at
+            `,
+            args: [SCHEMA_READY_KEY, SCHEMA_VERSION, Date.now()]
+          }
+        ],
+        "write"
+      );
     })().catch((error) => {
       schemaPromise = null;
       throw error;
@@ -198,4 +370,38 @@ export async function ensureDbSchema() {
   }
 
   return schemaPromise;
+}
+
+export async function ensureVisitorRecord(visitorId: string) {
+  const normalizedVisitorId = visitorId.trim();
+
+  if (!normalizedVisitorId) {
+    return;
+  }
+
+  const readyUntil = visitorReadyCache.get(normalizedVisitorId) || 0;
+
+  if (readyUntil > Date.now()) {
+    return;
+  }
+
+  const db = getDb();
+  await db.execute({
+    sql: `
+      INSERT INTO visitors (id, created_at)
+      VALUES (?, ?)
+      ON CONFLICT(id) DO NOTHING
+    `,
+    args: [normalizedVisitorId, Date.now()]
+  });
+
+  visitorReadyCache.set(normalizedVisitorId, Date.now() + VISITOR_READY_TTL_MS);
+}
+
+export function invalidateVisitorRecordWarmCache(visitorId: string) {
+  if (!visitorId.trim()) {
+    return;
+  }
+
+  visitorReadyCache.delete(visitorId.trim());
 }

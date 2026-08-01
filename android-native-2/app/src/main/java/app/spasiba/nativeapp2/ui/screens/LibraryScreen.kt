@@ -284,49 +284,6 @@ fun LibraryScreen(
                                     .fillMaxWidth()
                                     .padding(vertical = 6.dp)
                                     .clip(RoundedCornerShape(16.dp))
-                                    .clickable { onCreatePlaylistClick() },
-                                color = AccentTeal.copy(alpha = 0.15f)
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(48.dp)
-                                            .clip(RoundedCornerShape(12.dp))
-                                            .background(AccentTeal),
-                                        contentAlignment = Alignment.Center
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Default.Add,
-                                            contentDescription = "Create Playlist",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(24.dp)
-                                        )
-                                    }
-                                    Spacer(modifier = Modifier.width(16.dp))
-                                    Column {
-                                        Text(
-                                            text = "Create Playlist",
-                                            style = MaterialTheme.typography.titleMedium.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = AccentTeal
-                                            )
-                                        )
-                                        Text(
-                                            text = "Build a custom mix for any mood",
-                                            style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted)
-                                        )
-                                    }
-                                }
-                            }
-
-                            Surface(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(vertical = 6.dp)
-                                    .clip(RoundedCornerShape(16.dp))
                                     .clickable { isImportDialogOpen = true },
                                 color = Color(0xFF6366F1).copy(alpha = 0.14f)
                             ) {
@@ -342,7 +299,7 @@ fun LibraryScreen(
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
-                                            imageVector = Icons.Default.Sync,
+                                            imageVector = Icons.Default.Download,
                                             contentDescription = "Import Playlist",
                                             tint = Color.White,
                                             modifier = Modifier.size(24.dp)
@@ -382,6 +339,10 @@ fun LibraryScreen(
                             }
                         } else {
                             items(playlists) { playlist ->
+                                val playlistSongsFlow = remember(playlist.id) { repository?.getSongsForPlaylist(playlist.id) }
+                                val pSongs by (playlistSongsFlow?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) })
+                                val coverUrl = pSongs.firstOrNull { it.thumbnail.isNotBlank() }?.thumbnail
+
                                 Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -398,15 +359,37 @@ fun LibraryScreen(
                                             modifier = Modifier
                                                 .size(52.dp)
                                                 .clip(RoundedCornerShape(12.dp))
-                                                .background(Color(0xFF6366F1)),
+                                                .background(Color(0xFF262626)),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Default.PlaylistPlay,
-                                                contentDescription = null,
-                                                tint = Color.White,
-                                                modifier = Modifier.size(28.dp)
-                                            )
+                                            if (!coverUrl.isNullOrBlank()) {
+                                                coil.compose.AsyncImage(
+                                                    model = coverUrl,
+                                                    contentDescription = playlist.name,
+                                                    contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                val gradientColors = listOf(Color(0xFF6366F1), Color(0xFFA855F7), Color(0xFFEC4899))
+                                                Box(
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .background(
+                                                            androidx.compose.ui.graphics.Brush.linearGradient(
+                                                                gradientColors
+                                                            )
+                                                        ),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = playlist.name.take(1).uppercase(),
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White
+                                                        )
+                                                    )
+                                                }
+                                            }
                                         }
                                         Spacer(modifier = Modifier.width(16.dp))
                                         Column(modifier = Modifier.weight(1f)) {
@@ -703,7 +686,7 @@ fun LibraryScreen(
                         )
                     }
 
-                    val downloadedList = ((downloadManager?.getDownloadedSongs() ?: emptyList()) + likedSongs + historySongs).distinctBy { it.id }
+                    val downloadedList = (downloadManager?.getDownloadedSongs() ?: emptyList()).distinctBy { it.id }
                     if (downloadedList.isEmpty()) {
                         item {
                             Box(

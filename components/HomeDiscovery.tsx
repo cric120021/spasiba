@@ -1,14 +1,14 @@
 "use client";
 
-import Image from "next/image";
 import { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 import { audioController } from "@/lib/audio-controller";
 import type { Song, TrendingSection } from "@/lib/types";
-import { formatCompactCount } from "@/lib/utils";
 import { usePlayerStore } from "@/store/playerStore";
 
 import LibrarySection from "@/components/LibrarySection";
+import ArtworkImage from "@/components/ArtworkImage";
+import QuickPickRow from "@/components/QuickPickRow";
 import SongGrid from "@/components/SongGrid";
 
 type HomeDiscoveryProps = {
@@ -139,7 +139,7 @@ function HomeDiscoveryComponent({ sections }: HomeDiscoveryProps) {
       <section className="relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-[#060a12] shadow-[0_30px_90px_rgba(0,0,0,0.34)] sm:rounded-[34px]">
         {heroArtwork ? (
           <>
-            <Image
+            <ArtworkImage
               src={heroArtwork}
               alt={activeSection.title}
               fill
@@ -212,7 +212,7 @@ function HomeDiscoveryComponent({ sections }: HomeDiscoveryProps) {
                   className="group relative overflow-hidden rounded-[26px] border border-white/10 bg-[#0a101a]/90 text-left shadow-[0_18px_40px_rgba(0,0,0,0.3)]"
                 >
                   <div className="relative aspect-[0.92] overflow-hidden">
-                    <Image
+                    <ArtworkImage
                       src={track.thumbnail}
                       alt={track.title}
                       fill
@@ -253,7 +253,7 @@ function HomeDiscoveryComponent({ sections }: HomeDiscoveryProps) {
           <button
             type="button"
             onClick={playAll}
-            className="rounded-full border border-white/10 bg-white/[0.04] px-4 py-2 text-[11px] font-medium uppercase tracking-[0.22em] text-slate-100 transition hover:bg-white/[0.08]"
+            className="inline-flex h-6 items-center justify-center rounded-full border border-white/[0.08] bg-white/[0.04] px-2 text-[8px] font-medium uppercase tracking-[0.08em] text-slate-100/92 transition hover:bg-white/[0.08] sm:h-6.5 sm:px-2.5 sm:text-[8px]"
           >
             Play all
           </button>
@@ -261,36 +261,16 @@ function HomeDiscoveryComponent({ sections }: HomeDiscoveryProps) {
 
         <div className="glass-panel-strong rounded-[28px] p-2.5 sm:p-3">
           {quickPicks.map((track) => {
-            const isActive = track.id === currentSongId;
-
             return (
-              <button
+              <QuickPickRow
                 key={track.id}
-                type="button"
-                onClick={() => playTrack(track)}
-                className="flex w-full items-center gap-3 rounded-[20px] px-2.5 py-2.5 text-left transition hover:bg-white/[0.06] sm:px-3"
-              >
-                <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-[16px] bg-white/[0.05]">
-                  <Image src={track.thumbnail} alt={track.title} fill sizes="56px" quality={70} className="object-cover" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <p className="line-clamp-1 text-[16px] font-medium text-white">{track.title}</p>
-                  <p className="line-clamp-1 text-[13px] text-slate-300/76">
-                    {track.author} <span className="text-slate-400">• {formatCompactCount(track.views)}</span>
-                  </p>
-                </div>
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/[0.04] text-white/88">
-                  {isActive && isPlaying ? (
-                    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
-                      <path fill="currentColor" d="M7 5h3v14H7zm7 0h3v14h-3z" />
-                    </svg>
-                  ) : (
-                    <svg aria-hidden viewBox="0 0 24 24" className="h-4 w-4">
-                      <path fill="currentColor" d="M8 5.14v13.72a1 1 0 0 0 1.53.848l10.08-6.86a1 1 0 0 0 0-1.696L9.53 4.292A1 1 0 0 0 8 5.14" />
-                    </svg>
-                  )}
-                </div>
-              </button>
+                song={track}
+                queue={activeSection.tracks}
+                currentSongId={currentSongId}
+                isPlaying={isPlaying}
+                onPlay={(selectedTrack) => playTrack(selectedTrack)}
+                variant="large"
+              />
             );
           })}
         </div>

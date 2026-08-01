@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "../design/tokens.css";
 
 :root {
   color-scheme: dark;
@@ -12,9 +13,9 @@
   --ring: rgba(45, 212, 191, 0.35);
   --text-strong: #f8fafc;
   --text-muted: rgba(226, 232, 240, 0.72);
-  --accent: #2dd4bf;
-  --accent-strong: #14b8a6;
-  --category-accent-rgb: 45 212 191;
+  --accent: #ffffff;
+  --accent-strong: #ffffff;
+  --category-accent-rgb: 255 255 255;
   --category-header-progress: 0;
   --category-backdrop-progress: 0;
   --category-backdrop-image: none;
@@ -120,7 +121,6 @@ body.app-ready #initial-loader {
   padding-top: 0;
   transform: translate3d(0, 0, 0);
   will-change: transform;
-  contain: paint;
   backface-visibility: hidden;
 }
 
@@ -151,11 +151,11 @@ body.app-ready #initial-loader {
 .category-page-shell__hero {
   position: relative;
   z-index: 1;
-  min-height: clamp(300px, 40vh, 420px);
-  padding: 0 1rem 0.8rem;
+  min-height: 0;
+  padding: 0 1rem 0.35rem;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
 }
 
 .category-page-shell__hero-content {
@@ -235,7 +235,7 @@ body.app-ready #initial-loader {
 }
 
 .app-player-dock {
-  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  padding-bottom: 0;
 }
 
 .app-install-prompt {
@@ -263,8 +263,8 @@ button {
 }
 
 ::selection {
-  background: rgba(45, 212, 191, 0.32);
-  color: white;
+  background: #ffffff;
+  color: #000000;
 }
 
 input[type="range"] {
@@ -380,12 +380,22 @@ input[type="range"] {
     padding-top: var(--app-main-top-mobile);
     padding-bottom: calc(154px + env(safe-area-inset-bottom));
   }
+
+  .home-shell-active .app-main,
+  .category-shell-active .app-main {
+    padding-top: 0;
+  }
 }
 
 @media (max-width: 420px) {
   .app-main {
     padding-top: var(--app-main-top-mobile);
     padding-bottom: calc(148px + env(safe-area-inset-bottom));
+  }
+
+  .home-shell-active .app-main,
+  .category-shell-active .app-main {
+    padding-top: 0;
   }
 }
 
@@ -396,7 +406,7 @@ input[type="range"] {
 
   .home-shell-active .app-main,
   .category-shell-active .app-main {
-    padding-top: var(--measured-header-height, var(--category-main-top));
+    padding-top: 0;
   }
 
   .category-page-shell {
@@ -407,8 +417,8 @@ input[type="range"] {
   }
 
   .category-page-shell__hero {
-    min-height: clamp(380px, 46vh, 560px);
-    padding: 0 1.25rem 1rem;
+    min-height: 0;
+    padding: 0 1.25rem 0.45rem;
   }
 
   .category-page-shell__feed {

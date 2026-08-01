@@ -21,17 +21,25 @@ type SearchYouTubeOptions = {
   category?: string;
 };
 
+type CacheTelemetry = {
+  onCacheHit?: () => void;
+  onCacheMiss?: () => void;
+};
+
 const execFileAsync = promisify(execFile);
 
-const SEARCH_TTL_MS = 1000 * 60 * 10;
+const SEARCH_TTL_MS = 1000 * 60 * 60 * 24;
+const DISCOVERY_SECTIONS_TTL_MS = 1000 * 60 * 60 * 24 * 7;
 const STREAM_TTL_MS = 1000 * 60 * 20;
 const SEARCH_CACHE_LIMIT = 64;
 const RELATED_CACHE_LIMIT = 64;
 const STREAM_CACHE_LIMIT = 48;
+const DISCOVERY_SECTIONS_CACHE_LIMIT = 1;
 const DEFAULT_RESULT_LIMIT = 12;
 const DISCOVERY_SECTION_TRACK_LIMIT = 24;
 const DISCOVERY_FETCH_LIMIT = 30;
 const DISCOVERY_ARTIST_CAP = 2;
+const DISCOVERY_MIN_VISIBLE_TRACKS = 4;
 const STREAM_FRESH_BUFFER_MS = 30_000;
 const STREAM_CANDIDATE_LIMIT = 6;
 const YT_DLP_FORMAT_SELECTOR = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[acodec*=mp4a]/bestaudio[ext=webm]/bestaudio/best";
@@ -48,9 +56,11 @@ const RELATED_PLAYER_CLIENTS = ["WEB", "IOS", "ANDROID", "WEB_EMBEDDED", "TV"] a
 const searchCache = new Map<string, CachedValue<Song[]>>();
 const relatedCache = new Map<string, CachedValue<Song[]>>();
 const streamCache = new Map<string, CachedValue<StreamResponse>>();
+const discoverySectionsCache = new Map<string, CachedValue<TrendingSection[]>>();
 const pendingSearchRequests = new Map<string, Promise<Song[]>>();
 const pendingRelatedRequests = new Map<string, Promise<Song[]>>();
 const pendingStreamRequests = new Map<string, Promise<StreamResponse>>();
+let pendingTrendingSectionsRequest: Promise<TrendingSection[]> | null = null;
 
 let ytDlpBinaryPath: string | null | undefined;
 let youtubeClientPromise: Promise<Innertube> | null = null;
@@ -307,6 +317,70 @@ function getDiscoveryCandidateScore(
   return score;
 }
 
+function appendDistinctDiscoveryTracks(baseTracks: Song[], additions: Song[], limit: number) {
+  const nextTracks = [...baseTracks];
+  const seenIdentityKeys = new Set(baseTracks.map(getDiscoveryIdentityKey).filter(Boolean));
+  const seenTrackIds = new Set(baseTracks.map((track) => track.id));
+  const artistCounts = new Map<string, number>();
+
+  for (const track of baseTracks) {
+    const artistKey = getDiscoveryArtistKey(track);
+
+    if (!artistKey) {
+      continue;
+    }
+
+    artistCounts.set(artistKey, (artistCounts.get(artistKey) || 0) + 1);
+  }
+
+  for (const song of additions) {
+    if (!isGoodDiscoverySongCandidate(song)) {
+      continue;
+    }
+
+    const identityKey = getDiscoveryIdentityKey(song);
+
+    if (!identityKey || seenIdentityKeys.has(identityKey) || seenTrackIds.has(song.id)) {
+      continue;
+    }
+
+    const artistKey = getDiscoveryArtistKey(song);
+
+    if (artistKey && (artistCounts.get(artistKey) || 0) >= DISCOVERY_ARTIST_CAP) {
+      continue;
+    }
+
+    nextTracks.push(song);
+    seenIdentityKeys.add(identityKey);
+    seenTrackIds.add(song.id);
+
+    if (artistKey) {
+      artistCounts.set(artistKey, (artistCounts.get(artistKey) || 0) + 1);
+    }
+
+    if (nextTracks.length >= limit) {
+      break;
+    }
+  }
+
+  return nextTracks;
+}
+
+function backfillDiscoverySections(sections: TrendingSection[]) {
+  const pooledTracks = sections.flatMap((section) => section.tracks);
+
+  return sections.map((section) => {
+    if (section.tracks.length >= DISCOVERY_MIN_VISIBLE_TRACKS) {
+      return section;
+    }
+
+    return {
+      ...section,
+      tracks: appendDistinctDiscoveryTracks(section.tracks, pooledTracks, DISCOVERY_MIN_VISIBLE_TRACKS)
+    };
+  });
+}
+
 async function getDiscoveryTracks(section: (typeof DISCOVERY_SECTIONS)[number]) {
   const queries = Array.from(new Set([section.query, ...(DISCOVERY_SECTION_QUERY_BANK[section.id] || [])])).filter(Boolean);
   const resultSets = await Promise.all(
@@ -438,7 +512,18 @@ function getCacheLimit(cache: Map<string, CachedValue<unknown>>) {
     return STREAM_CACHE_LIMIT;
   }
 
+  if (cache === discoverySectionsCache) {
+    return DISCOVERY_SECTIONS_CACHE_LIMIT;
+  }
+
   return 64;
+}
+
+function cloneTrendingSections(sections: TrendingSection[]) {
+  return sections.map((section) => ({
+    ...section,
+    tracks: section.tracks.map((track) => ({ ...track }))
+  }));
 }
 
 function pruneCache<T>(cache: Map<string, CachedValue<T>>) {
@@ -1010,7 +1095,12 @@ function collectMusicQueueSongs(node: unknown, bucket: Song[], seenTrackIds: Set
   }
 }
 
-export async function searchYouTube(query: string, limit = DEFAULT_RESULT_LIMIT, options: SearchYouTubeOptions = {}): Promise<Song[]> {
+export async function searchYouTube(
+  query: string,
+  limit = DEFAULT_RESULT_LIMIT,
+  options: SearchYouTubeOptions = {},
+  telemetry?: CacheTelemetry
+): Promise<Song[]> {
   const normalized = createQueryKey(query);
   const fetchLimit = Math.max(limit, DEFAULT_RESULT_LIMIT);
   const pages = Number.isFinite(options.pages) && (options.pages || 0) > 1 ? Math.min(options.pages || 1, 5) : 1;
@@ -1025,14 +1115,18 @@ export async function searchYouTube(query: string, limit = DEFAULT_RESULT_LIMIT,
   const cached = readCache(searchCache, cacheKey);
 
   if (cached) {
+    telemetry?.onCacheHit?.();
     return cached.slice(0, limit);
   }
 
   const pending = pendingSearchRequests.get(pendingKey);
 
   if (pending) {
+    telemetry?.onCacheHit?.();
     return pending.then((tracks) => tracks.slice(0, limit));
   }
+
+  telemetry?.onCacheMiss?.();
 
   const request = (ytSearch as (query: string | { query: string; pageEnd?: number; category?: string }) => Promise<YtSearchResponse>)(
     pages > 1 || category
@@ -1057,7 +1151,7 @@ export async function searchYouTube(query: string, limit = DEFAULT_RESULT_LIMIT,
   return request.then((tracks) => tracks.slice(0, limit));
 }
 
-export async function getRelatedSongs(videoId: string, limit = DEFAULT_RESULT_LIMIT): Promise<Song[]> {
+export async function getRelatedSongs(videoId: string, limit = DEFAULT_RESULT_LIMIT, telemetry?: CacheTelemetry): Promise<Song[]> {
   const normalizedVideoId = videoId.trim();
 
   if (!normalizedVideoId) {
@@ -1067,14 +1161,18 @@ export async function getRelatedSongs(videoId: string, limit = DEFAULT_RESULT_LI
   const cached = readCache(relatedCache, normalizedVideoId);
 
   if (cached) {
+    telemetry?.onCacheHit?.();
     return cached.slice(0, limit);
   }
 
   const pending = pendingRelatedRequests.get(normalizedVideoId);
 
   if (pending) {
+    telemetry?.onCacheHit?.();
     return pending.then((tracks) => tracks.slice(0, limit));
   }
+
+  telemetry?.onCacheMiss?.();
 
   const request = getYoutubeClient()
     .then(async (youtube) => {
@@ -1143,17 +1241,36 @@ export async function getRelatedSongs(videoId: string, limit = DEFAULT_RESULT_LI
 }
 
 export async function getTrendingSections(): Promise<TrendingSection[]> {
-  const sections = await Promise.all(
+  const cacheKey = "home-trending-sections";
+  const cached = readCache(discoverySectionsCache, cacheKey);
+
+  if (cached) {
+    return cloneTrendingSections(cached);
+  }
+
+  if (pendingTrendingSectionsRequest) {
+    return pendingTrendingSectionsRequest.then((sections) => cloneTrendingSections(sections));
+  }
+
+  pendingTrendingSectionsRequest = Promise.all(
     DISCOVERY_SECTIONS.map(async (section) => ({
       ...section,
       tracks: await getDiscoveryTracks(section)
     }))
-  );
+  )
+    .then((sections) => {
+      const stabilizedSections = backfillDiscoverySections(sections);
+      writeCache(discoverySectionsCache, cacheKey, stabilizedSections, DISCOVERY_SECTIONS_TTL_MS);
+      return stabilizedSections;
+    })
+    .finally(() => {
+      pendingTrendingSectionsRequest = null;
+    });
 
-  return sections;
+  return pendingTrendingSectionsRequest.then((sections) => cloneTrendingSections(sections));
 }
 
-export async function getAudioStream(videoIdOrUrl: string): Promise<StreamResponse> {
+export async function getAudioStream(videoIdOrUrl: string, telemetry?: CacheTelemetry): Promise<StreamResponse> {
   const videoUrl = videoIdOrUrl.startsWith("http")
     ? videoIdOrUrl
     : `https://www.youtube.com/watch?v=${videoIdOrUrl}`;
@@ -1161,14 +1278,18 @@ export async function getAudioStream(videoIdOrUrl: string): Promise<StreamRespon
   const cached = readCache(streamCache, cacheKey);
 
   if (cached) {
+    telemetry?.onCacheHit?.();
     return cached;
   }
 
   const pending = pendingStreamRequests.get(cacheKey);
 
   if (pending) {
+    telemetry?.onCacheHit?.();
     return pending;
   }
+
+  telemetry?.onCacheMiss?.();
 
   const request = resolveBestAudioStream(videoUrl)
     .then((streamCandidates) => {

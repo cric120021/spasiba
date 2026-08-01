@@ -1,6 +1,6 @@
 import type { InArgs } from "@libsql/client";
 
-import { ensureDbSchema, getDb, hasDatabaseAuthToken } from "@/lib/db";
+import { ensureDbSchema, ensureVisitorRecord, getDb, hasDatabaseAuthToken } from "@/lib/db";
 import { findVisitorByUsername } from "@/lib/profile";
 import type { Playlist, PlaylistShareGrant, Song } from "@/lib/types";
 
@@ -40,6 +40,19 @@ type PlaylistShareGrantRow = {
   display_name?: string | null;
   created_at: number;
 };
+
+type PlaylistsBundle = {
+  playlists: Playlist[];
+  sharedPlaylists: Playlist[];
+};
+
+type CachedPlaylistsBundleEntry = {
+  value: PlaylistsBundle;
+  expiresAt: number;
+};
+
+const PLAYLISTS_BUNDLE_CACHE_TTL_MS = 1000 * 60 * 15;
+const visitorPlaylistsBundleCache = new Map<string, CachedPlaylistsBundleEntry>();
 
 function assertDatabaseConfigured() {
   if (!hasDatabaseAuthToken()) {
@@ -116,16 +129,42 @@ function mapShareGrantRow(row: PlaylistShareGrantRow): PlaylistShareGrant {
 }
 
 async function ensureVisitor(visitorId: string) {
-  const db = getDb();
+  await ensureVisitorRecord(visitorId);
+}
 
-  await db.execute({
-    sql: `
-      INSERT INTO visitors (id, created_at)
-      VALUES (?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `,
-    args: [visitorId, createTimestamp()]
+function readCachedPlaylistsBundle(visitorId: string) {
+  const cached = visitorPlaylistsBundleCache.get(visitorId);
+
+  if (!cached) {
+    return null;
+  }
+
+  if (cached.expiresAt <= Date.now()) {
+    visitorPlaylistsBundleCache.delete(visitorId);
+    return null;
+  }
+
+  visitorPlaylistsBundleCache.delete(visitorId);
+  visitorPlaylistsBundleCache.set(visitorId, cached);
+  return cached.value;
+}
+
+function writeCachedPlaylistsBundle(visitorId: string, bundle: PlaylistsBundle) {
+  visitorPlaylistsBundleCache.set(visitorId, {
+    value: bundle,
+    expiresAt: Date.now() + PLAYLISTS_BUNDLE_CACHE_TTL_MS
   });
+
+  return bundle;
+}
+
+export function invalidateVisitorPlaylistsBundleCache(...visitorIds: string[]) {
+  visitorIds
+    .map((visitorId) => visitorId.trim())
+    .filter(Boolean)
+    .forEach((visitorId) => {
+      visitorPlaylistsBundleCache.delete(visitorId);
+    });
 }
 
 function createInClauseArgs(values: string[]) {
@@ -180,6 +219,108 @@ async function loadPlaylistTracks(playlistIds: string[]) {
   });
 
   return tracksByPlaylist;
+}
+
+async function refreshPlaylistSummary(playlistId: string) {
+  const db = getDb();
+  const result = await db.execute({
+    sql: `
+      SELECT
+        COALESCE((
+          SELECT COUNT(*)
+          FROM playlist_tracks
+          WHERE playlist_tracks.playlist_id = ?
+        ), 0) AS track_count,
+        (
+          SELECT pt.video_id
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_video_id,
+        (
+          SELECT pt.title
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_title,
+        (
+          SELECT pt.thumbnail
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_thumbnail,
+        (
+          SELECT pt.duration
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_duration,
+        COALESCE((
+          SELECT pt.duration_seconds
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ), 0) AS cover_duration_seconds,
+        (
+          SELECT pt.author
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_author,
+        (
+          SELECT pt.url
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ) AS cover_url,
+        COALESCE((
+          SELECT pt.views
+          FROM playlist_tracks AS pt
+          WHERE pt.playlist_id = ?
+          ORDER BY pt.created_at DESC
+          LIMIT 1
+        ), 0) AS cover_views
+    `,
+    args: [playlistId, playlistId, playlistId, playlistId, playlistId, playlistId, playlistId, playlistId, playlistId]
+  });
+
+  const row = result.rows[0];
+
+  await db.execute({
+    sql: `
+      UPDATE playlists
+      SET
+        track_count = ?,
+        cover_video_id = ?,
+        cover_title = ?,
+        cover_thumbnail = ?,
+        cover_duration = ?,
+        cover_duration_seconds = ?,
+        cover_author = ?,
+        cover_url = ?,
+        cover_views = ?
+      WHERE id = ?
+    `,
+    args: [
+      rowNumber(row?.track_count),
+      rowString(row?.cover_video_id) || null,
+      rowString(row?.cover_title) || null,
+      rowString(row?.cover_thumbnail) || null,
+      rowString(row?.cover_duration) || null,
+      rowNumber(row?.cover_duration_seconds),
+      rowString(row?.cover_author) || null,
+      rowString(row?.cover_url) || null,
+      rowNumber(row?.cover_views),
+      playlistId
+    ]
+  });
 }
 
 function createShareToken() {
@@ -320,11 +461,7 @@ async function hasPlaylistGrant(visitorId: string, playlistId: string) {
   return Boolean(result.rows[0]);
 }
 
-export async function getVisitorPlaylists(visitorId: string): Promise<Playlist[]> {
-  assertDatabaseConfigured();
-  await ensureDbSchema();
-  await ensureVisitor(visitorId);
-
+async function listVisitorPlaylists(visitorId: string): Promise<Playlist[]> {
   const db = getDb();
   const playlistsResult = await db.execute({
     sql: `
@@ -335,74 +472,24 @@ export async function getVisitorPlaylists(visitorId: string): Promise<Playlist[]
         visitors.display_name AS owner_name,
         playlists.created_at,
         playlists.updated_at,
-        (
-          SELECT pt.video_id
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_video_id,
-        (
-          SELECT pt.title
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_title,
-        (
-          SELECT pt.thumbnail
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_thumbnail,
-        (
-          SELECT pt.duration
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_duration,
-        (
-          SELECT pt.duration_seconds
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_duration_seconds,
-        (
-          SELECT pt.author
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_author,
-        (
-          SELECT pt.url
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_url,
-        (
-          SELECT pt.views
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_views,
-        COUNT(playlist_tracks.id) AS track_count
+        playlists.track_count,
+        playlists.cover_video_id,
+        playlists.cover_title,
+        playlists.cover_thumbnail,
+        playlists.cover_duration,
+        playlists.cover_duration_seconds,
+        playlists.cover_author,
+        playlists.cover_url,
+        playlists.cover_views
       FROM playlists
       LEFT JOIN visitors ON visitors.id = playlists.visitor_id
-      LEFT JOIN playlist_tracks ON playlist_tracks.playlist_id = playlists.id
       WHERE playlists.visitor_id = ?
-      GROUP BY playlists.id
       ORDER BY playlists.updated_at DESC, playlists.created_at DESC
     `,
     args: [visitorId]
   });
 
-  const playlists = playlistsResult.rows.map((row) =>
+  return playlistsResult.rows.map((row) =>
     mapPlaylistRow({
       id: rowString(row.id),
       name: rowString(row.name),
@@ -421,8 +508,65 @@ export async function getVisitorPlaylists(visitorId: string): Promise<Playlist[]
       cover_views: rowNumber(row.cover_views)
     })
   );
+}
 
-  return playlists;
+async function listVisitorSharedPlaylistsByUsername(username: string): Promise<Playlist[]> {
+  const db = getDb();
+  const playlistsResult = await db.execute({
+    sql: `
+      SELECT
+        playlists.id,
+        playlists.name,
+        playlists.share_token,
+        visitors.display_name AS owner_name,
+        playlists.created_at,
+        playlists.updated_at,
+        playlist_share_grants.created_at AS saved_at,
+        playlists.track_count,
+        playlists.cover_video_id,
+        playlists.cover_title,
+        playlists.cover_thumbnail,
+        playlists.cover_duration,
+        playlists.cover_duration_seconds,
+        playlists.cover_author,
+        playlists.cover_url,
+        playlists.cover_views
+      FROM playlist_share_grants
+      JOIN playlists ON playlists.id = playlist_share_grants.playlist_id
+      LEFT JOIN visitors ON visitors.id = playlists.visitor_id
+      WHERE playlist_share_grants.grantee_username = ?
+        AND playlists.share_token IS NOT NULL
+      ORDER BY saved_at DESC, playlists.updated_at DESC
+    `,
+    args: [username]
+  });
+
+  return playlistsResult.rows.map((row) => ({
+    ...mapPlaylistRow({
+      id: rowString(row.id),
+      name: rowString(row.name),
+      share_token: rowString(row.share_token) || null,
+      owner_name: rowString(row.owner_name) || null,
+      created_at: rowNumber(row.created_at),
+      updated_at: rowNumber(row.updated_at),
+      track_count: rowNumber(row.track_count),
+      cover_video_id: rowString(row.cover_video_id) || null,
+      cover_title: rowString(row.cover_title) || null,
+      cover_thumbnail: rowString(row.cover_thumbnail) || null,
+      cover_duration: rowString(row.cover_duration) || null,
+      cover_duration_seconds: rowNumber(row.cover_duration_seconds),
+      cover_author: rowString(row.cover_author) || null,
+      cover_url: rowString(row.cover_url) || null,
+      cover_views: rowNumber(row.cover_views)
+    }),
+    isShared: true
+  }));
+}
+
+export async function getVisitorPlaylists(visitorId: string): Promise<Playlist[]> {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  return listVisitorPlaylists(visitorId);
 }
 
 export async function createPlaylist(visitorId: string, name: string) {
@@ -447,6 +591,8 @@ export async function createPlaylist(visitorId: string, name: string) {
     `,
     args: [playlistId, visitorId, trimmedName.slice(0, 80), timestamp, timestamp]
   });
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 
   return {
     id: playlistId,
@@ -534,6 +680,9 @@ export async function addTrackToPlaylist(visitorId: string, playlistId: string, 
     ],
     "write"
   );
+
+  await refreshPlaylistSummary(playlistId);
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 }
 
 export async function removeTrackFromPlaylist(visitorId: string, playlistId: string, videoId: string) {
@@ -582,12 +731,14 @@ export async function removeTrackFromPlaylist(visitorId: string, playlistId: str
     ],
     "write"
   );
+
+  await refreshPlaylistSummary(playlistId);
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 }
 
 export async function getVisitorPlaylistById(visitorId: string, playlistId: string): Promise<Playlist | null> {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
   const db = getDb();
   const playlistResult = await db.execute({
@@ -599,12 +750,18 @@ export async function getVisitorPlaylistById(visitorId: string, playlistId: stri
         visitors.display_name AS owner_name,
         playlists.created_at,
         playlists.updated_at,
-        COUNT(playlist_tracks.id) AS track_count
+        playlists.track_count,
+        playlists.cover_video_id,
+        playlists.cover_title,
+        playlists.cover_thumbnail,
+        playlists.cover_duration,
+        playlists.cover_duration_seconds,
+        playlists.cover_author,
+        playlists.cover_url,
+        playlists.cover_views
       FROM playlists
       LEFT JOIN visitors ON visitors.id = playlists.visitor_id
-      LEFT JOIN playlist_tracks ON playlist_tracks.playlist_id = playlists.id
       WHERE playlists.visitor_id = ? AND playlists.id = ?
-      GROUP BY playlists.id
       LIMIT 1
     `,
     args: [visitorId, playlistId]
@@ -667,6 +824,8 @@ export async function renamePlaylist(visitorId: string, playlistId: string, name
     throw new Error("Playlist not found.");
   }
 
+  invalidateVisitorPlaylistsBundleCache(visitorId);
+
   return playlist;
 }
 
@@ -709,13 +868,17 @@ export async function deletePlaylist(visitorId: string, playlistId: string) {
     ],
     "write"
   );
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 }
 
 export async function getOrCreatePlaylistShareToken(visitorId: string, playlistId: string) {
   assertDatabaseConfigured();
   await ensureDbSchema();
   await ensureVisitor(visitorId);
-  return ensurePlaylistShareToken(visitorId, playlistId);
+  const shareToken = await ensurePlaylistShareToken(visitorId, playlistId);
+  invalidateVisitorPlaylistsBundleCache(visitorId);
+  return shareToken;
 }
 
 export async function revokePlaylistShare(visitorId: string, playlistId: string) {
@@ -765,6 +928,8 @@ export async function revokePlaylistShare(visitorId: string, playlistId: string)
     ],
     "write"
   );
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 }
 
 export async function getPlaylistShareAccess(visitorId: string, playlistId: string) {
@@ -823,6 +988,8 @@ export async function grantPlaylistAccessByUsername(visitorId: string, playlistI
 
   const grants = await loadPlaylistShareGrants(playlistId);
 
+  invalidateVisitorPlaylistsBundleCache(visitorId, targetVisitor.visitorId);
+
   return {
     shareToken,
     grants,
@@ -831,7 +998,10 @@ export async function grantPlaylistAccessByUsername(visitorId: string, playlistI
 }
 
 export async function revokePlaylistAccessForVisitor(visitorId: string, playlistId: string, granteeVisitorId: string) {
-  return revokePlaylistAccessForUsername(visitorId, playlistId, granteeVisitorId);
+  const granteeUsername = await getVisitorUsername(granteeVisitorId);
+  const grants = await revokePlaylistAccessForUsername(visitorId, playlistId, granteeUsername);
+  invalidateVisitorPlaylistsBundleCache(visitorId, granteeVisitorId);
+  return grants;
 }
 
 export async function revokePlaylistAccessForUsername(visitorId: string, playlistId: string, username: string) {
@@ -871,6 +1041,10 @@ export async function revokePlaylistAccessForUsername(visitorId: string, playlis
     ],
     "write"
   );
+
+  const normalizedUsername = username.trim().toLowerCase();
+  const grantee = normalizedUsername ? await findVisitorByUsername(normalizedUsername) : null;
+  invalidateVisitorPlaylistsBundleCache(visitorId, grantee?.visitorId || "");
 
   return loadPlaylistShareGrants(playlistId);
 }
@@ -913,6 +1087,8 @@ export async function saveSharedPlaylistForVisitor(visitorId: string, shareToken
     `,
     args: [playlistId, visitorId, createTimestamp()]
   });
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 }
 
 export async function removeSharedPlaylistForVisitor(visitorId: string, shareToken: string) {
@@ -939,12 +1115,69 @@ export async function removeSharedPlaylistForVisitor(visitorId: string, shareTok
     `,
     args: [visitorId, trimmedShareToken]
   });
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
+}
+
+export async function revokeSharedPlaylistAccessForVisitor(visitorId: string, shareToken: string) {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  await ensureVisitor(visitorId);
+
+  const trimmedShareToken = shareToken.trim();
+
+  if (!trimmedShareToken) {
+    throw new Error("A valid share token is required.");
+  }
+
+  const playlistRow = await loadPlaylistByShareToken(trimmedShareToken);
+
+  if (!playlistRow) {
+    throw new Error("Shared playlist not found.");
+  }
+
+  const playlistId = rowString(playlistRow.id);
+  const ownerVisitorId = rowString(playlistRow.visitor_id);
+
+  if (ownerVisitorId === visitorId) {
+    throw new Error("You already own this playlist.");
+  }
+
+  const username = await getVisitorUsername(visitorId);
+
+  if (!username) {
+    await removeSharedPlaylistForVisitor(visitorId, trimmedShareToken);
+    return;
+  }
+
+  const db = getDb();
+
+  await db.batch(
+    [
+      {
+        sql: `
+          DELETE FROM playlist_share_grants
+          WHERE playlist_id = ? AND grantee_username = ?
+        `,
+        args: [playlistId, username]
+      },
+      {
+        sql: `
+          DELETE FROM shared_playlist_library
+          WHERE playlist_id = ? AND subscriber_visitor_id = ?
+        `,
+        args: [playlistId, visitorId]
+      }
+    ],
+    "write"
+  );
+
+  invalidateVisitorPlaylistsBundleCache(visitorId, ownerVisitorId);
 }
 
 export async function isSharedPlaylistSaved(visitorId: string, shareToken: string) {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
   const trimmedShareToken = shareToken.trim();
 
@@ -982,116 +1215,38 @@ export async function isSharedPlaylistSaved(visitorId: string, shareToken: strin
 export async function getVisitorSharedPlaylists(visitorId: string): Promise<Playlist[]> {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
   const username = await getVisitorUsername(visitorId);
 
   if (!username) {
     return [];
   }
+  return listVisitorSharedPlaylistsByUsername(username);
+}
 
-  const db = getDb();
-  const playlistsResult = await db.execute({
-    sql: `
-      SELECT
-        playlists.id,
-        playlists.name,
-        playlists.share_token,
-        visitors.display_name AS owner_name,
-        playlists.created_at,
-        playlists.updated_at,
-        MAX(playlist_share_grants.created_at) AS saved_at,
-        (
-          SELECT pt.video_id
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_video_id,
-        (
-          SELECT pt.title
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_title,
-        (
-          SELECT pt.thumbnail
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_thumbnail,
-        (
-          SELECT pt.duration
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_duration,
-        (
-          SELECT pt.duration_seconds
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_duration_seconds,
-        (
-          SELECT pt.author
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_author,
-        (
-          SELECT pt.url
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_url,
-        (
-          SELECT pt.views
-          FROM playlist_tracks AS pt
-          WHERE pt.playlist_id = playlists.id
-          ORDER BY pt.created_at DESC
-          LIMIT 1
-        ) AS cover_views,
-        COUNT(playlist_tracks.id) AS track_count
-      FROM playlist_share_grants
-      JOIN playlists ON playlists.id = playlist_share_grants.playlist_id
-      LEFT JOIN visitors ON visitors.id = playlists.visitor_id
-      LEFT JOIN playlist_tracks ON playlist_tracks.playlist_id = playlists.id
-      WHERE playlist_share_grants.grantee_username = ?
-        AND playlists.share_token IS NOT NULL
-      GROUP BY playlists.id
-      ORDER BY saved_at DESC, playlists.updated_at DESC
-    `,
-    args: [username]
+export async function getVisitorPlaylistsBundle(visitorId: string): Promise<{
+  playlists: Playlist[];
+  sharedPlaylists: Playlist[];
+}> {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  const cached = readCachedPlaylistsBundle(visitorId);
+
+  if (cached) {
+    return cached;
+  }
+
+  const [playlists, username] = await Promise.all([
+    listVisitorPlaylists(visitorId),
+    getVisitorUsername(visitorId)
+  ]);
+
+  const sharedPlaylists = username ? await listVisitorSharedPlaylistsByUsername(username) : [];
+
+  return writeCachedPlaylistsBundle(visitorId, {
+    playlists,
+    sharedPlaylists
   });
-
-  const playlists = playlistsResult.rows.map((row) => ({
-    ...mapPlaylistRow({
-      id: rowString(row.id),
-      name: rowString(row.name),
-      share_token: rowString(row.share_token) || null,
-      owner_name: rowString(row.owner_name) || null,
-      created_at: rowNumber(row.created_at),
-      updated_at: rowNumber(row.updated_at),
-      track_count: rowNumber(row.track_count),
-      cover_video_id: rowString(row.cover_video_id) || null,
-      cover_title: rowString(row.cover_title) || null,
-      cover_thumbnail: rowString(row.cover_thumbnail) || null,
-      cover_duration: rowString(row.cover_duration) || null,
-      cover_duration_seconds: rowNumber(row.cover_duration_seconds),
-      cover_author: rowString(row.cover_author) || null,
-      cover_url: rowString(row.cover_url) || null,
-      cover_views: rowNumber(row.cover_views)
-    }),
-    isShared: true
-  }));
-
-  return playlists;
 }
 
 export async function getSharedPlaylist(shareToken: string): Promise<Playlist | null> {
@@ -1114,12 +1269,18 @@ export async function getSharedPlaylist(shareToken: string): Promise<Playlist | 
         visitors.display_name AS owner_name,
         playlists.created_at,
         playlists.updated_at,
-        COUNT(playlist_tracks.id) AS track_count
+        playlists.track_count,
+        playlists.cover_video_id,
+        playlists.cover_title,
+        playlists.cover_thumbnail,
+        playlists.cover_duration,
+        playlists.cover_duration_seconds,
+        playlists.cover_author,
+        playlists.cover_url,
+        playlists.cover_views
       FROM playlists
       LEFT JOIN visitors ON visitors.id = playlists.visitor_id
-      LEFT JOIN playlist_tracks ON playlist_tracks.playlist_id = playlists.id
       WHERE playlists.share_token = ?
-      GROUP BY playlists.id
       LIMIT 1
     `,
     args: [trimmedShareToken]
@@ -1153,7 +1314,6 @@ export async function getSharedPlaylist(shareToken: string): Promise<Playlist | 
 export async function getSharedPlaylistForVisitor(visitorId: string, shareToken: string): Promise<Playlist | null> {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
   const playlistRow = await loadPlaylistByShareToken(shareToken.trim());
 
@@ -1201,6 +1361,8 @@ export async function unlockSharedPlaylistForVisitor(visitorId: string, shareCod
   if (!playlist) {
     throw new Error("Shared playlist not found.");
   }
+
+  invalidateVisitorPlaylistsBundleCache(visitorId);
 
   return {
     shareToken: trimmedCode,

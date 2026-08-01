@@ -1,11 +1,12 @@
 "use client";
 
 import { readPersistedCacheRecord, writePersistedCache } from "@/lib/client-persisted-cache";
+import { isCacheOnlyModeEnabled, noteNetworkFailure, noteNetworkSuccess } from "@/lib/resource-governor";
 import type { HomeCategoryFeed } from "@/lib/home-category-feed";
 
-const CATEGORY_FEED_MEMORY_TTL_MS = 1000 * 60 * 30;
-const CATEGORY_FEED_SOFT_REFRESH_TTL_MS = 1000 * 60 * 60 * 6;
-const CATEGORY_FEED_PERSISTED_CACHE_TTL_MS = 1000 * 60 * 60 * 24;
+const CATEGORY_FEED_MEMORY_TTL_MS = 1000 * 60 * 60 * 12;
+const CATEGORY_FEED_SOFT_REFRESH_TTL_MS = 1000 * 60 * 60 * 24 * 7;
+const CATEGORY_FEED_PERSISTED_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
 
 const memoryCache = new Map<string, { value: HomeCategoryFeed; expiresAt: number }>();
 const pendingRequests = new Map<string, Promise<HomeCategoryFeed | null>>();
@@ -38,6 +39,10 @@ function writeCategoryFeedCache(categoryId: string, feed: HomeCategoryFeed) {
   memoryCache.set(categoryId, record);
   writePersistedCache(getCategoryFeedCacheKey(categoryId), feed, CATEGORY_FEED_PERSISTED_CACHE_TTL_MS);
   return feed;
+}
+
+export function primeCategoryFeed(categoryId: string, feed: HomeCategoryFeed) {
+  return writeCategoryFeedCache(categoryId, feed);
 }
 
 function readPersistedCategoryFeedRecord(categoryId: string) {
@@ -83,11 +88,19 @@ function createCategoryFeedRequest(categoryId: string, signal?: AbortSignal) {
       throw new Error((payload as { error?: string } | null)?.error || "Unable to load category feed.");
     }
 
+    noteNetworkSuccess();
     return writeCategoryFeedCache(categoryId, payload as HomeCategoryFeed);
+  }).catch((error) => {
+    noteNetworkFailure();
+    throw error;
   });
 }
 
 function refreshCategoryFeedInBackground(categoryId: string) {
+  if (isCacheOnlyModeEnabled()) {
+    return;
+  }
+
   if (pendingRequests.has(categoryId)) {
     return;
   }
@@ -129,6 +142,12 @@ export async function fetchCategoryFeed(
     }
   }
 
+  const cached = readCachedCategoryFeed(categoryId);
+
+  if (isCacheOnlyModeEnabled() && cached) {
+    return cached;
+  }
+
   const request = createCategoryFeedRequest(categoryId, options?.signal)
     .finally(() => {
       pendingRequests.delete(categoryId);
@@ -138,7 +157,15 @@ export async function fetchCategoryFeed(
   return request;
 }
 
-export function prefetchCategoryFeed(categoryId: string) {
+export function prefetchCategoryFeed(categoryId: string, options?: { onlyIfMissing?: boolean }) {
+  if (options?.onlyIfMissing && readCachedCategoryFeed(categoryId)) {
+    return;
+  }
+
+  if (isCacheOnlyModeEnabled() && readCachedCategoryFeed(categoryId)) {
+    return;
+  }
+
   void fetchCategoryFeed(categoryId).catch(() => {
     // Best-effort only.
   });

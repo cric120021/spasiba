@@ -1,13 +1,16 @@
 "use client";
 
+import { usePathname } from "next/navigation";
 import { useEffect } from "react";
 
-import { syncPlaylistsLibraryWithServer } from "@/lib/playlists-client";
-import { syncProfileWithServer } from "@/lib/profile-client";
+import { hasPendingProfileChanges, syncProfileWithServer } from "@/lib/profile-client";
+import { ensureZeroWasteCacheMaintenance } from "@/lib/zero-waste-idb";
 
 const SESSION_SYNC_FLAG = "spasiba:session-sync:v1";
 
 export default function SessionDataBootstrap() {
+  const pathname = usePathname();
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -34,13 +37,13 @@ export default function SessionDataBootstrap() {
         return;
       }
 
-      void syncProfileWithServer().catch(() => {
-        // Local cache remains the source during this session.
-      });
+      ensureZeroWasteCacheMaintenance();
 
-      void syncPlaylistsLibraryWithServer().catch(() => {
-        // Shared playlist freshness is best-effort only.
-      });
+      if (hasPendingProfileChanges() || pathname.startsWith("/profile")) {
+        void syncProfileWithServer().catch(() => {
+          // Local cache remains the source during this session.
+        });
+      }
     };
 
     if (idleWindow.requestIdleCallback) {
@@ -60,7 +63,7 @@ export default function SessionDataBootstrap() {
         window.clearTimeout(timeoutHandle);
       }
     };
-  }, []);
+  }, [pathname]);
 
   return null;
 }

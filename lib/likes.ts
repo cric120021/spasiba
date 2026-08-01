@@ -1,4 +1,4 @@
-import { ensureDbSchema, getDb, hasDatabaseAuthToken } from "@/lib/db";
+import { ensureDbSchema, ensureVisitorRecord, getDb, hasDatabaseAuthToken } from "@/lib/db";
 import type { ProfileSongEntry, Song } from "@/lib/types";
 
 type LikedTrackRow = {
@@ -19,29 +19,12 @@ function assertDatabaseConfigured() {
   }
 }
 
-function createTimestamp() {
-  return Date.now();
-}
-
 function rowNumber(value: unknown) {
   return typeof value === "number" ? value : Number(value || 0);
 }
 
 function rowString(value: unknown) {
   return typeof value === "string" ? value : String(value || "");
-}
-
-async function ensureVisitor(visitorId: string) {
-  const db = getDb();
-
-  await db.execute({
-    sql: `
-      INSERT INTO visitors (id, created_at)
-      VALUES (?, ?)
-      ON CONFLICT(id) DO NOTHING
-    `,
-    args: [visitorId, createTimestamp()]
-  });
 }
 
 function mapLikedTrackRow(row: LikedTrackRow): ProfileSongEntry {
@@ -59,11 +42,7 @@ function mapLikedTrackRow(row: LikedTrackRow): ProfileSongEntry {
   };
 }
 
-export async function getVisitorLikedSongs(visitorId: string): Promise<ProfileSongEntry[]> {
-  assertDatabaseConfigured();
-  await ensureDbSchema();
-  await ensureVisitor(visitorId);
-
+async function listVisitorLikedSongs(visitorId: string): Promise<ProfileSongEntry[]> {
   const db = getDb();
   const result = await db.execute({
     sql: `
@@ -100,6 +79,16 @@ export async function getVisitorLikedSongs(visitorId: string): Promise<ProfileSo
   );
 }
 
+export async function getVisitorLikedSongsDbReady(visitorId: string): Promise<ProfileSongEntry[]> {
+  return listVisitorLikedSongs(visitorId);
+}
+
+export async function getVisitorLikedSongs(visitorId: string): Promise<ProfileSongEntry[]> {
+  assertDatabaseConfigured();
+  await ensureDbSchema();
+  return listVisitorLikedSongs(visitorId);
+}
+
 export async function isTrackLiked(visitorId: string, videoId: string) {
   if (!videoId.trim()) {
     return false;
@@ -107,7 +96,6 @@ export async function isTrackLiked(visitorId: string, videoId: string) {
 
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
 
   const db = getDb();
   const result = await db.execute({
@@ -126,10 +114,10 @@ export async function isTrackLiked(visitorId: string, videoId: string) {
 export async function likeTrack(visitorId: string, song: Song) {
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
-  const timestamp = createTimestamp();
+  const timestamp = Date.now();
 
   await db.execute({
     sql: `
@@ -180,7 +168,7 @@ export async function unlikeTrack(visitorId: string, videoId: string) {
 
   assertDatabaseConfigured();
   await ensureDbSchema();
-  await ensureVisitor(visitorId);
+  await ensureVisitorRecord(visitorId);
 
   const db = getDb();
   await db.execute({

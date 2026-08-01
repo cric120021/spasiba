@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getVisitorListenerProfile, recordVisitorEngagementBatch } from "@/lib/engagement";
-import type { EngagementPayload } from "@/lib/types";
+import { invalidateVisitorProfileCache } from "@/lib/profile";
+import type { EngagementPayload, ListenerProfile } from "@/lib/types";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+
+const PROFILE_HISTORY_ACTIONS = new Set(["play_start", "complete", "skip_early", "skip_mid", "skip_late"]);
 
 function getVisitorId(request: NextRequest) {
   return request.cookies.get("spasiba_guest_id")?.value?.trim() || "";
@@ -53,9 +56,11 @@ export async function POST(request: NextRequest) {
             signals?: string[];
           }
         >;
+        profile?: ListenerProfile | null;
       }
     | (EngagementPayload & {
         signals?: string[];
+        profile?: ListenerProfile | null;
       })
     | null;
 
@@ -87,7 +92,14 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const profile = await recordVisitorEngagementBatch(visitorId, validEvents);
+    const profile = await recordVisitorEngagementBatch(
+      visitorId,
+      validEvents,
+      normalizeListenerProfilePayload((payload as { profile?: ListenerProfile | null } | null)?.profile)
+    );
+    if (validEvents.some((event) => PROFILE_HISTORY_ACTIONS.has(String(event.action || "").trim().toLowerCase()))) {
+      invalidateVisitorProfileCache(visitorId, "full");
+    }
     return NextResponse.json({ ok: true, profile, count: validEvents.length });
   } catch (error) {
     return NextResponse.json(
@@ -99,4 +111,8 @@ export async function POST(request: NextRequest) {
       }
     );
   }
+}
+
+function normalizeListenerProfilePayload(profile: ListenerProfile | null | undefined) {
+  return profile && typeof profile === "object" ? profile : null;
 }

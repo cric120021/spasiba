@@ -56,13 +56,17 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
-    <html lang="en" style={{ background: "#000000" }}>
+    <html lang="en" data-ui-mode="night" style={{ background: "#000000", colorScheme: "dark" }}>
       <head>
         <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
         <meta name="theme-color" content="#000000" />
+        <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+        <meta name="theme-color" content="#000000" media="(prefers-color-scheme: light)" />
+        <meta name="color-scheme" content="dark" />
+        <meta name="msapplication-navbutton-color" content="#000000" />
         <meta name="apple-mobile-web-app-capable" content="yes" />
         <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-        <style>{`html,body{margin:0;background:#000!important;color:#f8fafc}#initial-loader{position:fixed;inset:0;background:#000;z-index:100}`}</style>
+        <style>{`html,body{margin:0;background:#000!important;color:#f8fafc;color-scheme:dark}#initial-loader{position:fixed;inset:0;background:#000;z-index:100}html.session-splash-seen #initial-loader{opacity:0;pointer-events:none}`}</style>
         <link rel="dns-prefetch" href="//i.ytimg.com" />
         <link rel="dns-prefetch" href="//www.youtube.com" />
         <link rel="preconnect" href="https://i.ytimg.com" crossOrigin="" />
@@ -72,7 +76,11 @@ export default function RootLayout({ children }: Readonly<{ children: ReactNode 
         <link rel="preload" href="/pwa-shell.js" as="script" />
         <link rel="apple-touch-startup-image" href="/apple-splash.svg" />
       </head>
-      <body suppressHydrationWarning style={{ background: "#000000", color: "#f8fafc" }}>
+      <body suppressHydrationWarning style={{ background: "#000000", color: "#f8fafc", colorScheme: "dark" }}>
+        <Script
+          id="spasiba-splash-session-guard"
+          strategy="beforeInteractive"
+        >{`try{if(window.sessionStorage.getItem("spasiba_splash_seen_v1")==="1"){document.documentElement.classList.add("session-splash-seen");}}catch(_error){}`}</Script>
         <Script src="/pwa-shell.js" strategy="beforeInteractive" />
         <div id="initial-loader" aria-hidden="true">
           <div className="initial-splash">

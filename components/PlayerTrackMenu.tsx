@@ -5,11 +5,13 @@ import { memo, type MouseEvent as ReactMouseEvent, useCallback, useEffect, useRe
 
 import SaveToPlaylistButton from "@/components/SaveToPlaylistButton";
 import { audioController } from "@/lib/audio-controller";
-import { emitProfileUpdatedEvent } from "@/lib/profile-events";
-import { fetchProfile, readCachedProfile } from "@/lib/profile-client";
+import { emitProfileUpdatedEvent, PROFILE_UPDATED_EVENT } from "@/lib/profile-events";
+import { readCachedProfile } from "@/lib/profile-client";
 import { shareSong } from "@/lib/song-share";
 import type { Song } from "@/lib/types";
 import { playerActions } from "@/store/playerStore";
+
+import TrackDetailsModal from "@/components/TrackDetailsModal";
 
 type PlayerTrackMenuProps = {
   song: Song;
@@ -26,7 +28,7 @@ type MenuPosition = {
 function getMenuPosition(rect: DOMRect, align: "left" | "right") {
   const viewportPadding = 16;
   const menuWidth = 240;
-  const estimatedMenuHeight = 180;
+  const estimatedMenuHeight = 220;
   const preferredLeft = align === "left" ? rect.left : rect.right - menuWidth;
   const left = Math.min(Math.max(viewportPadding, preferredLeft), window.innerWidth - menuWidth - viewportPadding);
   const belowTop = rect.bottom + 10;
@@ -50,6 +52,7 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
   const [mounted, setMounted] = useState(false);
   const [open, setOpen] = useState(false);
   const [playlistOpen, setPlaylistOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [position, setPosition] = useState<MenuPosition | null>(null);
   const [liked, setLiked] = useState(() => Boolean(readCachedProfile()?.likedSongs.some((track) => track.videoId === song.videoId)));
   const [loadingLikeState, setLoadingLikeState] = useState(() => readCachedProfile() === undefined);
@@ -60,16 +63,54 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
   }, []);
 
   useEffect(() => {
+    const syncFromCache = () => {
+      const cachedProfile = readCachedProfile();
+      setLiked(Boolean(cachedProfile?.likedSongs.some((track) => track.videoId === song.videoId)));
+      setLoadingLikeState(cachedProfile === undefined);
+    };
+
+    syncFromCache();
+    window.addEventListener(PROFILE_UPDATED_EVENT, syncFromCache);
+
+    return () => {
+      window.removeEventListener(PROFILE_UPDATED_EVENT, syncFromCache);
+    };
+  }, [song.id, song.videoId]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    if (readCachedProfile() !== undefined) {
+      return;
+    }
+
     let cancelled = false;
     setLoadingLikeState(true);
 
-    void fetchProfile()
-      .then((profile) => {
+    void fetch(`/api/likes?videoId=${encodeURIComponent(song.videoId)}`, {
+      method: "GET",
+      credentials: "same-origin",
+      headers: {
+        Accept: "application/json"
+      }
+    })
+      .then(async (response) => {
+        const payload = (await response.json().catch(() => null)) as { liked?: boolean; error?: string } | null;
+
+        if (!response.ok) {
+          throw new Error(payload?.error || "Unable to load likes.");
+        }
+
+        return Boolean(payload?.liked);
+      })
+      .then((likedFromServer) => {
         if (cancelled) {
           return;
         }
 
-        setLiked(Boolean(profile?.likedSongs.some((track) => track.videoId === song.videoId)));
+        setLiked(likedFromServer);
       })
       .catch(() => {
         if (!cancelled) {
@@ -85,7 +126,7 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
     return () => {
       cancelled = true;
     };
-  }, [song.id, song.videoId]);
+  }, [open, song.id, song.videoId]);
 
   useEffect(() => {
     if (!open) {
@@ -258,6 +299,18 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
             type="button"
             onClick={(event) => {
               event.stopPropagation();
+              setOpen(false);
+              setDetailsOpen(true);
+            }}
+            className="flex w-full items-center rounded-[16px] px-4 py-3 text-left text-sm text-white transition hover:bg-white/[0.08]"
+          >
+            <span>Details</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={(event) => {
+              event.stopPropagation();
               handleClosePlayer();
             }}
             className="flex w-full items-center rounded-[16px] px-4 py-3 text-left text-sm text-rose-100 transition hover:bg-white/[0.08]"
@@ -286,6 +339,7 @@ function PlayerTrackMenuComponent({ song, className, align = "right", onClosePla
       {menu}
 
       <SaveToPlaylistButton song={song} open={playlistOpen} onOpenChange={setPlaylistOpen} hideTrigger />
+      <TrackDetailsModal song={song} open={detailsOpen} onOpenChange={setDetailsOpen} />
     </>
   );
 }

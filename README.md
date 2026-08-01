@@ -1,111 +1,48 @@
 # Spasiba
 
-Spasiba is a fullscreen, mobile-first music web app / PWA built with Next.js.
-It is designed to feel closer to a real music app than a typical website while still staying fast on the web stack.
+Spasiba is a mobile-first music web app and installable PWA built with Next.js. Its job is not to be the content source. YouTube is the content source. Spasiba is the experience layer on top of YouTube: search, playback, queueing, playlists, sharing, profile, and caching are all shaped so the app feels closer to a real music player than a normal website.
 
-The app is intentionally built around a simple product idea:
+This README is a technical handbook for the app in its current workspace state.
 
-- search fast
-- play instantly
-- keep the player elegant
-- make playlists easy
-- let YouTube drive discovery where YouTube is strongest
-- add only a light layer of Spasiba intelligence on top
+For the experience-layer companion doc, see [README-UI-UX.md](./README-UI-UX.md).
 
-This README is a living technical handbook for the current app state in this workspace.
-It is meant to explain not just what exists, but why it was built this way and what logic the app currently uses.
+It explains:
 
----
+- what each major feature does
+- how the app is structured
+- how playback works for audio and video
+- how sync is handled
+- how queueing, search, categories, profile, playlists, sharing, and caching work
+- which parts are local-first and which parts go to Turso or YouTube
 
-## 1. Product Goals
+## 1. Product Model
 
-The app is trying to solve these user experience goals:
+Spasiba is built around a few principles:
 
-1. feel like a native music app on phone
-2. keep search immediate and uncluttered
-3. let the player stay smooth even when the queue is changing
-4. make playlists persistent and shareable
-5. keep queue quality close to YouTube Music instead of random YouTube search junk
-6. add lightweight personalization without slowing playback
+- YouTube is strongest at content supply and discovery.
+- Spasiba should hide the messiness of the web stack as much as possible.
+- Playback smoothness matters more than cleverness.
+- Most repeat work should stay local on the device.
+- Server work should be reserved for durable data, recovery, and hard-to-cache YouTube operations.
+- The player, queue, and search should feel instant even when the network is not perfect.
 
-The design philosophy is:
+## 2. Important Correction: Spasiba Does Not Literally Play "YouTube MP3"
 
-- YouTube is the content source
-- Spasiba is the experience layer
-- speed is more important than clever-but-slow logic
-- queue quality matters more than “AI for the sake of AI”
+This matters because the playback architecture makes more sense once this is clear.
 
----
+Spasiba does not convert YouTube into a permanent MP3 file.
 
-## 2. Current Feature Set
+It uses two families of playback:
 
-### Playback
+- direct audio stream playback through a normal HTML `<audio>` element when the app has resolved a valid temporary YouTube audio stream URL
+- YouTube iframe playback when the app chooses to let YouTube's own player handle playback
 
-- sticky mini player
-- fullscreen expanded player
-- audio / video mode switch
-- seek bar
-- previous / next
-- queue view
-- volume control
-- queue reorder support
-- toast feedback for actions
-- media session integration for mobile lock screen where the browser allows it
+So when people say "YouTube MP3" in casual conversation, the closest correct interpretation inside Spasiba is:
 
-### Search
+- temporary `googlevideo` audio streams, usually `audio/mp4` or `audio/webm`, resolved on demand
+- or YouTube's own player running inside an iframe
 
-- search suggestions dropdown
-- no forced navigation while typing
-- results open only when the user taps a suggestion or presses search
-- result cards support play, queue, playlist actions
-
-### Discovery
-
-- category-based home rails
-- horizontal scrolling rails instead of tall vertical stacks
-- larger category pools instead of tiny one-screen shelves
-- discovery filtering to avoid playlist dumps, mashups, reels, interviews, and generic junk
-
-### Playlists
-
-- create playlist
-- rename playlist
-- delete playlist
-- add song to playlist from cards
-- add song to playlist from player menus
-- playlist detail page
-- playlist playback with `Mix on / Mix off`
-
-### Shared Playlists
-
-- share by link
-- share by code
-- share by username grants
-- multiple people can be granted access to the same playlist
-- owner can revoke one user or revoke all sharing
-- followers see live updates when the owner adds more songs
-
-### Profile
-
-- display name
-- username
-- username copy button
-- profile photo add / replace / delete
-- monthly listening history
-- liked songs
-- clear viewed history
-- clear suggestion data
-
-### PWA / App Feel
-
-- standalone installable app
-- manifest + theme color + safe areas
-- black first paint
-- static branded splash screen
-- install prompt
-- service worker shell caching
-
----
+That distinction is the core of the playback architecture.
 
 ## 3. Tech Stack
 
@@ -114,1416 +51,1234 @@ The design philosophy is:
 - Next.js App Router
 - React
 - Tailwind CSS v4
-- client-side external player store
+- client-side external store built around `useSyncExternalStore`
 
-### Backend / Data
+### Backend and persistence
 
-- Next.js route handlers
-- Turso / libSQL
+- Next.js Route Handlers
+- Turso / libSQL for durable user data
 
-### YouTube / Discovery / Streams
+### YouTube and media data
 
-- `yt-search` for broad search candidate collection
-- `youtubei.js` for YouTube / YouTube Music structured metadata and related rails
-- `@distube/ytdl-core` as a final stream fallback
-- `yt-dlp` as the first direct stream resolver on the server when possible
+- `yt-search` for broad search result collection
+- `youtubei.js` for YouTube / YouTube Music metadata and related content
+- `@distube/ytdl-core` as a stream fallback
+- `yt-dlp` as the strongest server-side direct stream resolver
+- YouTube IFrame API for embedded playback
 
 ### Deployment
 
 - Vercel
 
----
+## 4. Top-Level Architecture
 
-## 4. High-Level Architecture
+The app is easiest to understand as six layers:
 
-The app is split into 4 main layers:
+1. shell and route layer
+2. player state and playback controller
+3. YouTube content and stream resolution layer
+4. local persistence and cache layer
+5. user-data layer backed by Turso
+6. recommendation and engagement layer
 
-### 4.1 UI shell layer
+```mermaid
+flowchart LR
+  UI["Pages and Components"] --> Store["playerStore"]
+  UI --> SearchClient["search-client / category-feed-client / profile-client / playlists-client"]
+  Store <--> Controller["audio-controller"]
+  Controller --> Audio["HTMLAudioElement"]
+  Controller --> HiddenYT["Hidden YouTube IFrame Player"]
+  UI --> VisibleYT["Visible YouTube Player in Player.tsx"]
+  SearchClient --> API["Next.js API Routes"]
+  API --> YT["YouTube Search / Related / Stream Resolvers"]
+  API --> Turso["Turso / libSQL"]
+  Controller --> Local["localStorage / sessionStorage / IndexedDB"]
+  SearchClient --> Local
+  UI --> Local
+```
 
-Responsible for:
+## 5. Main File Map
 
-- layout
-- sticky header
-- splash
-- install prompt
-- safe areas
-- player mount
+These are the files that define the app's behavior most strongly.
 
-Main files:
+### Shell and boot
 
 - `app/layout.tsx`
 - `app/globals.css`
 - `components/PwaBootstrap.tsx`
-- `components/InstallPrompt.tsx`
+- `components/PlayerBootstrap.tsx`
+- `components/SessionDataBootstrap.tsx`
 
-### 4.2 Player + queue layer
-
-Responsible for:
-
-- current track
-- queue
-- history
-- seeking
-- loading
-- background behavior
-- queue refill
-- recommendation ranking
-
-Main files:
+### Playback
 
 - `lib/audio-controller.ts`
 - `store/playerStore.ts`
 - `components/Player.tsx`
-- `components/PlayerBootstrap.tsx`
 - `lib/youtube-iframe.ts`
+- `lib/player-queue-cache.ts`
 
-### 4.3 Content / YouTube data layer
+### Search and YouTube
 
-Responsible for:
-
-- search
-- related songs
-- category rails
-- trending sections
-- stream resolution
-
-Main files:
-
-- `lib/youtube.ts`
 - `app/api/search/route.ts`
 - `app/api/stream/route.ts`
+- `lib/search-client.ts`
+- `lib/search-history.ts`
+- `lib/youtube.ts`
+- `components/SearchBar.tsx`
+- `components/SearchResults.tsx`
 
-### 4.4 User data layer
-
-Responsible for:
-
-- playlists
-- likes
-- profile
-- shared playlist access
-- engagement events
-- listener profile
-
-Main files:
-
-- `lib/db.ts`
-- `lib/playlists.ts`
-- `lib/profile.ts`
-- `lib/likes.ts`
-- `lib/engagement.ts`
-- `lib/listener-profile.ts`
-
----
-
-## 5. Page Structure
-
-### Home
-
-File:
+### Discovery and categories
 
 - `app/page.tsx`
+- `components/HomeClassic.tsx`
+- `components/HomeDiscovery.tsx`
+- `app/category/[categoryId]/page.tsx`
+- `components/CategoryFeedPage.tsx`
+- `app/api/category-feed/route.ts`
+- `lib/home-category-feed.ts`
+- `lib/home-category-feed-client.ts`
+- `lib/quick-picks-engine.ts`
+
+### User data
+
+- `lib/db.ts`
+- `lib/profile.ts`
+- `lib/profile-client.ts`
+- `lib/likes.ts`
+- `lib/playlists.ts`
+- `lib/playlists-client.ts`
+- `lib/engagement.ts`
+
+### Persistence and recommendation state
+
+- `lib/zero-waste-idb.ts`
+- `lib/resource-governor.ts`
+- `lib/recommendation-session.ts`
+
+## 6. Route and Page Structure
+
+### Core pages
+
+- `/`
+  - home feed
+  - quick picks
+  - discovery rails
+  - library section
+- `/search`
+  - search results page for the query in `?q=...`
+- `/category/[categoryId]`
+  - category-specific hero and rails
+- `/library`
+  - owned playlists and shared playlists
+- `/library/[playlistId]`
+  - owned playlist detail
+- `/shared/[shareToken]`
+  - shared playlist view
+- `/profile`
+  - profile dashboard, history preview, likes preview
+- `/profile/history`
+  - full listened-song history
+- `/profile/liked`
+  - full liked songs list
+
+### Core APIs
+
+- `GET /api/search`
+  - normal search with `q`
+  - related fetch with `relatedTo`
+- `GET /api/stream`
+  - direct stream resolution by `videoId` or `url`
+- `GET/PATCH/DELETE /api/profile`
+- `GET/POST /api/playlists`
+- `PATCH/DELETE /api/playlists/[playlistId]`
+- `POST/DELETE /api/playlists/[playlistId]/tracks`
+- `GET/POST/DELETE /api/playlists/[playlistId]/share`
+- `GET/POST /api/engagement`
+
+## 7. Boot Sequence
+
+Three components define the app bootstrap behavior.
 
-Responsibilities:
+### `components/PwaBootstrap.tsx`
 
-- hero panel
-- discovery category rails
-- personal library preview rails
+This is the shell-level startup layer.
 
-### Search
+It does the following:
 
-File:
+- forces a black first paint
+- forces dark color scheme
+- updates `theme-color`
+- marks device class on the root element
+- shows the branded splash only once per session
+- registers and updates the service worker
 
-- `app/search/page.tsx`
+This is why Spasiba opens with an app-like black shell instead of a browser-white flash.
 
-Responsibilities:
+### `components/PlayerBootstrap.tsx`
 
-- result list
-- result-card playback
-- queue / playlist actions
+This is the playback/session bootstrap.
 
-### Library
+It does the following:
 
-Files:
+- creates and persists the visitor id
+  - localStorage key: `spasiba_guest_id`
+  - cookie key: `spasiba_guest_id`
+- restores the last queue snapshot from localStorage
+- initializes `audioController`
+- hydrates the player store
+- prewarms the restored current track if a queue snapshot exists
+- wires keyboard shortcuts
+- registers Media Session handlers
+- publishes song metadata to Media Session
+- keeps the queue snapshot updated
 
-- `app/library/page.tsx`
-- `app/library/[playlistId]/page.tsx`
+### `components/SessionDataBootstrap.tsx`
 
-Responsibilities:
+This is the once-per-session maintenance pass.
 
-- personal playlists
-- shared playlists
-- playlist detail playback
+It does the following:
 
-### Profile
+- runs zero-waste IndexedDB maintenance
+- syncs profile only when it matters
+  - if there are pending profile changes
+  - or the user is on `/profile`
 
-Files:
+That is deliberate. The app does not eagerly hit `/api/profile` or `/api/playlists` on every mount anymore.
 
-- `app/profile/page.tsx`
-- `app/profile/history/page.tsx`
-- `app/profile/liked/page.tsx`
+## 8. Player State Architecture
 
-Responsibilities:
+All visible player state lives in `store/playerStore.ts`.
 
-- profile basics
-- username
-- profile photo
-- quick previews
-- full history
-- full liked songs
+That state includes:
 
-### Shared playlist entry page
+- current song
+- full queue
+- current queue index
+- playing / loading flags
+- timing data
+  - `currentTime`
+  - `duration`
+  - `buffered`
+  - `progress`
+- queue context
+  - default queue or playlist queue
+  - playlist mix on/off
+- session history
+- error state
+- toast state
 
-File:
+The store is intentionally dumb. It does not know how to play. It only stores the player view of the world.
 
-- `app/shared/[shareToken]/page.tsx`
+The thing that knows how to play is `lib/audio-controller.ts`.
 
-Responsibilities:
+## 9. Playback Architecture
 
-- open public shared links
-- save shared playlist into the recipient’s library
+This is the most important part of the app.
 
----
+Spasiba supports three playback surfaces:
 
-## 6. Search Logic
+1. direct HTML audio playback
+2. hidden embedded YouTube playback for audio mode
+3. visible embedded YouTube playback for video mode
 
-### User experience decision
+### 9.1 HTML audio playback
 
-Search was intentionally changed away from “navigate while typing”.
+This path uses a singleton `HTMLAudioElement`.
 
-Current behavior:
+It is used when the app has a resolved direct stream response and chooses the normal audio engine.
 
-- typing keeps the keyboard open
-- suggestions appear in a dropdown
-- the results page opens only on:
-  - tapping a suggestion
-  - pressing search
+The controller:
 
-Why:
+- resolves candidate stream URLs
+- ranks them
+- assigns them to the audio element
+- waits for playback success
+- tracks timing from the audio element
 
-- this is much closer to Spotify / YouTube search UX
-- mobile typing stays stable
-- the keyboard does not collapse unexpectedly
+This is the most "plain web audio" path in the app.
 
-### Search backend
+### 9.2 Hidden YouTube playback
 
-Route:
+This path is the embedded audio fallback and, on hosted runtime, often the preferred startup path.
 
-- `app/api/search/route.ts`
+The controller creates a hidden YouTube player off-screen through the IFrame API.
 
-The route supports two modes:
+That hidden player is used as an audio engine:
 
-1. normal query search via `q`
-2. related-song search via `relatedTo`
+- it loads the current song or queue as a YouTube playlist
+- it can play, pause, seek, next, previous
+- it can keep the queue alive without needing a raw stream URL for every operation
 
-Important search parameters:
+The hidden player is intentionally invisible and acts as a media engine, not as a visible UI surface.
 
-- `limit`
-- `pages`
-- `category`
+### 9.3 Visible YouTube playback
 
-Current caps:
+Video mode is separate from the hidden audio engine.
 
-- normal visible search usually uses small result counts
-- fallback recommendation search can request much larger banks
-- route limit is clamped to `100`
-- pages are clamped to `5`
+When the user switches to video mode in `components/Player.tsx`:
 
-### Search data sources
+- a visible YouTube player is mounted
+- the underlying audio engine is muted or paused
+- the visible video player becomes the timing authority
+- when the user switches back to audio, the app hands timing back to the underlying engine
 
-Primary search source:
+This split is why video sync needs careful ownership rules.
 
-- `yt-search`
+## 10. How the App Chooses a Playback Engine
 
-Additional structured source for related rails:
+The main control path is `audioController.playSong(...)`.
 
-- `youtubei.js`
+The decision tree is:
 
----
+1. initialize playback transition and queue state
+2. decide whether embedded playback should be used
+3. if embedded playback is preferred, use hidden YouTube playback
+4. otherwise resolve direct stream candidates and try HTML audio playback
+5. if direct playback fails with a global stream failure and embedded fallback is allowed, fall back to hidden YouTube playback
 
-## 7. Discovery Rails
+Important current behavior:
 
-Main file:
+- on hosted runtime, the app warms and usually prefers embedded YouTube playback
+- on non-hosted or non-fallback paths, direct stream playback can still be used
 
-- `lib/youtube.ts`
+This is why the app can still start music even when direct stream resolution is fragile.
 
-Discovery rails are not simple one-query shelves anymore.
-Each category now uses a stronger query bank plus heavy filtering.
+## 11. Direct Stream Resolution
 
-Current categories:
+The direct stream pipeline exists in `lib/youtube.ts` and is exposed through `/api/stream`.
 
-- Hindi
-- English (Global / Hollywood)
-- Punjabi
-- Dogri
-- Lofi / Chill
-- Love / Romantic
-- Sad / Emotional
-- High Energy / Workout
-- Trending / Viral
+### 11.1 What `/api/stream` returns
 
-### Why `Hindi` instead of `Bollywood`
+`GET /api/stream` does not return an MP3 file.
 
-The app uses `Hindi` as the category label because:
+It returns a `StreamResponse` that may include:
 
-- it is broader than only film soundtracks
-- it includes both mainstream film and non-film Hindi tracks
-- it is clearer for discovery than a narrower `Bollywood` label
+- a chosen `streamUrl`
+- `mimeType`
+- `expiresAt`
+- multiple `streamCandidates`
 
-### Discovery filtering
+The candidates are temporary, signed media URLs, typically from `googlevideo`.
 
-Discovery rails reject noisy candidates like:
+### 11.2 Resolver order
 
-- mashups
-- mixes
-- jukeboxes
-- playlist videos
-- interview clips
-- reels / shorts / status edits
-- top-list dump videos
-- “new english songs list” style compilation spam
-- lyric / slowed / remix variants when they overwhelm the rail
-
-### Discovery diversity
-
-Rails also cap repeated artists so a single artist does not dominate a whole category row.
-
----
-
-## 8. Playback Engine
-
-Main file:
-
-- `lib/audio-controller.ts`
-
-The playback system has two engines:
-
-1. direct audio engine using `HTMLAudioElement`
-2. hidden YouTube iframe engine as a fallback path
-
-### Why two engines exist
-
-Direct audio is better when available because it gives:
-
-- smoother local control
-- real audio element timing
-- better chance at background continuity
-
-The hidden YouTube engine exists because:
-
-- direct stream resolution is not always possible
-- hosted environments can be blocked by YouTube
-- some browsers/platforms behave better with the embedded path in specific cases
-
-### Stream resolution order
-
-Inside `lib/youtube.ts`, direct stream resolution currently tries:
+Server-side resolution tries:
 
 1. `yt-dlp`
 2. `youtubei.js`
 3. `@distube/ytdl-core`
 
-That order exists because:
+The app prefers candidates that the browser can play well, usually audio-first formats like:
 
-- `yt-dlp` is strongest when it works
-- `youtubei.js` can expose structured streaming data
-- `ytdl-core` acts as a final fallback
+- `audio/mp4`
+- `audio/webm`
 
-### Cached playback behavior
+### 11.3 Client-side fetch order
 
-The player uses:
+When the controller needs a stream, it tries:
 
-- stream cache
-- pending stream request dedupe
-- blob cache
-- preloaded audio cache
-- related queue cache
+1. stream data already attached on the track
+2. persisted IndexedDB stream cache
+3. browser-side resolution helper
+4. `/api/stream`
 
-This is done to avoid repeating expensive work when:
+There is an important caveat here:
 
-- a user replays a track
-- a queue refill asks for the same seed again
-- the player is skipping rapidly
+- `shouldTryBrowserSideStreamResolution()` currently returns `false`
 
-### Player state store
+That means browser-side direct resolution and blob promotion code exists, but it is not currently the main active strategy.
 
-Global player state lives in:
+## 12. Embedded YouTube Audio Path
 
-- `store/playerStore.ts`
+The hidden audio player uses the YouTube IFrame API and is created by `ensureHiddenYouTubePlayer()`.
 
-It stores:
+Its behavior:
 
-- `currentSong`
-- `queue`
-- `currentIndex`
-- `sessionHistory`
-- `queueSource`
-- `queueSourceLabel`
-- `playlistBaseTrackIds`
-- `playlistMixEnabled`
-- playback timing
-- loading/error state
-- volume
-- toast state
+- mounts a tiny off-screen iframe
+- uses `controls: 0`
+- uses `playsinline: 1`
+- acts like an audio engine
+- can load a full YouTube playlist representing the Spasiba queue
 
-Important design choice:
+Why this path exists:
 
-- the playback queue and the played-session history are separate concerns
-- the queue is the “current playable line”
-- `sessionHistory` is the session memory for tracks the user already played
+- direct raw stream resolution is not always dependable
+- hosted runtime can benefit from starting through YouTube's own player
+- queue continuity is easier when YouTube is already holding the current playlist
 
-This separation was added so previous / next logic can stay sane while the recommendation tail keeps changing.
+This path is one of the main reasons the app can stay resilient even when stream extraction is unreliable.
 
----
+## 13. Visible Video Mode
 
-## 9. Queue / Recommendation Logic
+Visible video mode lives in `components/Player.tsx`.
 
-This is one of the most important parts of the app.
+The UI does this:
 
-Main logic file:
+- expanded player lets the user switch between `Audio` and `Video`
+- visible video player is mounted only in video mode
+- on iPhone, video autoplay is retried and may use a muted-first handoff to satisfy autoplay rules
 
-- `lib/audio-controller.ts`
+The controller does this:
 
-### Core queue philosophy
+- `prepareForVisibleVideoMode()`
+  - marks visible video mode active
+  - mutes the underlying engine
+- `suspendUnderlyingForVisibleVideoMode()`
+  - pauses the underlying engine when the visible player is about to autoplay
+- `completeVisibleVideoModeStart()`
+  - clears the "suspending" state once the visible player is actually running
+- `restoreAfterVisibleVideoMode()`
+  - returns control to the hidden YouTube or HTML audio engine
 
-Spasiba does **not** try to fully replace YouTube Music.
+## 14. Timing and Sync Rules
 
-Current strategy:
+This is the rule that keeps the seeker sane:
 
-1. let YouTube Music / YouTube related provide the strongest candidates
-2. filter junk aggressively
-3. lightly rerank for quality and user taste
-4. inject only occasional Spasiba suggestions when YouTube needs help
+- only one playback surface is allowed to write timing at a time
 
-This was a deliberate correction after earlier experiments became too aggressive and started producing bad queues.
+### 14.1 Audio mode timing
 
-### Current queue source priority
+If HTML audio is the active engine:
 
-The queue now aims to use:
+- `syncTiming()` writes current time, duration, buffered amount, and progress
 
-1. YouTube Music `Up Next / automix`
-2. YouTube related rails
-3. Spasiba fallback search / rerank
+If hidden YouTube is the active engine:
 
-### Why the app does not fully “invent” the queue
+- `syncYouTubeTiming()` writes those same fields from the hidden player
 
-We tried more aggressive local recommendation logic earlier.
-That led to problems like:
+### 14.2 Video mode timing
 
-- too many same-artist songs
-- same-song clones
-- mashups
-- compilation junk
-- weak cross-genre jumps
+When visible video mode is active:
 
-The current system is intentionally more conservative:
+- normal audio timing writes are blocked
+- the visible video player becomes the timing source
 
-- YouTube dominates
-- Spasiba trims and nudges
+That is why the visible player must own the seeker while video is open. If the hidden engine and visible video both try to update the store, the seeker will jitter.
 
-### Queue quality rules
+### 14.3 Audio to video to audio handoff
 
-The queue rejects candidates that look like:
+On audio -> video:
 
-- reels
-- shorts
-- status clips
-- WhatsApp edits
-- TikTok / CapCut edits
-- interviews
-- podcasts
-- episode videos
-- reactions
-- reviews
-- trailers
-- news clips
-- mashups
-- mega mixes
-- playlist dumps
-- jukeboxes
-- long loops
-- extremely short clip-style tracks
+- current playback time is captured
+- visible video player starts from that time
+- underlying engine is muted or paused
 
-### Duplicate / variant protection
+On video -> audio:
 
-The queue also tries to block:
+- current video time is read
+- visible player is destroyed
+- controller seeks the underlying engine to that time
+- if video was actively playing, the controller resumes audio playback
 
-- lyrics versions
-- live versions
-- slowed / reverb
-- sped-up
-- karaoke
-- cover overload
-- same-song near-clones
+That handoff is the core sync contract between the two modes.
 
-### Diversity controls
+## 15. Queue Model
 
-The queue applies caps like:
+The queue is not a server-side queue. It is a client queue managed by the player store and controller.
 
-- artist repetition caps
-- identity-key deduping
-- recent-track diversity penalties
+### 15.1 Queue normalization
 
-This exists specifically to stop cases like:
+`buildPlaybackQueue(...)` ensures:
 
-- `Shape of You`
-- followed by five more `Shape of You` variants
-- followed by all-Ed-Sheeran-only radio
+- the current song is present
+- duplicates are cleaned up
+- queue length is trimmed around the current index if needed
 
-### Queue refill behavior
+Main queue caps:
 
-Current target:
+- max total queue length: `80`
+- target upcoming queue: `10`
 
-- keep around `10` upcoming songs ahead
+### 15.2 Queue source context
 
-When the queue gets shorter:
+The queue can come from:
 
-- the app refills from the tail
-- refill is based mainly on the last queue context, not a full rebuild every time
+- default search/discovery flow
+- playlist playback
 
-This was added to stop the queue from collapsing after repeated `next` presses.
+Playlist playback carries extra context:
 
-### Playlist mode vs normal mode
-
-There are two queue sources:
-
-- `default`
-- `playlist`
-
-In playlist mode:
-
-- `Mix off` means stay playlist-only
-- `Mix on` means extend the playlist tail with suggestions
-
-This is tracked with:
-
-- `queueSource`
-- `playlistBaseTrackIds`
+- queue source label
+- playlist base track ids
 - `playlistMixEnabled`
 
-### Personalization influence
+If the source is a playlist and mix is off:
 
-User behavior does influence queue scoring, but lightly.
+- smart queueing does not try to replace the playlist order
 
-Current philosophy:
+## 16. Smart Queue Refill
 
-- user taste should adjust ordering
-- it should not overpower the YouTube Music base rail
+Queue refill is handled in `fillSmartQueue(...)`.
 
-So the queue is:
+The order matters:
 
-- not raw YouTube only
-- not raw Spasiba AI only
-- a YouTube-first hybrid
+1. normalize the current queue
+2. if playlist mode with mix off, stop
+3. if enough upcoming tracks already exist, stop
+4. fetch related songs from the root track
+5. extend from local recommendation track pool
+6. if still short, build a chained related queue
 
----
+This is a local-first strategy.
 
-## 10. Engagement Tracking and Listener Profile
+The app tries to avoid:
 
-Main files:
+- empty queues
+- repeated identical tracks
+- too many tracks from one artist
+- noisy YouTube junk like mashups, reels, shorts, memes, trailers, playlist dumps
 
-- `lib/engagement.ts`
-- `lib/listener-profile.ts`
-- `app/api/engagement/route.ts`
-- `lib/audio-controller.ts`
+Queue enrichment is deferred, not done on the critical tap path.
 
-### Tracked engagement events
+`scheduleDeferredQueueEnhancement(...)` waits a little after playback starts, then tries to improve the queue in idle time.
 
-The app currently records:
+## 17. Queue-Related Search and Cache Reuse
+
+Queue expansion is one of the places where `/api/search` is used indirectly.
+
+For queueing, the app asks:
+
+- `/api/search?relatedTo=<videoId>`
+
+But it does not want to keep doing that forever.
+
+So the queue layer uses:
+
+- in-memory related queue cache
+- persisted related search cache in IndexedDB
+- a recommendation track pool
+- recent related-pool reuse across sessions
+
+That is why queue maintenance can stay smart without becoming a constant backend tax.
+
+## 18. Queue Persistence Across Reopen
+
+`lib/player-queue-cache.ts` stores a queue snapshot in localStorage.
+
+Snapshot includes:
+
+- queue
+- current index
+- queue source and label
+- playlist base ids
+- playlist mix state
+- storedAt
+
+Main rules:
+
+- queue snapshot TTL: `3 days`
+- max stored tracks: `80`
+
+On app boot:
+
+- `PlayerBootstrap` restores the queue snapshot if present
+- the current track is prewarmed
+
+This is why the player UI can survive app reopen with context intact.
+
+## 19. Search Architecture
+
+Search is split into three experiences:
+
+1. search bar suggestions while typing
+2. full search results page
+3. related-track fetches used by the queue
+
+### 19.1 Search API
+
+`GET /api/search` supports:
+
+- `q` for query search
+- `relatedTo` for queue and recommendation fetches
+- `limit`
+- `pages`
+- `category`
+
+Server caching:
+
+- `s-maxage=86400`
+- `stale-while-revalidate=2592000`
+
+### 19.2 Local-first search client
+
+`lib/search-client.ts` is the main client search cache layer.
+
+It provides:
+
+- in-memory search response cache
+- persisted IndexedDB search response cache
+- pending request dedupe
+- canonicalized related-search cache keys
+- local suggestion mining from existing caches
+
+Current main caps:
+
+- in-memory search response cache: `160`
+- canonical related cache limit for reuse: `32`
+
+### 19.3 Search suggestions
+
+The search bar tries to avoid network first.
+
+Suggestion order is:
+
+1. previous search history
+2. strong local matches from memory cache
+3. strong local matches from persisted search cache
+4. strong local matches from related cache
+5. strong local matches from recommendation track pool
+6. network suggestions only if local confidence is weak
+
+Important suggestion constants:
+
+- visible suggestion limit: `6`
+- suggestion cache TTL: `1 day`
+- suggestion cache size: `48`
+- network debounce: `420ms`
+- network suggestion minimum length: `3`
+
+### 19.4 Search results page
+
+`components/SearchResults.tsx` does the full search results behavior.
+
+It:
+
+- reads the query from `?q=...`
+- stamps that query into search history
+- tries memory cache first
+- tries persisted cache next
+- only then hits `/api/search`
+- seeds the first result for playback
+- prewarms a small number of upcoming results
+
+The page deliberately adds a tiny reveal delay when showing cached results so the UI does not feel unnaturally abrupt.
+
+### 19.5 Search history
+
+`lib/search-history.ts` stores a local search-history model in localStorage.
+
+Each entry contains:
+
+- original query
+- normalized query
+- use count
+- last used time
+- thumbnail
+- result count
+
+Main rules:
+
+- max history entries: `640`
+- stale TTL: `90 days`
+- visible history rows in the dropdown: `8`
+
+## 20. Resource Governor and Safe Mode
+
+`lib/resource-governor.ts` is the app's session-level rate limiter for the client.
+
+It exists to protect the UX and the backend when the network is bad or usage is getting too expensive.
+
+Main ideas:
+
+- limit unique search requests per session
+- fall back to cache-only mode when needed
+- enter safe mode after repeated failures
+- limit Quick Picks recomputation frequency
+
+Current notable limits:
+
+- unique search requests per session: `8`
+- failed-request threshold before safe mode: `3`
+- Quick Picks daily compute budget: `2`
+
+This is a product feature, not just a technical detail. It keeps the app from turning into a noisy request machine.
+
+## 21. Discovery and Home Architecture
+
+The home page is server-rendered and revalidated weekly.
+
+`app/page.tsx` fetches trending sections with:
+
+- `getTrendingSections()`
+
+and renders either:
+
+- `HomeClassic`
+- or `HomeDiscovery`
+
+depending on `HOME_UI_VARIANT`.
+
+### 21.1 Trending sections
+
+Trending sections are built in `lib/youtube.ts`.
+
+The system:
+
+- runs query banks per section
+- merges and scores candidates
+- filters noisy content
+- caps artist repetition
+- backfills thin sections from pooled tracks
+- caches the whole section bundle for `1 week`
+
+This is how the home rails stay broad without feeling like random YouTube dump lists.
+
+### 21.2 Quick Picks
+
+Quick Picks are computed by `lib/quick-picks-engine.ts`.
+
+Inputs include:
+
+- trending sections already on the page
+- local recommendation track pool
+- cached search and related results
+- listener profile snapshot
+- session brain
+
+It chooses tracks through bucketed selection:
+
+- continue mood
+- go deeper
+- safe fallback
+- explore edge
+
+Phases:
+
+- cold
+- learning
+- adaptive
+- lock
+
+If the app does not have enough signal or budget, it falls back to high-quality home-section tracks.
+
+Quick Picks snapshot:
+
+- cached for `3 days`
+- stored in IndexedDB
+
+## 22. Category Pages
+
+Category pages are server-built and client-cached.
+
+### 22.1 Server generation
+
+`lib/home-category-feed.ts`:
+
+- looks up the category config
+- runs multiple search queries per section
+- merges and scores them
+- enforces artist caps
+- filters junk
+- falls back to broader category query search if the primary section is empty
+- backfills thin sections to at least a minimum visible size
+
+Server cache:
+
+- in-memory category feed cache
+- TTL: `7 days`
+
+### 22.2 Client reuse
+
+`lib/home-category-feed-client.ts` adds:
+
+- memory cache
+- persisted client cache
+- soft refresh rules
+- background refresh
+- route prefetching
+
+Important TTLs:
+
+- memory cache: `12 hours`
+- soft refresh age: `7 days`
+- persisted cache: `30 days`
+
+So category pages reopen quickly and do not need to rebuild on every visit.
+
+## 23. Profile Architecture
+
+Profile is intentionally hybrid.
+
+The app wants profile UX to feel device-first, but still wants Turso to be the durable system of record.
+
+### 23.1 Durable profile data
+
+The database stores:
+
+- visitor basics
+  - display name
+  - username
+  - profile photo data URL
+- engagement events
+- liked tracks
+- listener profile snapshot
+
+### 23.2 Local-first profile client
+
+`lib/profile-client.ts` keeps a local cached profile snapshot.
+
+It does the following:
+
+- caches the full profile in memory
+- persists it to client storage
+- merges local history and likes over server profile when appropriate
+- stores pending profile edits locally
+- syncs them later
+
+Local-first helpers:
+
+- `recordLocalHistorySong(song)`
+- `updateLocalLikedSongs(song, liked)`
+
+This is why the UI can update instantly when the user listens or likes something.
+
+### 23.3 Server profile shapes
+
+The server supports:
+
+- full profile
+- light profile summary
+
+`GET /api/profile?mode=light` is used when the device already has local likes/history and only needs server basics.
+
+That keeps `/api/profile` cheaper than rebuilding full history and likes on every read.
+
+### 23.4 Profile pages
+
+`/profile` is the dashboard.
+
+It shows:
+
+- editable profile basics
+- preview of monthly history
+- preview of liked songs
+- clear history action
+- clear suggestion data action
+
+`/profile/history` and `/profile/liked` are the full collection pages.
+
+## 24. Likes
+
+Likes are durable in Turso and fast locally.
+
+Server storage:
+
+- table: `liked_tracks`
+
+Client behavior:
+
+- UI updates locally first
+- unlike / like operations still go through the server
+- profile cache merges local liked songs over server payload when needed
+
+The durable DB copy matters for:
+
+- recovery
+- consistency across session resets
+- full profile rebuilds
+
+## 25. Playlist Architecture
+
+Playlists are durable, shareable, and owner-scoped.
+
+Core tables:
+
+- `playlists`
+- `playlist_tracks`
+- `shared_playlist_library`
+- `playlist_share_grants`
+
+### 25.1 Owned playlists
+
+Owned playlist features:
+
+- create
+- rename
+- delete
+- add track
+- remove track
+- detail page playback
+
+`lib/playlists.ts` is the source of truth for playlist operations.
+
+### 25.2 Cached playlist library
+
+`lib/playlists-client.ts` keeps a local snapshot of:
+
+- owned playlists
+- shared playlists
+
+Current behavior:
+
+- return cached library first
+- reuse the cached bundle on repeated opens
+- patch local cache after mutations instead of immediately invalidating everything
+
+Important TTLs:
+
+- memory cache: `12 hours`
+- persisted cache: `30 days`
+- background sync interval: `7 days`
+
+### 25.3 Shared playlists
+
+Spasiba supports three sharing ideas:
+
+- share token / link
+- username grants
+- local saved shared-playlist library
+
+Share flows:
+
+- owner requests share access
+- app ensures a `share_token`
+- app can grant access by username
+- shared user can unlock or save the playlist
+- owner can revoke one user or revoke sharing entirely
+
+Relevant routes:
+
+- `GET/POST/DELETE /api/playlists/[playlistId]/share`
+- `/shared/[shareToken]`
+
+The shared playlist page uses the same Spasiba player, but its queue context is marked as a playlist queue with mix off by default.
+
+## 26. Engagement and Listener Profile
+
+Engagement is the bridge between playback and personalization.
+
+### 26.1 What gets recorded
+
+Network engagement events are primarily:
 
 - `play_start`
 - `skip_early`
 - `skip_mid`
 - `skip_late`
 - `complete`
-- `queue_add`
-- `playlist_add`
-- `like`
-- `unlike`
 
-### How the app uses this data
+Other taste actions such as like, unlike, or queue add are still fed into the recommendation layer locally, even when they are not individually sent as standalone engagement POSTs.
 
-Engagement is used to build a compact listener profile with:
+### 26.2 Batching
 
-- artist preference weights
-- track preference weights
-- signal preference weights
+Client batching in `audio-controller.ts`:
 
-Signals are things like:
+- batches engagement events
+- persists pending queue locally
+- sends the listener profile snapshot with the batch
 
-- language lane
-- mood lane
-- category lane
+Important values:
 
-### What the listener profile is used for
+- batch limit: `30`
+- flush delay: `45 seconds`
 
-Right now the listener profile is used for:
+Server persistence in `lib/engagement.ts`:
 
-- queue ranking boosts
-- queue ranking penalties
-- profile history views
-- liked songs / preference surfaces
+- writes each engagement event into `engagement_events`
+- updates the durable `listener_profiles` row
 
-### What it is not yet doing
+### 26.3 Listener profile
 
-It is **not** yet:
+The listener profile stores durable taste signals:
 
-- a fully separate recommendation engine
-- collaborative filtering across multiple users
-- a homepage “For You” system
+- artists
+- tracks
+- high-level signals
 
-So the current model is:
+It is updated in two places:
 
-- YouTube gives candidates
-- Spasiba taste data helps reorder them
+- locally through session/recommendation logic
+- durably through engagement writes
 
-### Write batching
+There is also a short-lived server cache for listener profiles so repeated GETs are cheaper.
 
-Engagement writes are batched intentionally.
+## 27. Recommendation Session
 
-Why:
+`lib/recommendation-session.ts` adds a session-only "brain" on top of the durable listener profile.
 
-- avoids sending one network request for every tiny player event
-- reduces DB chatter
-- keeps playback hot path lighter
+This is not the permanent taste model. It is the current-session mood and behavior model.
 
----
+It tracks:
 
-## 11. Playlist System
+- inferred intent
+- energy
+- skip rate
+- recent tracks
+- artist affinity
+- banned artists
+- play and skip counts
 
-Main files:
+This session brain is used by:
 
-- `lib/playlists.ts`
-- `app/api/playlists/route.ts`
-- `app/api/playlists/[playlistId]/route.ts`
-- `app/api/playlists/[playlistId]/tracks/route.ts`
+- Quick Picks
+- queue scoring
+- anti-repetition logic
 
-### Playlist capabilities
+So the durable listener profile says "what this user usually likes," while the session brain says "what this listening session is doing right now."
 
-- create
-- list
-- rename
-- delete
-- add tracks
-- play entire playlist
-- playlist detail page
+## 28. Storage Model
 
-### Playlist card design
+Spasiba deliberately uses multiple storage layers because not every piece of data deserves the same cost.
 
-Playlist cards now show:
+### 28.1 In-memory caches
 
-- playlist name
-- track count
-- cover image from one song inside the playlist
-- 3-dot menu for share / edit / delete
+Used for:
 
-### Cover image logic
+- hot search results
+- related queues
+- server-side home/category caches
+- profile summary caches
+- playlist bundle caches
+- stream caches
 
-Playlist cards do not fetch every track just to paint the list page.
-The playlist layer loads:
+### 28.2 `sessionStorage`
 
-- track count
-- one cover track
-- core metadata
+Used for:
 
-This was optimized to reduce overfetching and make the library page lighter.
+- recommendation session brain
+- pending recommendation events
+- one-session splash flag
+- resource governor session state
 
-### Save-to-playlist flow
+### 28.3 `localStorage`
 
-The add-to-playlist modal supports:
+Used for:
 
-- showing existing playlists
-- selecting one to add the current song
-- creating a new playlist
-- auto-adding the current song into the new playlist immediately
+- visitor id
+- player queue snapshot
+- search history
+- some persisted client caches
+- pending profile patch
+- engagement queue fallback
 
-This flow exists from:
+### 28.4 IndexedDB
 
-- song cards
-- mini player track menu
-- fullscreen player track menu
+Used by `lib/zero-waste-idb.ts` for "zero-waste" caching:
 
----
+- track pool
+- search cache
+- related cache
+- quick picks cache
+- stream cache
+- listener profile snapshot
 
-## 12. Shared Playlist Access Model
+Soft cap:
 
-Main files:
+- about `75 MB`
 
-- `lib/playlists.ts`
-- `app/api/playlists/[playlistId]/share/route.ts`
-- `app/api/shared/code/route.ts`
-- `app/api/shared/[shareToken]/save/route.ts`
-- `components/SharedPlaylistView.tsx`
+Eviction rule:
 
-### Why the model was changed
+- expire stale data
+- then evict lower-priority and least-recently-used records first
 
-Originally, sharing could have been a simple public-link snapshot.
-That was not good enough.
+Higher-value stores like stream cache, quick picks cache, and listener profile are protected more strongly than general track/search pools.
 
-The current model is controlled access with sync:
+### 28.5 Turso
 
-- owner grants by username
-- recipient can unlock by code or link
-- recipient can save the shared playlist into their own library
-- the saved shared playlist stays linked to the owner’s live playlist
+Used only for durable user data:
 
-### Important behavior
+- visitors
+- playlists
+- playlist tracks
+- engagement events
+- listener profile
+- liked tracks
+- share grants
+- shared playlist library
 
-If the owner later adds 100 more songs:
+## 29. Database Schema Boot
 
-- followers see the updated shared playlist
+`lib/db.ts` is responsible for:
 
-If the owner revokes a username:
+- opening the libSQL client
+- ensuring schema tables and indexes exist
+- applying small schema upgrades
+- warming visitor existence through `ensureVisitorRecord(...)`
 
-- that playlist disappears from that user’s shared library section
+Important optimization detail:
 
-### Why username grants were added
+- visitor existence is cached in memory for `15 minutes`
+- schema readiness is marked in `schema_meta`
 
-Guest-id-only sharing is not reliable enough across browser and installed PWA containers, especially on iPhone.
+That prevents repeated hot-path bootstrap writes on every route hit.
 
-Username-based sharing was introduced because:
+## 30. What the Search, Category, Profile, Playlist, and Engagement CPU Work Actually Means
 
-- it is much more human-friendly
-- it is more stable than relying only on per-container guest ids
-- it allows multi-user access control
+This app is built to shift cheap repeat work away from the server.
 
-### Current share flows
+So each hot route has a very specific job:
 
-Owner can:
+- `/api/search`
+  - YouTube search and related fetches
+- `/api/stream`
+  - direct stream resolution only
+- `/api/profile`
+  - durable profile data, especially recovery-friendly reads
+- `/api/playlists`
+  - durable playlist library and sharing state
+- `/api/engagement`
+  - durable listening event and listener-profile writes
 
-- open share access
-- add usernames
-- copy share link
-- copy share code
-- revoke one granted username
-- fully revoke playlist sharing
+The local clients are intentionally trying to reduce how often those routes are needed.
 
-Recipient can:
+## 31. Home and Category UI Variants
 
-- open the link
-- or enter the share code
-- or save the shared playlist into the personal library section
+The home page currently supports two UI styles:
 
----
+- classic
+- discovery
 
-## 13. Profile System
+Classic:
 
-Main files:
+- quick picks hero
+- mixed row
+- library section
+- discovery rails below
 
-- `components/ProfileDashboard.tsx`
+Discovery:
+
+- active section hero
+- section tabs at the top
+- mixed rail
+- quick picks rail
+- library section
+- supporting sections below
+
+Category pages reuse the same content idea with a category-specific backdrop, hero shelf, and multiple rail layouts:
+
+- quick picks
+- mixed
+- normal rails
+
+## 32. Media Session and Background Hints
+
+`PlayerBootstrap` wires Media Session when supported.
+
+It registers:
+
+- play
+- pause
+- next track
+- previous track
+- seek actions
+
+It also publishes:
+
+- current title
+- artist
+- artwork
+
+This gives the app the best possible lock-screen integration the browser allows.
+
+It is still a web app, not a native app, so browser and platform rules still apply.
+
+## 33. Known Architectural Constraints
+
+These are not bugs in the README. They are the real boundaries of the current design.
+
+### 33.1 YouTube direct streams are temporary
+
+Direct stream URLs are:
+
+- temporary
+- signed
+- not permanent app-owned media files
+
+That is why the app cannot treat them like normal static MP3 assets.
+
+### 33.2 Embedded playback is a reliability tool
+
+The hidden YouTube player exists because direct stream extraction is not dependable enough to be the only playback foundation.
+
+### 33.3 The app is intentionally cache-heavy
+
+That is by design.
+
+The app trades:
+
+- more local caching
+
+for:
+
+- fewer repeat server hits
+- smoother reopen behavior
+- better queue continuity
+- cheaper search and discovery flows
+
+## 34. Practical Mental Model for the App
+
+If you want the shortest accurate way to think about Spasiba, it is this:
+
+- the shell is a polished PWA wrapper
+- the player store is the visible truth
+- the audio controller is the real orchestrator
+- YouTube supplies search, related, streams, and embedded playback
+- Turso holds the durable user graph
+- local caches do most of the work needed to keep the app fast
+
+## 35. If You Need To Change Something
+
+These are the safest starting points by feature.
+
+### Playback behavior
+
+- `lib/audio-controller.ts`
+- `components/Player.tsx`
+- `store/playerStore.ts`
+
+### Search behavior
+
+- `components/SearchBar.tsx`
+- `components/SearchResults.tsx`
+- `lib/search-client.ts`
+- `lib/search-history.ts`
+- `app/api/search/route.ts`
+
+### Queue quality
+
+- `lib/audio-controller.ts`
+- `lib/recommendation-session.ts`
+- `lib/quick-picks-engine.ts`
+
+### Discovery and categories
+
+- `lib/youtube.ts`
+- `lib/home-category-feed.ts`
+- `lib/home-category-feed-client.ts`
+- `components/HomeClassic.tsx`
+- `components/HomeDiscovery.tsx`
+- `components/CategoryFeedPage.tsx`
+
+### Profile, playlists, and sharing
+
 - `lib/profile.ts`
 - `lib/profile-client.ts`
-- `app/api/profile/route.ts`
-
-### What profile contains
-
-- display name
-- username
-- profile photo
-- monthly history
-- liked songs
-
-### Username behavior
-
-The username is important because it is used for:
-
-- easy human identity
-- share access grants
-- share-code collaboration
-
-The UI includes:
-
-- visible `@username`
-- copy button for easy sharing
-
-### Profile photo behavior
-
-Photos are currently stored as a data URL in the DB.
-
-Client-side photo flow:
-
-1. user chooses an image
-2. image is loaded in the browser
-3. it is cropped to a square canvas
-4. resized to `256x256`
-5. exported as `webp`
-6. stored in the profile
-
-### Clear-data controls
-
-The profile page supports:
-
-- clear previously viewed songs
-- clear suggestion data
-
-These are intentionally separate because listening history and recommender memory are not always the same thing.
-
----
-
-## 14. Likes
-
-Main files:
-
+- `lib/playlists.ts`
+- `lib/playlists-client.ts`
 - `lib/likes.ts`
-- `app/api/likes/route.ts`
-- `components/PlayerTrackMenu.tsx`
+- `app/api/profile/route.ts`
+- `app/api/playlists/*`
 
-Likes are now explicit user actions, not only inferred behavior.
+### Cache and persistence
 
-Places where like is exposed:
+- `lib/zero-waste-idb.ts`
+- `lib/resource-governor.ts`
+- `lib/player-queue-cache.ts`
 
-- mini player track menu
-- fullscreen player track menu
+## 36. Summary
 
-Why this matters:
+Spasiba is not just "a Next.js music site."
 
-- “liked songs” becomes a real library surface
-- not just an inferred recommendation score
+It is a layered playback system with:
 
----
+- a PWA shell
+- a client store
+- a controller that can switch playback engines
+- local-first search and queue behavior
+- durable user data in Turso
+- YouTube-backed discovery and media supply
 
-## 15. Identity Model
+The most important idea in the entire app is this:
 
-Current identity model is guest-first.
-
-### Storage keys
-
-The app creates a long-lived visitor id and stores it in:
-
-- `localStorage` key: `spasiba_guest_id`
-- cookie name: `spasiba_guest_id`
-
-### Current benefits
-
-This works well for:
-
-- same browser
-- same device
-- same installed PWA container
-
-### Current limitation
-
-This does **not** guarantee that browser and installed PWA always behave as the same identity container.
-
-This is especially true on iPhone.
-
-So the honest current state is:
-
-- guest identity is stable per container
-- it is not real account auth
-- it is not device hardware identity
-- it is not based on MAC address
-
-### Why the app still uses it
-
-Because it gives:
-
-- zero-friction first use
-- persistent local playlists / profile / queue taste within the same container
-
-### What the future upgrade would be
-
-Real account auth is still the clean future step for:
-
-- true cross-device identity
-- browser ↔ PWA identity continuity
-- shared-link consistency
-
----
-
-## 16. PWA / Native-Like Shell
-
-Main files:
-
-- `app/layout.tsx`
-- `app/manifest.ts`
-- `components/PwaBootstrap.tsx`
-- `public/pwa-shell.css`
-- `public/sw.js`
-
-### What the shell does
-
-- forces black first paint
-- hides the white pre-render flash
-- loads a branded static splash
-- applies safe-area spacing
-- registers the service worker
-- sets theme color and standalone meta tags
-
-### Current splash behavior
-
-The splash is intentionally static now.
-
-Why:
-
-- earlier animated loading-style versions felt too “fake loading screen”
-- most good app splash screens are more static and brand-led
-
-Current splash characteristics:
-
-- black background
-- SP badge
-- `Music`
-- `Spasiba`
-- tagline `Simple. Classy. Yours`
-- minimum visible hold around `1100ms`
-
-### Install behavior
-
-The app supports install flow on:
-
-- Android
-- iPhone (Add to Home Screen path)
-
-### Service worker role
-
-The service worker mainly handles:
-
-- app shell caching
-- update path for the installed app
-
-It is intentionally **not** used as an aggressive media downloader.
-
----
-
-## 17. Background Playback Notes
-
-### Android
-
-Android is the friendlier platform in this stack.
-
-Current practical behavior:
-
-- background playback can work
-- lock-screen behavior depends partly on Chrome / installed PWA runtime
-- next / previous visibility is still partly browser-controlled
-
-### iPhone
-
-iPhone is much more restricted.
-
-Current honest state:
-
-- best-effort handling exists
-- some background behaviors can work in favorable cases
-- it is not guaranteed Apple Music style background control in a YouTube-backed PWA
-
-### Why this limitation exists
-
-The real limitation is not just our code.
-It is the combination of:
-
-- iOS web app restrictions
-- Safari / home-screen app process behavior
-- YouTube-backed playback constraints
-
----
-
-## 18. Data Model
-
-Main schema file:
-
-- `lib/db.ts`
-
-### Tables
-
-#### `visitors`
-
-Stores:
-
-- guest id
-- display name
-- username
-- profile image data URL
-- created time
-
-#### `playlists`
-
-Stores:
-
-- playlist id
-- owner visitor id
-- playlist name
-- share token
-- timestamps
-
-#### `playlist_tracks`
-
-Stores:
-
-- track identity
-- video metadata
-- duration
-- author
-- url
-- views
-
-#### `engagement_events`
-
-Stores:
-
-- visitor id
-- song metadata snapshot
-- action
-- progress
-- signals
-- created time
-
-#### `listener_profiles`
-
-Stores:
-
-- compact profile JSON per visitor
-- updated time
-
-#### `liked_tracks`
-
-Stores:
-
-- visitor id
-- song metadata
-- created / updated times
-
-#### `shared_playlist_library`
-
-Stores:
-
-- which visitor saved which shared playlist into their own library
-
-#### `playlist_share_grants`
-
-Stores:
-
-- playlist id
-- granted username
-- owner id
-- created time
-
-### Indexing
-
-The schema includes indexes for hot paths like:
-
-- visitor playlist lookup
-- recent playlist ordering
-- playlist track fetch
-- recent engagement lookup
-- like lookup
-- shared playlist lookup
-- share grant lookup
-
-These were added to reduce repeated heavy reads as the app grew.
-
----
-
-## 19. API Route Reference
-
-### Search / playback
-
-- `GET /api/search`
-  - normal search via `q`
-  - related songs via `relatedTo`
-- `GET /api/stream`
-  - resolves direct audio stream candidates for a video
-
-### Playlists
-
-- `GET /api/playlists`
-  - fetch personal playlists + shared library lists
-- `POST /api/playlists`
-  - create playlist
-- `PATCH /api/playlists/[playlistId]`
-  - rename playlist
-- `DELETE /api/playlists/[playlistId]`
-  - delete playlist
-- `POST /api/playlists/[playlistId]/tracks`
-  - add song to playlist
-- `GET /api/playlists/[playlistId]/share`
-  - load current sharing state
-- `POST /api/playlists/[playlistId]/share`
-  - grant access by username
-- `DELETE /api/playlists/[playlistId]/share`
-  - revoke one user or revoke all sharing
-
-### Shared playlist entry
-
-- `POST /api/shared/code`
-  - unlock shared playlist by code
-- `POST /api/shared/[shareToken]/save`
-  - save shared playlist into recipient library
-
-### Profile / personalization
-
-- `GET /api/profile`
-  - fetch profile
-- `PATCH /api/profile`
-  - update name / username / photo
-- `DELETE /api/profile?scope=history`
-  - clear listening history
-- `DELETE /api/profile?scope=suggestions`
-  - clear suggestion profile
-
-### Behavior / likes
-
-- `POST /api/engagement`
-  - store engagement batch
-- `GET /api/likes`
-  - fetch liked songs
-- `POST /api/likes`
-  - like a song
-- `DELETE /api/likes`
-  - unlike a song
-
----
-
-## 20. Main Client Components and Their Jobs
-
-### `components/SearchBar.tsx`
-
-- header shell
-- search input
-- suggestion dropdown
-- profile / playlist entry buttons
-
-### `components/SongCard.tsx`
-
-- artwork card
-- play button
-- 3-dot menu
-- add to queue
-- add to playlist
-
-### `components/SongGrid.tsx`
-
-- horizontal rails
-- card layout
-- discovery rail presentation
-
-### `components/Player.tsx`
-
-- mini player
-- expanded player
-- queue list
-- seek bar
-- toast display
-- playlist mix toggle
-
-### `components/PlayerTrackMenu.tsx`
-
-- like
-- add to playlist
-
-### `components/SaveToPlaylistButton.tsx`
-
-- playlist modal
-- existing playlist selection
-- create new playlist + auto add current song
-
-### `components/LibrarySection.tsx`
-
-- playlist cards
-- shared playlist cards
-- playlist actions
-
-### `components/ProfileDashboard.tsx`
-
-- profile editing
-- username copy
-- photo management
-- data clear actions
-- quick previews of history / likes
-
----
-
-## 21. Performance Work Already Done
-
-The app has already had a substantial optimization pass.
-
-### Caching
-
-- search cache
-- related queue cache
-- stream cache
-- pending request dedupe maps
-- shared client caches for profile and playlists
-
-### Write optimization
-
-- engagement writes are batched
-- pending engagement queue is bounded
-
-### DB optimization
-
-- indexes added for hot lookup paths
-- lighter playlist card fetching
-
-### UI optimization
-
-- no-op guards in player store to avoid useless rerenders
-- deferred / lighter below-the-fold rendering
-- horizontal rails instead of tall heavy grids
-- more appropriate image sizing for cards
-
-### Queue optimization
-
-- queue hot path uses cache and dedupe
-- refill logic tries to extend instead of rebuilding everything
-- YouTube-first queueing prevents overly expensive local recomputation
-
----
-
-## 22. Important Design Decisions
-
-### 22.1 Why YouTube should dominate the queue
-
-YouTube Music’s own automix is usually better than ad hoc local search heuristics.
-
-So the app deliberately moved to:
-
-- YouTube as candidate source
-- Spasiba as cleaner / rank adjuster
-
-instead of:
-
-- Spasiba trying to outsmart YouTube completely
-
-### 22.2 Why not heavy ML in the hot path
-
-Real-time playback should stay fast.
-
-Heavy ML / LLM ranking on every play click would:
-
-- slow startup
-- add cost
-- add complexity
-- make the player feel worse
-
-So the current design uses:
-
-- simple cached scoring
-- lightweight listener profile
-- strict filtering
-
-### 22.3 Why guest-first instead of forced login
-
-Because frictionless entry matters.
-
-The tradeoff is:
-
-- faster onboarding now
-- less identity reliability across containers
-
-### 22.4 Why username-based sharing was added before full auth
-
-Because it solves real collaboration pain without forcing a full auth migration immediately.
-
----
-
-## 23. Known Honest Limitations
-
-- YouTube remains the upstream source, so weak YouTube candidate sets can still happen.
-- Direct audio resolution can be blocked in hosted environments.
-- iPhone background playback is not fully reliable in a web-only YouTube stack.
-- Browser and installed PWA storage are not guaranteed to match.
-- Guest identity is not the same as real account auth.
-- The app should not implement permanent offline downloading for YouTube tracks.
-
----
-
-## 24. Local Setup
-
-### Requirements
-
-- Node.js 20+
-- Turso database
-
-### Environment
-
-Create `.env.local`:
-
-```env
-TURSO_DATABASE_URL=libsql://your-db-url
-TURSO_AUTH_TOKEN=your-token
-```
-
-### Install
-
-```bash
-npm install
-```
-
-### Run in development
-
-```bash
-npm run dev
-```
-
-### Production build
-
-```bash
-npm run build
-```
-
----
-
-## 25. Deployment
-
-Spasiba is deployed on Vercel.
-
-Typical production deploy:
-
-```bash
-vercel --prod --yes
-```
-
-The project is already linked to a Vercel project in this workspace.
-
-### Beginner-friendly deploy and maintenance flow
-
-If someone new wants to recreate the deploy flow from scratch, this is the easiest sequence.
-
-#### First-time setup on a new machine
-
-Install the Vercel CLI:
-
-```bash
-npm install -g vercel
-```
-
-Log in to Vercel:
-
-```bash
-vercel login
-```
-
-Link the local folder to the existing Vercel project:
-
-```bash
-vercel link
-```
-
-If environment variables are not already present on Vercel, add them:
-
-```bash
-vercel env add TURSO_DATABASE_URL production
-vercel env add TURSO_AUTH_TOKEN production
-vercel env add TURSO_DATABASE_URL preview
-vercel env add TURSO_AUTH_TOKEN preview
-```
-
-#### Everyday update flow
-
-Install dependencies if needed:
-
-```bash
-npm install
-```
-
-Run locally:
-
-```bash
-npm run dev
-```
-
-Build locally before deploying:
-
-```bash
-npm run build
-```
-
-Deploy production:
-
-```bash
-vercel --prod --yes
-```
-
-Inspect the live deploy if needed:
-
-```bash
-vercel inspect spasiba.vercel.app
-```
-
-#### Fast mental model for maintainers
-
-- change code
-- test locally with `npm run dev`
-- run `npm run build`
-- deploy with `vercel --prod --yes`
-- reopen the installed PWA once if cached UI does not update immediately
-
-#### Important reality about installed PWAs
-
-After deploy:
-
-- API changes are live immediately
-- installed PWA UI changes usually appear on next refresh / reopen
-- if an installed app still shows the old version, close it fully and reopen it
-- in stubborn cases, remove and reinstall the PWA once
-
----
-
-## 26. Rollback Checkpoints
-
-This project now has a named baseline:
-
-- `Stable State 1`
-
-The intended Git checkpoint names are:
-
-- branch: `stable-state-1`
-- tag: `stable-state-1`
-
-Useful commands:
-
-See the checkpoint:
-
-```bash
-git tag
-git branch
-```
-
-Create a temporary branch from the checkpoint:
-
-```bash
-git switch -c restore-stable-state-1 stable-state-1
-```
-
-Move the current branch back to the checkpoint only if you intentionally want a hard rollback:
-
-```bash
-git reset --hard stable-state-1
-```
-
-Safer recommendation:
-
-- prefer creating a restore branch from the tag first
-- verify locally with `npm run build`
-- then deploy if that rollback is the version you want live
-
----
-
-## 27. Recommended Next Major Steps
-
-If the product keeps growing, the strongest next upgrades are:
-
-1. real account auth with guest merge
-2. more observability around queue quality and playback failures
-3. richer per-user personalization without overpowering YouTube rails
-4. more refined discovery query banks for every language / category
-5. eventual native wrapper / APK path if deeper mobile behavior is required
-
----
-
-## 28. Summary
-
-Spasiba today is:
-
-- a YouTube-backed music PWA
-- with a strong native-like shell
-- a hybrid queue engine
-- persistent playlists
-- controlled shared playlists
-- profile + likes + history
-- lightweight personalization
-
-The most important current product rule is:
-
-**let YouTube Music do the heavy recommendation work, and let Spasiba improve quality, control, and user experience around it.**
+- YouTube provides the media and recommendation raw material
+- Spasiba decides how to cache it, queue it, sync it, personalize it, and present it so the result feels like a music app instead of a search page

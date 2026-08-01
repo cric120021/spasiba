@@ -4,6 +4,7 @@ import { useEffect } from "react";
 
 import { audioController } from "@/lib/audio-controller";
 import { getDeviceInfo } from "@/lib/device";
+import { clearPlayerQueueSnapshot, readPlayerQueueSnapshot, writePlayerQueueSnapshot } from "@/lib/player-queue-cache";
 import { getPlayerState, playerActions, usePlayerStore } from "@/store/playerStore";
 
 const VISITOR_ID_STORAGE_KEY = "spasiba_guest_id";
@@ -67,6 +68,12 @@ export default function PlayerBootstrap() {
   const isMobileSessionDevice = deviceInfo.isAndroid || deviceInfo.isIOS;
   const isMobileStandalone = deviceInfo.isStandalone && isMobileSessionDevice;
   const currentSong = usePlayerStore((state) => state.currentSong);
+  const queue = usePlayerStore((state) => state.queue);
+  const currentIndex = usePlayerStore((state) => state.currentIndex);
+  const queueSource = usePlayerStore((state) => state.queueSource);
+  const queueSourceLabel = usePlayerStore((state) => state.queueSourceLabel);
+  const playlistBaseTrackIds = usePlayerStore((state) => state.playlistBaseTrackIds);
+  const playlistMixEnabled = usePlayerStore((state) => state.playlistMixEnabled);
   const isPlaying = usePlayerStore((state) => state.isPlaying);
   const isLoading = usePlayerStore((state) => state.isLoading);
   const currentTime = usePlayerStore((state) => state.currentTime);
@@ -74,8 +81,22 @@ export default function PlayerBootstrap() {
 
   useEffect(() => {
     ensureVisitorId();
+    const cachedQueueSnapshot = readPlayerQueueSnapshot();
+
+    if (cachedQueueSnapshot) {
+      playerActions.restoreSnapshot(cachedQueueSnapshot);
+    }
+
     audioController.init();
     playerActions.hydrate();
+
+    if (cachedQueueSnapshot?.queue?.length) {
+      const restoredTrack = cachedQueueSnapshot.queue[cachedQueueSnapshot.currentIndex];
+
+      if (restoredTrack) {
+        void audioController.prepareTrack(restoredTrack);
+      }
+    }
 
     const handleKeyDown = (event: KeyboardEvent) => {
       if (isTypingTarget(event.target)) {
@@ -101,6 +122,109 @@ export default function PlayerBootstrap() {
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    (window as any).SpasibaAndroidBridge = {
+      play: () => void audioController.resume(),
+      resume: () => void audioController.resume(),
+      pause: () => void audioController.pause(),
+      next: () => void audioController.playNext(),
+      previous: () => void audioController.playPrevious(),
+      seek: (seconds: number) => audioController.seekToSeconds(seconds)
+    };
+
+    const previousListener = (window as any).__spasibaAndroidNativeAudioDidChange;
+
+    (window as any).__spasibaAndroidNativeAudioDidChange = (snapshot: any) => {
+      try {
+        previousListener?.(snapshot);
+      } catch (_) {}
+
+      if (!snapshot) {
+        return;
+      }
+
+      const { queue, currentSong, isPlaying, isLoading, currentTime, duration } = getPlayerState();
+      const videoId = String(snapshot.videoId || currentSong?.videoId || currentSong?.id || "");
+      const isNativePlaying = snapshot.state === "playing";
+      const isNativeLoading = snapshot.state === "loading";
+      const snapCurrentTime = Number(snapshot.currentTime || 0);
+      const snapDuration = Number(snapshot.duration || 0);
+
+      let foundIndex = queue.findIndex((s) => s.id === videoId);
+      let targetSong = foundIndex >= 0 ? queue[foundIndex] : null;
+
+      if (!targetSong && (snapshot.title || snapshot.artist)) {
+        targetSong = {
+          id: videoId,
+          title: snapshot.title || "Spasiba Track",
+          author: snapshot.artist || "Unknown Artist",
+          thumbnail: snapshot.artworkUrl || `https://i.ytimg.com/vi/${videoId}/hqdefault.jpg`,
+          duration: Math.round(snapDuration)
+        } as any;
+      }
+
+      if (targetSong && targetSong.id !== currentSong?.id) {
+        if (foundIndex >= 0) {
+          setPlayerState({
+            queue,
+            currentIndex: foundIndex,
+            currentSong: targetSong,
+            isPlaying: isNativePlaying,
+            isLoading: isNativeLoading,
+            currentTime: snapCurrentTime,
+            duration: snapDuration > 0 ? snapDuration : duration,
+            progress: snapDuration > 0 ? snapCurrentTime / snapDuration : 0
+          });
+          return;
+        } else if (targetSong) {
+          setPlayerState({
+            currentSong: targetSong,
+            queue: [...queue, targetSong],
+            currentIndex: queue.length,
+            isPlaying: isNativePlaying,
+            isLoading: isNativeLoading,
+            currentTime: snapCurrentTime,
+            duration: snapDuration > 0 ? snapDuration : duration,
+            progress: snapDuration > 0 ? snapCurrentTime / snapDuration : 0
+          });
+          return;
+        }
+      }
+
+      setPlayerState({
+        isPlaying: isNativePlaying,
+        isLoading: isNativeLoading,
+        currentTime: snapCurrentTime,
+        duration: snapDuration > 0 ? snapDuration : duration,
+        progress: snapDuration > 0 ? snapCurrentTime / snapDuration : 0
+      });
+    };
+
+    return () => {
+      (window as any).__spasibaAndroidNativeAudioDidChange = previousListener;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!currentSong || !queue.length || currentIndex < 0) {
+      clearPlayerQueueSnapshot();
+      return;
+    }
+
+    writePlayerQueueSnapshot({
+      queue,
+      currentIndex,
+      queueSource,
+      queueSourceLabel,
+      playlistBaseTrackIds,
+      playlistMixEnabled
+    });
+  }, [currentIndex, currentSong, playlistBaseTrackIds, playlistMixEnabled, queue, queueSource, queueSourceLabel]);
 
   useEffect(() => {
     if (!isMobileSessionDevice || typeof navigator === "undefined") {

@@ -3,12 +3,14 @@
 import {
   readLocalState,
   readPersistedCache,
+  readPersistedCacheRecord,
   removeLocalState,
   removePersistedCache,
   writeLocalState,
   writePersistedCache
 } from "@/lib/client-persisted-cache";
 import { emitProfileUpdatedEvent } from "@/lib/profile-events";
+import { isCacheOnlyModeEnabled, noteNetworkFailure, noteNetworkSuccess } from "@/lib/resource-governor";
 import type { Song, UserProfile } from "@/lib/types";
 
 type ProfileResponse = {
@@ -23,11 +25,11 @@ type PendingProfilePatch = {
   profileImageDataUrl?: string | null;
 };
 
-const PROFILE_CACHE_TTL_MS = 1000 * 60 * 30;
+const PROFILE_CACHE_TTL_MS = 1000 * 60 * 60 * 12;
 const PROFILE_PERSISTED_CACHE_TTL_MS = 1000 * 60 * 60 * 24 * 30;
+const PROFILE_BACKGROUND_SYNC_INTERVAL_MS = 1000 * 60 * 60 * 24 * 7;
 const PROFILE_PERSISTED_CACHE_KEY = "profile";
 const PROFILE_PENDING_PATCH_KEY = "profile-pending-patch";
-const LOCAL_PROFILE_HISTORY_LIMIT = 60;
 const LOCAL_PROFILE_LIKES_LIMIT = 200;
 
 let cachedProfile: UserProfile | null | undefined;
@@ -93,6 +95,10 @@ export function readCachedProfile() {
   return getLocalProfileSnapshot();
 }
 
+export function hasPendingProfileChanges() {
+  return Boolean(getPendingProfilePatch());
+}
+
 function applyProfilePatch(baseProfile: UserProfile | null | undefined, patch: PendingProfilePatch) {
   const base = baseProfile || createEmptyProfile();
 
@@ -124,30 +130,68 @@ export function invalidateProfileCache() {
   removePersistedCache(PROFILE_PERSISTED_CACHE_KEY);
 }
 
-export async function fetchProfile(options?: { force?: boolean }) {
+function mergeServerProfile(serverProfile: UserProfile | null | undefined, localProfile: UserProfile | null | undefined) {
+  if (!serverProfile) {
+    return serverProfile ?? localProfile ?? null;
+  }
+
+  if (!localProfile) {
+    return serverProfile;
+  }
+
+  const hasLocalHistory = localProfile.monthlyHistory.length > 0;
+  const hasLocalLikes = localProfile.likedSongs.length > 0;
+  const mergedMonthlyHistory = hasLocalHistory
+    ? [...localProfile.monthlyHistory, ...serverProfile.monthlyHistory]
+        .reduce<typeof localProfile.monthlyHistory>((entries, track) => {
+          if (!entries.some((entry) => entry.videoId === track.videoId)) {
+            entries.push(track);
+          }
+
+          return entries;
+        }, [])
+        .sort((left, right) => Date.parse(right.lastListenedAt || "") - Date.parse(left.lastListenedAt || ""))
+    : serverProfile.monthlyHistory;
+
+  return {
+    ...serverProfile,
+    monthLabel: hasLocalHistory ? localProfile.monthLabel : serverProfile.monthLabel,
+    monthlyHistory: mergedMonthlyHistory,
+    likedSongs: hasLocalLikes ? localProfile.likedSongs : serverProfile.likedSongs
+  } satisfies UserProfile;
+}
+
+export async function fetchProfile(options?: { force?: boolean; lean?: boolean }) {
   const force = options?.force ?? false;
+  const localProfile = getLocalProfileSnapshot();
+  const lean =
+    options?.lean ??
+    Boolean(localProfile && (localProfile.monthlyHistory.length > 0 || localProfile.likedSongs.length > 0));
 
   if (!force && cachedProfileExpiresAt > Date.now() && cachedProfile !== undefined) {
     return cachedProfile;
   }
 
   if (!force) {
-    const localProfile = getLocalProfileSnapshot();
-
     if (localProfile !== undefined) {
       return localProfile;
     }
+  }
+
+  if (isCacheOnlyModeEnabled() && localProfile !== undefined) {
+    return localProfile;
   }
 
   if (!force && pendingProfileRequest) {
     return pendingProfileRequest;
   }
 
+  const endpoint = lean ? "/api/profile?mode=light" : "/api/profile";
   const requestRevision = profileCacheRevision;
-  const request = fetch("/api/profile", {
+  const request = fetch(endpoint, {
     method: "GET",
     credentials: "same-origin",
-    cache: "no-store",
+    cache: force ? "reload" : "default",
     headers: {
       Accept: "application/json"
     }
@@ -159,15 +203,23 @@ export async function fetchProfile(options?: { force?: boolean }) {
         throw new Error(payload?.error || "Unable to load profile.");
       }
 
-      const nextProfile = payload?.profile || null;
+      const nextProfile = mergeServerProfile(payload?.profile || null, localProfile);
 
       if (requestRevision === profileCacheRevision) {
         setProfileCache(nextProfile);
       }
 
+      noteNetworkSuccess();
+
       return nextProfile;
     })
     .catch((error) => {
+      noteNetworkFailure();
+
+      if (localProfile !== undefined) {
+        return localProfile;
+      }
+
       if (cachedProfile !== undefined) {
         return cachedProfile;
       }
@@ -183,7 +235,21 @@ export async function fetchProfile(options?: { force?: boolean }) {
 }
 
 export async function syncProfileWithServer() {
+  const localProfile = getLocalProfileSnapshot();
+
   const pendingPatch = getPendingProfilePatch();
+
+  if (!pendingPatch) {
+    const persisted = readPersistedCacheRecord<UserProfile | null>(PROFILE_PERSISTED_CACHE_KEY);
+
+    if (persisted && Date.now() - persisted.storedAt < PROFILE_BACKGROUND_SYNC_INTERVAL_MS) {
+      return localProfile ?? persisted.value;
+    }
+  }
+
+  if (isCacheOnlyModeEnabled() && localProfile !== undefined) {
+    return localProfile;
+  }
 
   if (pendingPatch && Object.keys(pendingPatch).length) {
     const patchResponse = await fetch("/api/profile", {
@@ -203,9 +269,12 @@ export async function syncProfileWithServer() {
     }
 
     setPendingProfilePatch(null);
+    const mergedProfile = mergeServerProfile(patchPayload?.profile || null, localProfile);
+    applyLocalProfile(mergedProfile);
+    return mergedProfile;
   }
 
-  const profile = await fetchProfile({ force: true });
+  const profile = await fetchProfile({ force: true, lean: localProfile !== undefined });
   applyLocalProfile(profile);
   return profile;
 }
@@ -257,10 +326,7 @@ export function recordLocalHistorySong(song: Song) {
     lastListenedAt: new Date().toISOString(),
     playCount: (existingEntry?.playCount || 0) + 1
   };
-  const nextHistory = [nextEntry, ...previousHistory.filter((track) => track.videoId !== song.videoId)].slice(
-    0,
-    LOCAL_PROFILE_HISTORY_LIMIT
-  );
+  const nextHistory = [nextEntry, ...previousHistory.filter((track) => track.videoId !== song.videoId)];
 
   applyLocalProfile({
     ...existing,

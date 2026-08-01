@@ -1,9 +1,27 @@
-.next
-node_modules
-dist
-coverage
-.DS_Store
-*.log
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js build outputs
+.next/
+out/
+build/
+dist/
+
+# Android build outputs & local properties
+.gradle/
+**/build/
+local.properties
+*.apk
+*.aab
+
+# Environment & local settings
 .env.local
 .env*.local
-.vercel
+
+# Vercel / IDE / OS files
+.vercel/
+.idea/
+.DS_Store
+*.log
+*.textClipping

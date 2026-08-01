@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 
 import { getDeviceInfo } from "@/lib/device";
+import { applyUiMode, readUiMode } from "@/lib/ui-mode";
 
 const SPLASH_SESSION_KEY = "spasiba_splash_seen_v1";
 
@@ -39,13 +40,14 @@ function scheduleNonCriticalTask(task: () => void) {
 export default function PwaBootstrap() {
   useEffect(() => {
     document.documentElement.style.background = "#000";
+    document.documentElement.style.colorScheme = "dark";
     document.body.style.background = "#000";
+    document.body.style.colorScheme = "dark";
+    applyUiMode(readUiMode());
 
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-
-    if (themeMeta) {
+    document.querySelectorAll('meta[name="theme-color"]').forEach((themeMeta) => {
       themeMeta.setAttribute("content", "#000000");
-    }
+    });
 
     const { isIOS, isAndroid, isStandalone } = getDeviceInfo();
     const root = document.documentElement;
