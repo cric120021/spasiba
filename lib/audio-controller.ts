@@ -3110,8 +3110,16 @@ async function playResolvedTrack(track: Song, resolved: StreamResponse) {
             finishReject(new Error(`Playback could not start${candidate.mimeType ? ` for ${candidate.mimeType}` : ""}.`));
           }, PLAYBACK_ATTEMPT_TIMEOUT_MS);
 
-          if (audio.src !== candidate.url) {
-            audio.src = candidate.url;
+          const isIOS = getDeviceInfo().isIOS;
+          const targetUrl =
+            candidate.url.startsWith("blob:") || candidate.url.startsWith("/api/")
+              ? candidate.url
+              : isIOS && (candidate.url.includes("googlevideo.com") || candidate.url.includes("http"))
+                ? `/api/audio-proxy?url=${encodeURIComponent(candidate.url)}`
+                : candidate.url;
+
+          if (audio.src !== targetUrl) {
+            audio.src = targetUrl;
             audio.load();
           }
 
