@@ -19,6 +19,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
+import okhttp3.OkHttpClient
+import okhttp3.Request
 
 enum class DownloadType { AUDIO_ONLY, VIDEO_AND_AUDIO }
 enum class DownloadStatus { DOWNLOADING, PAUSED, COMPLETED, CANCELLED, FAILED }
@@ -53,6 +55,7 @@ class SpasibaDownloadManager(private val context: Context) {
     private fun ensureYoutubeDlInitialized() {
         runCatching {
             YoutubeDL.getInstance().init(context.applicationContext)
+            com.yausername.ffmpeg.FFmpeg.getInstance().init(context.applicationContext)
         }
     }
 
@@ -72,32 +75,29 @@ class SpasibaDownloadManager(private val context: Context) {
 
         updateItem(newItem)
 
+        val ext = if (type == DownloadType.AUDIO_ONLY) "m4a" else "mp4"
+        val targetFile = File(downloadsDir, "${song.id}_${type.name.lowercase()}.$ext")
+
+        if (type == DownloadType.VIDEO_AND_AUDIO) {
+            downloadAndMergeHighQualityVideo(song, quality, targetFile, newItem)
+            return
+        }
+
         scope.launch {
             try {
                 ensureYoutubeDlInitialized()
-                val ext = if (type == DownloadType.AUDIO_ONLY) "m4a" else "mp4"
-                val targetFile = File(downloadsDir, "${song.id}_${type.name.lowercase()}.$ext")
 
                 val processId = "download_${song.id}"
                 processMap[song.id] = processId
 
-                val formatSpec = if (type == DownloadType.AUDIO_ONLY) {
-                    "bestaudio"
-                } else {
-                    val height = when (quality) {
-                        "1080p" -> "1080"
-                        "720p" -> "720"
-                        "480p" -> "480"
-                        "360p" -> "360"
-                        else -> "720"
-                    }
-                    "bestvideo[height<=$height]+bestaudio/best[height<=$height]/best"
-                }
+                val formatSpec = "m4a/bestaudio/best"
 
                 val request = YoutubeDLRequest("https://www.youtube.com/watch?v=${song.id}").apply {
+                    addOption("-4")
                     addOption("--no-playlist")
                     addOption("--no-warnings")
                     addOption("--socket-timeout", "30")
+                    addOption("--extractor-args", "youtube:player_client=android,web")
                     addOption("-f", formatSpec)
                     addOption("-o", targetFile.absolutePath)
                 }
@@ -118,17 +118,209 @@ class SpasibaDownloadManager(private val context: Context) {
                         localFilePath = targetFile.absolutePath
                     ))
                 } else {
-                    updateItem(newItem.copy(status = DownloadStatus.FAILED))
+                    downloadDirectFallback(song, type, quality, targetFile, newItem)
                 }
             } catch (e: Exception) {
-                Log.e("SpasibaDownloadManager", "Download failed for ${song.id}", e)
-                val current = _downloads.value[song.id]
-                if (current?.status != DownloadStatus.CANCELLED) {
-                    updateItem(newItem.copy(status = DownloadStatus.FAILED))
-                }
+                Log.w("SpasibaDownloadManager", "yt-dlp download failed for ${song.id}, attempting direct stream download fallback...", e)
+                downloadDirectFallback(song, type, quality, targetFile, newItem)
             } finally {
                 processMap.remove(song.id)
             }
+        }
+    }
+
+    private fun downloadAndMergeHighQualityVideo(
+        song: Song,
+        quality: String,
+        targetFile: File,
+        newItem: DownloadItem
+    ) {
+        scope.launch(Dispatchers.IO) {
+            val processId = "download_${song.id}"
+            processMap[song.id] = processId
+
+            // Step 1: Primary - Native yt-dlp HD Video + Audio Extraction with FFmpeg auto-merging
+            try {
+                ensureYoutubeDlInitialized()
+
+                val targetRes = when {
+                    quality.contains("2160") || quality.contains("4K", ignoreCase = true) -> "2160"
+                    quality.contains("1440") || quality.contains("2K", ignoreCase = true) -> "1440"
+                    quality.contains("1080") -> "1080"
+                    quality.contains("720") -> "720"
+                    quality.contains("480") -> "480"
+                    quality.contains("360") -> "360"
+                    else -> "720"
+                }
+
+                // Force video + audio stream extraction and FFmpeg merge
+                val formatSpec = "bestvideo[height<=$targetRes][ext=mp4]+bestaudio[ext=m4a]/bestvideo[height<=$targetRes]+bestaudio/best[height<=$targetRes]/best"
+
+                val request = YoutubeDLRequest("https://www.youtube.com/watch?v=${song.id}").apply {
+                    addOption("-4")
+                    addOption("--no-playlist")
+                    addOption("--no-warnings")
+                    addOption("--socket-timeout", "30")
+                    addOption("--extractor-args", "youtube:player_client=android_vr,web")
+                    addOption("-f", formatSpec)
+                    addOption("-o", targetFile.absolutePath)
+                }
+
+                YoutubeDL.getInstance().execute(request, processId) { progress, _, _ ->
+                    if (progress >= 0f) {
+                        val current = _downloads.value[song.id]
+                        if (current != null && current.status == DownloadStatus.DOWNLOADING) {
+                            updateItem(current.copy(progress = progress.coerceIn(0f, 100f)))
+                        }
+                    }
+                }
+
+                if (targetFile.exists() && targetFile.length() > 500_000L) {
+                    updateItem(newItem.copy(
+                        progress = 100f,
+                        status = DownloadStatus.COMPLETED,
+                        localFilePath = targetFile.absolutePath
+                    ))
+                    return@launch
+                }
+            } catch (e: Exception) {
+                Log.w("SpasibaDownloadManager", "yt-dlp high quality video download attempt failed for ${song.id}, switching to dual-stream OkHttp + FFmpeg fallback...", e)
+            }
+
+            // Step 2: Fallback - Dual-Stream OkHttp Resolution & FFmpeg Muxing
+            try {
+                val videoRes = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.resolveVideoStreamResult(context, song.id, quality)
+                val audioRes = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.resolveStreamResult(context, song.id)
+
+                if (videoRes != null && videoRes.url.isNotBlank() && audioRes != null && audioRes.url.isNotBlank()) {
+                    val videoTemp = File(downloadsDir, "${song.id}_video_temp.mp4")
+                    val audioTemp = File(downloadsDir, "${song.id}_audio_temp.m4a")
+
+                    // Download 1080p Video Track (0% -> 45%)
+                    downloadFileWithProgress(song, videoRes.url, videoRes.headers, videoTemp, 0f, 45f)
+
+                    // Download High-Quality Audio Track (45% -> 90%)
+                    downloadFileWithProgress(song, audioRes.url, audioRes.headers, audioTemp, 45f, 90f)
+
+                    // Merge Video + Audio using yt-dlp / FFmpeg command options
+                    updateItem(newItem.copy(progress = 92f))
+                    val mergeRequest = YoutubeDLRequest("").apply {
+                        addOption("-i", videoTemp.absolutePath)
+                        addOption("-i", audioTemp.absolutePath)
+                        addOption("-c:v", "copy")
+                        addOption("-c:a", "aac")
+                        addOption("-o", targetFile.absolutePath)
+                    }
+                    runCatching {
+                        YoutubeDL.getInstance().execute(mergeRequest, "merge_${song.id}")
+                    }
+
+                    videoTemp.delete()
+                    audioTemp.delete()
+                } else if (videoRes != null && videoRes.url.isNotBlank()) {
+                    downloadFileWithProgress(song, videoRes.url, videoRes.headers, targetFile, 0f, 100f)
+                }
+
+                if (targetFile.exists() && targetFile.length() > 0) {
+                    updateItem(newItem.copy(
+                        progress = 100f,
+                        status = DownloadStatus.COMPLETED,
+                        localFilePath = targetFile.absolutePath
+                    ))
+                } else {
+                    updateItem(newItem.copy(status = DownloadStatus.FAILED))
+                }
+            } catch (fallbackEx: Exception) {
+                Log.e("SpasibaDownloadManager", "High quality video fallback failed for ${song.id}", fallbackEx)
+                updateItem(newItem.copy(status = DownloadStatus.FAILED))
+            } finally {
+                processMap.remove(song.id)
+            }
+        }
+    }
+
+    private suspend fun downloadDirectFallback(
+        song: Song,
+        type: DownloadType,
+        quality: String,
+        targetFile: File,
+        newItem: DownloadItem
+    ) {
+        try {
+            val streamRes = if (type == DownloadType.AUDIO_ONLY) {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.resolveStreamResult(context, song.id)
+            } else {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.resolveVideoStreamResult(context, song.id, quality)
+            }
+            if (streamRes != null && streamRes.url.isNotBlank()) {
+                downloadDirectStream(song, streamRes.url, streamRes.headers, targetFile)
+            } else {
+                updateItem(newItem.copy(status = DownloadStatus.FAILED))
+            }
+        } catch (ex: Exception) {
+            Log.e("SpasibaDownloadManager", "Direct stream download fallback failed for ${song.id}", ex)
+            updateItem(newItem.copy(status = DownloadStatus.FAILED))
+        }
+    }
+
+    private fun downloadFileWithProgress(
+        song: Song,
+        url: String,
+        headers: Map<String, String>,
+        targetFile: File,
+        startPct: Float,
+        endPct: Float
+    ) {
+        val client = OkHttpClient.Builder()
+            .connectTimeout(30, java.util.concurrent.TimeUnit.SECONDS)
+            .readTimeout(60, java.util.concurrent.TimeUnit.SECONDS)
+            .build()
+
+        val reqBuilder = Request.Builder().url(url)
+        headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+
+        client.newCall(reqBuilder.build()).execute().use { response ->
+            if (!response.isSuccessful) throw Exception("HTTP ${response.code}")
+            val body = response.body ?: throw Exception("Empty body")
+            val totalBytes = body.contentLength()
+            var downloadedBytes = 0L
+
+            body.byteStream().use { input ->
+                targetFile.outputStream().use { output ->
+                    val buffer = ByteArray(8192)
+                    var read: Int
+                    while (input.read(buffer).also { read = it } != -1) {
+                        output.write(buffer, 0, read)
+                        downloadedBytes += read
+                        if (totalBytes > 0) {
+                            val fraction = (downloadedBytes.toFloat() / totalBytes.toFloat()).coerceIn(0f, 1f)
+                            val currentPct = startPct + fraction * (endPct - startPct)
+                            val current = _downloads.value[song.id]
+                            if (current != null && current.status == DownloadStatus.DOWNLOADING) {
+                                updateItem(current.copy(progress = currentPct))
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private fun downloadDirectStream(song: Song, url: String, headers: Map<String, String>, targetFile: File) {
+        downloadFileWithProgress(song, url, headers, targetFile, 0f, 100f)
+
+        if (targetFile.exists() && targetFile.length() > 0) {
+            val current = _downloads.value[song.id]
+            if (current != null) {
+                updateItem(current.copy(
+                    progress = 100f,
+                    status = DownloadStatus.COMPLETED,
+                    localFilePath = targetFile.absolutePath
+                ))
+            }
+        } else {
+            val current = _downloads.value[song.id]
+            if (current != null) updateItem(current.copy(status = DownloadStatus.FAILED))
         }
     }
 
@@ -256,6 +448,15 @@ class SpasibaDownloadManager(private val context: Context) {
     }
 
     companion object {
+        @Volatile
+        private var INSTANCE: SpasibaDownloadManager? = null
+
+        fun getInstance(context: Context): SpasibaDownloadManager {
+            return INSTANCE ?: synchronized(this) {
+                INSTANCE ?: SpasibaDownloadManager(context.applicationContext).also { INSTANCE = it }
+            }
+        }
+
         fun isNetworkAvailable(context: Context): Boolean {
             val cm = context.getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager ?: return false
             val network = cm.activeNetwork ?: return false

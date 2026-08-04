@@ -2,7 +2,7 @@ import { createClient, type Client } from "@libsql/client";
 
 const DEFAULT_TURSO_DATABASE_URL = "libsql://music-app-db-jigar-23.aws-ap-south-1.turso.io";
 const SCHEMA_READY_KEY = "spasiba_schema";
-const SCHEMA_VERSION = 3;
+const SCHEMA_VERSION = 4;
 const VISITOR_READY_TTL_MS = 1000 * 60 * 15;
 
 let client: Client | null = null;
@@ -10,7 +10,11 @@ let schemaPromise: Promise<void> | null = null;
 const visitorReadyCache = new Map<string, number>();
 
 function getDatabaseUrl() {
-  return process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || DEFAULT_TURSO_DATABASE_URL;
+  const rawUrl = process.env.TURSO_DATABASE_URL || process.env.LIBSQL_URL || DEFAULT_TURSO_DATABASE_URL;
+  if (rawUrl.startsWith("libsql://")) {
+    return rawUrl.replace("libsql://", "https://");
+  }
+  return rawUrl;
 }
 
 function getAuthToken() {
@@ -52,12 +56,17 @@ async function isSchemaMarkedReady(db: Client) {
   }
 }
 
+let isSchemaReadyInMemory = false;
+
 export async function ensureDbSchema() {
+  if (isSchemaReadyInMemory) return;
+
   if (!schemaPromise) {
     schemaPromise = (async () => {
       const db = getDb();
 
       if (await isSchemaMarkedReady(db)) {
+        isSchemaReadyInMemory = true;
         return;
       }
 
@@ -187,7 +196,18 @@ export async function ensureDbSchema() {
               user_id TEXT,
               fcm_token TEXT,
               app_version TEXT,
+              mobile_number TEXT,
+              is_blocked INTEGER NOT NULL DEFAULT 0,
+              eunoia_disabled INTEGER NOT NULL DEFAULT 0,
+              block_reason TEXT,
               last_seen INTEGER NOT NULL
+            )
+          `,
+          `
+            CREATE TABLE IF NOT EXISTS blocked_numbers (
+              mobile_number TEXT PRIMARY KEY,
+              reason TEXT,
+              created_at INTEGER NOT NULL
             )
           `,
           `
@@ -314,6 +334,22 @@ export async function ensureDbSchema() {
         await db.execute("ALTER TABLE engagement_events ADD COLUMN views INTEGER NOT NULL DEFAULT 0");
       }
 
+      const deviceColumns = await db.execute("PRAGMA table_info(devices)");
+      const deviceColumnNames = new Set(deviceColumns.rows.map((row) => String(row.name || "").toLowerCase()));
+
+      if (!deviceColumnNames.has("mobile_number")) {
+        await db.execute("ALTER TABLE devices ADD COLUMN mobile_number TEXT");
+      }
+      if (!deviceColumnNames.has("is_blocked")) {
+        await db.execute("ALTER TABLE devices ADD COLUMN is_blocked INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!deviceColumnNames.has("eunoia_disabled")) {
+        await db.execute("ALTER TABLE devices ADD COLUMN eunoia_disabled INTEGER NOT NULL DEFAULT 0");
+      }
+      if (!deviceColumnNames.has("block_reason")) {
+        await db.execute("ALTER TABLE devices ADD COLUMN block_reason TEXT");
+      }
+
       if (shouldBackfillPlaylistSummaries) {
         await db.execute(`
           UPDATE playlists
@@ -399,7 +435,9 @@ export async function ensureDbSchema() {
         ],
         "write"
       );
+      isSchemaReadyInMemory = true;
     })().catch((error) => {
+      isSchemaReadyInMemory = false;
       schemaPromise = null;
       throw error;
     });

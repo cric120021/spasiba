@@ -29,7 +29,9 @@ export function getDeviceInfo(): DeviceInfo {
   }
 
   const nav = navigator as NavigatorWithStandalone;
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+  const isIOS =
+    /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+    (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
   const isAndroid = /Android/.test(navigator.userAgent);
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches || Boolean(nav.standalone);

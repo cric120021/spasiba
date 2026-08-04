@@ -1,10 +1,11 @@
 package app.spasiba.nativeapp2.data.db
 
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import app.spasiba.nativeapp2.data.model.Song
 
-@Entity(tableName = "liked_songs")
+@Entity(tableName = "liked_songs", indices = [Index(value = ["addedAt"])])
 data class LikedSongEntity(
     @PrimaryKey val id: String,
     val title: String,
@@ -38,7 +39,7 @@ data class PlaylistEntity(
     val createdAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "playlist_songs", primaryKeys = ["playlistId", "songId"])
+@Entity(tableName = "playlist_songs", primaryKeys = ["playlistId", "songId"], indices = [Index(value = ["playlistId"]), Index(value = ["songId"])])
 data class PlaylistSongEntity(
     val playlistId: String,
     val songId: String,
@@ -57,7 +58,7 @@ data class SearchHistoryEntity(
     val searchedAt: Long = System.currentTimeMillis()
 )
 
-@Entity(tableName = "listening_history")
+@Entity(tableName = "listening_history", indices = [Index(value = ["playedAt"])])
 data class ListeningHistoryEntity(
     @PrimaryKey val songId: String,
     val title: String,

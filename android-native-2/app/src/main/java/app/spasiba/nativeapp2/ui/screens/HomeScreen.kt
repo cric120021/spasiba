@@ -1,5 +1,7 @@
 package app.spasiba.nativeapp2.ui.screens
 
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -37,6 +39,7 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -72,6 +75,10 @@ import app.spasiba.nativeapp2.ui.theme.TextStrong
 import coil.compose.AsyncImage
 import java.util.Calendar
 
+import androidx.compose.foundation.lazy.LazyListState
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.runtime.saveable.rememberSaveable
+
 // Spotify & YouTube Music Design System Tokens
 private val SpotifyGreen = Color(0xFF1DB954)
 private val SpotifyDarkBackground = Color.Black
@@ -95,7 +102,9 @@ fun HomeScreen(
     onSongClick: (Song, List<Song>, Int) -> Unit,
     onLikeClick: (String) -> Unit,
     onOptionsClick: (Song) -> Unit = {},
-    onSwipeToQueue: (Song) -> Unit = {}
+    onSwipeToQueue: (Song) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
+    listState: LazyListState = rememberSaveable(saver = LazyListState.Saver) { LazyListState() }
 ) {
     // Dynamic greeting calculation based on hour of day
     val greeting = remember {
@@ -108,48 +117,226 @@ fun HomeScreen(
     }
 
     var selectedMoodFilter by remember { mutableStateOf<String?>(null) }
+    val activeFilterName = selectedCategory?.label ?: selectedMoodFilter
+    var categorySearchSongs by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var categoryShelvesState by remember { mutableStateOf<List<app.spasiba.nativeapp2.data.api.HomeShelf>>(emptyList()) }
     var liveHomeShelves by remember { mutableStateOf<List<app.spasiba.nativeapp2.data.api.HomeShelf>>(emptyList()) }
 
-    var punjabiSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var hindiSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var englishSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var southSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var haryanviSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
-    var bhojpuriSongsState by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var topChartsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedTopCharts) }
+    var punjabiSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedPunjabiSongs) }
+    var hindiSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedHindiSongs) }
+    var englishSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedEnglishSongs) }
+    var southSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedSouthSongs) }
+    var haryanviSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedHaryanviSongs) }
+    var bhojpuriSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedBhojpuriSongs) }
 
-    androidx.compose.runtime.LaunchedEffect(Unit) {
-        val fetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicHomeShelves()
-        if (fetched.isNotEmpty()) {
-            liveHomeShelves = fetched
+    var isCategoryLoading by remember { mutableStateOf(false) }
+    androidx.compose.runtime.LaunchedEffect(activeFilterName) {
+        if (activeFilterName != null) {
+            isCategoryLoading = true
+            categoryShelvesState = emptyList()
+            val catLower = activeFilterName.lowercase()
+
+            val shelvesList = mutableListOf<app.spasiba.nativeapp2.data.api.HomeShelf>()
+
+            val rawYtParam = when (catLower) {
+                "podcasts" -> "ggMPOZ3ZyZXF1ZW5jeT0x"
+                "romance" -> "ggMPOZ3ZyZXF1ZW5jeT0y"
+                "workout" -> "ggMPOZ3ZyZXF1ZW5jeT0z"
+                "energize" -> "ggMPOZ3ZyZXF1ZW5jeT00"
+                "relax" -> "ggMPOZ3ZyZXF1ZW5jeT01"
+                "focus" -> "ggMPOZ3ZyZXF1ZW5jeT02"
+                "commute" -> "ggMPOZ3ZyZXF1ZW5jeT03"
+                "sad" -> "ggMPOZ3ZyZXF1ZW5jeT08"
+                "sleep" -> "ggMPOZ3ZyZXF1ZW5jeT05"
+                else -> null
+            }
+
+            val rawYtBrowseId = if (catLower == "podcasts") "FEmusic_podcasts" else "FEmusic_home"
+            val directYtShelves = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicBrowseShelves(rawYtBrowseId, rawYtParam)
+            if (directYtShelves.isNotEmpty()) {
+                shelvesList.addAll(directYtShelves)
+            }
+
+            kotlinx.coroutines.coroutineScope {
+                when (catLower) {
+                    "podcasts" -> {
+                        val mainAudioDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps Huberman Lex Fridman podcast audio") }
+                        val mainVideoDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps podcast video episode") }
+                        val storiesDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps interview podcast") }
+                        val businessDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Finshots Nikhil Kamath Raj Shamani tech business podcast") }
+                        val mindsetDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Andrew Huberman Raj Shamani self improvement health podcast") }
+                        val crimeDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Desi Crime Crime Tak true crime podcast") }
+                        val healthDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Huberman Lab health neuroscience podcast") }
+                        val geoDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Palki Sharma World Is One geopolitics news podcast") }
+                        val comedyDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Tanmay Bhat Zakir Khan comedy interview podcast talk") }
+                        val moneyDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Akshat Shrivastava Rachana Ranade personal finance investing podcast") }
+                        val spiritDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Gaur Gopal Das Jaya Kishori spiritual wisdom podcast") }
+
+                        fun filterPodcasts(list: List<Song>): List<Song> = list.filter { s ->
+                            !s.title.lowercase().contains("latent") && !s.title.lowercase().contains("standup") && !s.title.lowercase().contains("roast")
+                        }
+
+                        val mainAudio = filterPodcasts(mainAudioDef.await())
+                        val mainVideo = filterPodcasts(mainVideoDef.await())
+                        val stories = filterPodcasts(storiesDef.await())
+                        val business = filterPodcasts(businessDef.await())
+                        val mindset = filterPodcasts(mindsetDef.await())
+                        val crime = filterPodcasts(crimeDef.await())
+                        val health = filterPodcasts(healthDef.await())
+                        val geo = filterPodcasts(geoDef.await())
+                        val comedy = filterPodcasts(comedyDef.await())
+                        val money = filterPodcasts(moneyDef.await())
+                        val spirit = filterPodcasts(spiritDef.await())
+
+                        if (mainAudio.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Podcasts Shows & Episodes", songs = mainAudio.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (mainVideo.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Featured Video Podcasts", songs = mainVideo.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (stories.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Stories & Deep Conversations", songs = stories.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (business.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Business, Tech & Entrepreneurship", songs = business.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (mindset.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Self Improvement & Mindset", songs = mindset.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (crime.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "True Crime & Mysteries", songs = crime.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (health.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Health, Wellness & Science", songs = health.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (geo.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Geopolitics & Global Affairs", songs = geo.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (money.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Finance & Money Management", songs = money.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (spirit.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Spirituality & Life Wisdom", songs = spirit.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (comedy.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Humor & Comedy Talks", songs = comedy.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                    }
+                    "romance" -> {
+                        val mainHitsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest romantic love songs 2026 Arijit Singh Pritam") }
+                        val mainVideosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("official music video romantic love songs 2026") }
+                        val hindiLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Arijit Singh Pritam Shreya Ghoshal romantic love songs") }
+                        val punjabiLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Prabh Gill B Praak Akhil romantic punjabi love songs") }
+                        val acousticLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("acoustic guitar romantic unplugged love songs") }
+                        val englishLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("english romantic pop ballads Ed Sheeran Taylor Swift") }
+                        val rainRomanceDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("monsoon rain romantic bollywood hindi songs") }
+                        val classic90sDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("90s 2000s classic bollywood romantic songs Kumar Sanu Alka Yagnik") }
+
+                        val mainHits = mainHitsDef.await()
+                        val mainVideos = mainVideosDef.await()
+                        val hindiLove = hindiLoveDef.await()
+                        val punjabiLove = punjabiLoveDef.await()
+                        val acousticLove = acousticLoveDef.await()
+                        val englishLove = englishLoveDef.await()
+                        val rainRomance = rainRomanceDef.await()
+                        val classic90s = classic90sDef.await()
+
+                        if (mainHits.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Romantic Hits", songs = mainHits.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (mainVideos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Featured Romantic Music Videos", songs = mainVideos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (hindiLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hindi Romance Essentials", songs = hindiLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (punjabiLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Punjabi Love Songs", songs = punjabiLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (acousticLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Acoustic & Unplugged Romance", songs = acousticLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (englishLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "English Love Ballads", songs = englishLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (rainRomance.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Rain & Monsoon Romance", songs = rainRomance.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (classic90s.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Classic 90s & 2000s Romance", songs = classic90s.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                    }
+                    "workout" -> {
+                        val mainHitsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("workout gym motivation heavy bass songs 2026") }
+                        val mainVideosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("heavy bass gym workout motivation music video") }
+                        val heavyBassDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("heavy bass gym workout motivation beats 2026") }
+                        val cardioEDMDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("cardio workout edm electro dance music 2026") }
+                        val hiphopHypeDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("hip hop gym workout motivation rap songs") }
+                        val hardstyleDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("hardstyle gym workout pump motivation") }
+
+                        val mainHits = mainHitsDef.await()
+                        val mainVideos = mainVideosDef.await()
+                        val heavyBass = heavyBassDef.await()
+                        val cardioEDM = cardioEDMDef.await()
+                        val hiphopHype = hiphopHypeDef.await()
+                        val hardstyle = hardstyleDef.await()
+
+                        if (mainHits.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Workout Hits", songs = mainHits.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (mainVideos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Gym Motivation Music Videos", songs = mainVideos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (heavyBass.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Heavy Bass Gym Beats", songs = heavyBass.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (cardioEDM.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Cardio & EDM Workout", songs = cardioEDM.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (hiphopHype.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hip-Hop Gym Hype", songs = hiphopHype.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (hardstyle.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hardstyle Gym Pump", songs = hardstyle.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                    }
+                    else -> {
+                        val songsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest $catLower songs 2026 official") }
+                        val videosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("official music video $catLower 2026") }
+                        val essentialsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("best $catLower hits 2026 collection") }
+
+                        val songs = songsDef.await()
+                        val videos = videosDef.await().ifEmpty { songs }
+                        val essentials = essentialsDef.await().ifEmpty { songs.drop(4) }
+
+                        if (songs.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top $activeFilterName Hits", songs = songs.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                        if (videos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Trending $activeFilterName Videos", songs = videos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
+                        if (essentials.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "$activeFilterName Essentials", songs = essentials.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
+                    }
+                }
+            }
+
+            if (shelvesList.isNotEmpty()) {
+                categoryShelvesState = shelvesList
+            }
+            isCategoryLoading = false
+        } else {
+            categorySearchSongs = emptyList()
+            categoryShelvesState = emptyList()
+            isCategoryLoading = false
         }
-        val punjabiFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top punjabi songs 2026")
-        if (punjabiFetched.isNotEmpty()) punjabiSongsState = punjabiFetched
-
-        val hindiFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top hindi songs 2026")
-        if (hindiFetched.isNotEmpty()) hindiSongsState = hindiFetched
-
-        val englishFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top english pop hits 2026")
-        if (englishFetched.isNotEmpty()) englishSongsState = englishFetched
-
-        val southFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top south tamil telugu songs")
-        if (southFetched.isNotEmpty()) southSongsState = southFetched
-
-        val haryanviFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top haryanvi songs")
-        if (haryanviFetched.isNotEmpty()) haryanviSongsState = haryanviFetched
-
-        val bhojpuriFetched = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("top bhojpuri party songs")
-        if (bhojpuriFetched.isNotEmpty()) bhojpuriSongsState = bhojpuriFetched
     }
 
-    val filteredSongs = remember(recommendedSongs, selectedMoodFilter) {
-        if (selectedMoodFilter == null) recommendedSongs
-        else {
-            val filter = selectedMoodFilter!!.lowercase()
-            recommendedSongs.filter {
+    val displayShelves = remember(liveHomeShelves, categoryShelvesState, activeFilterName) {
+        if (activeFilterName != null) {
+            categoryShelvesState
+        } else {
+            liveHomeShelves
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        kotlinx.coroutines.coroutineScope {
+            val shelvesDeferred = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicHomeShelves() }
+            val chartsDeferred = async { 
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest release songs 2026 official")
+                    .filter { !it.title.lowercase().contains("jukebox") && !it.title.lowercase().contains("compilation") && !it.title.lowercase().contains("non stop") && !it.title.lowercase().contains("full album") }
+            }
+            val punjabiDeferred = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest punjabi songs 2026 official") }
+            val hindiDeferred = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest hindi songs 2026 official") }
+            val englishDeferred = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest english pop songs 2026 official") }
+
+            val fetchedShelves = shelvesDeferred.await()
+            if (fetchedShelves.isNotEmpty()) liveHomeShelves = fetchedShelves
+
+            val fetchedCharts = chartsDeferred.await()
+            if (fetchedCharts.isNotEmpty()) {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedTopCharts = fetchedCharts
+                topChartsState = fetchedCharts
+            }
+
+            val fetchedPunjabi = punjabiDeferred.await()
+            if (fetchedPunjabi.isNotEmpty()) {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedPunjabiSongs = fetchedPunjabi
+                punjabiSongsState = fetchedPunjabi
+            }
+
+            val fetchedHindi = hindiDeferred.await()
+            if (fetchedHindi.isNotEmpty()) {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedHindiSongs = fetchedHindi
+                hindiSongsState = fetchedHindi
+            }
+
+            val fetchedEnglish = englishDeferred.await()
+            if (fetchedEnglish.isNotEmpty()) {
+                app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedEnglishSongs = fetchedEnglish
+                englishSongsState = fetchedEnglish
+            }
+        }
+    }
+
+    val filteredSongs = remember(recommendedSongs, activeFilterName, categorySearchSongs) {
+        if (activeFilterName == null) {
+            recommendedSongs
+        } else {
+            val filter = activeFilterName.lowercase()
+            val matching = recommendedSongs.filter {
                 it.title.lowercase().contains(filter) ||
-                it.author.lowercase().contains(filter) ||
-                filter.contains("workout") || filter.contains("focus") || filter.contains("sleep") || filter.contains("romance") || filter.contains("podcast")
-            }.ifEmpty { recommendedSongs }
+                it.author.lowercase().contains(filter)
+            }
+            val combined = (categorySearchSongs + matching + recommendedSongs).distinctBy { it.id }
+            if (combined.isNotEmpty()) combined else recommendedSongs
         }
     }
 
@@ -167,28 +354,47 @@ fun HomeScreen(
         if (recentlyPlayed.isNotEmpty()) recentlyPlayed.take(6)
         else filteredSongs.take(6)
     }
-    val punjabiSongs = remember(punjabiSongsState, filteredSongs) { punjabiSongsState.ifEmpty { filteredSongs } }
-    val hindiSongs = remember(hindiSongsState, filteredSongs) { hindiSongsState.ifEmpty { filteredSongs } }
-    val englishSongs = remember(englishSongsState, filteredSongs) { englishSongsState.ifEmpty { filteredSongs } }
-    val southSongs = remember(southSongsState, filteredSongs) { southSongsState.ifEmpty { filteredSongs } }
-    val haryanviSongs = remember(haryanviSongsState, filteredSongs) { haryanviSongsState.ifEmpty { filteredSongs } }
-    val bhojpuriSongs = remember(bhojpuriSongsState, filteredSongs) { bhojpuriSongsState.ifEmpty { filteredSongs } }
+    val punjabiSongs = remember(punjabiSongsState) { punjabiSongsState }
+    val hindiSongs = remember(hindiSongsState) { hindiSongsState }
+    val englishSongs = remember(englishSongsState) { englishSongsState }
+    val southSongs = remember(southSongsState) { southSongsState }
+    val haryanviSongs = remember(haryanviSongsState) { haryanviSongsState }
+    val bhojpuriSongs = remember(bhojpuriSongsState) { bhojpuriSongsState }
 
-    val topChartSongs = remember(recentlyPlayed, filteredSongs) {
-        if (recentlyPlayed.size >= 3) {
-            (recentlyPlayed + filteredSongs).distinctBy { it.id }.take(5)
-        } else {
-            filteredSongs.take(5)
-        }
-    }
-    val artistSpotlightSongs = remember(recentlyPlayed, likedSongs, filteredSongs) {
+    val topChartSongs = remember(topChartsState) { topChartsState.take(5) }
+
+    var artistAvatars by remember { mutableStateOf<Map<String, String>>(emptyMap()) }
+    val artistNames = remember(recentlyPlayed, likedSongs, filteredSongs) {
         val likedTrackList = filteredSongs.filter { likedSongs.contains(it.id) }
-        val userArtists = (recentlyPlayed + likedTrackList).distinctBy { it.author }
-        if (userArtists.isNotEmpty()) userArtists.take(6)
-        else filteredSongs.distinctBy { it.author }.take(6)
+        val allTracks = recentlyPlayed + likedTrackList + filteredSongs
+        allTracks
+            .map { it.author }
+            .filter { it != "Artist" && it.isNotBlank() }
+            .groupingBy { it }
+            .eachCount()
+            .entries
+            .sortedByDescending { it.value }
+            .map { it.key }
+            .take(10)
+    }
+
+    androidx.compose.runtime.LaunchedEffect(artistNames) {
+        if (artistNames.isNotEmpty()) {
+            kotlinx.coroutines.coroutineScope {
+                val deferreds = artistNames.map { artist ->
+                    artist to async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.getArtistAvatarUrl(artist) }
+                }
+                val avatars = mutableMapOf<String, String>()
+                deferreds.forEach { (artist, deferred) ->
+                    avatars[artist] = deferred.await()
+                }
+                artistAvatars = avatars
+            }
+        }
     }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier
             .fillMaxSize()
             .background(SpotifyDarkBackground),
@@ -216,20 +422,41 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.width(16.dp))
 
-                    // Top Header Action: Profile Avatar Button
-                    IconButton(
-                        onClick = onProfileClick,
+                    val userPrefs = remember { currentContext.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
+                    val userPhotoUri = remember { userPrefs.getString("profile_photo_uri", null) }
+
+                    // Top Header Action: Pure Borderless Profile Avatar Button
+                    Box(
+                        contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(42.dp)
+                            .size(46.dp)
                             .clip(CircleShape)
-                            .background(Color.White.copy(alpha = 0.12f))
+                            .clickable(onClick = onProfileClick)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "Profile",
-                            tint = Color.White,
-                            modifier = Modifier.size(22.dp)
-                        )
+                        if (!userPhotoUri.isNullOrBlank()) {
+                            AsyncImage(
+                                model = userPhotoUri,
+                                contentDescription = "Profile Photo",
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                            )
+                        } else {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .background(Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Person,
+                                    contentDescription = "Profile",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -245,7 +472,8 @@ fun HomeScreen(
                     modifier = Modifier.padding(vertical = 6.dp)
                 ) {
                     items(filterChips) { filter ->
-                        val isSelected = selectedMoodFilter.equals(filter, ignoreCase = true)
+                        val isSelected = activeFilterName?.equals(filter, ignoreCase = true) == true
+                        val isThisChipLoading = isSelected && isCategoryLoading
 
                         Surface(
                             shape = RoundedCornerShape(16.dp),
@@ -257,31 +485,49 @@ fun HomeScreen(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(16.dp))
                                 .clickable {
-                                    val isCurrentSelected = selectedMoodFilter.equals(filter, ignoreCase = true)
-                                    selectedMoodFilter = if (isCurrentSelected) null else filter
-                                    val catChip = if (isCurrentSelected) null else CategoryChip(filter.lowercase(), filter, "top ${filter.lowercase()} songs")
-                                    onCategorySelect(catChip)
+                                    val isCurrentSelected = activeFilterName?.equals(filter, ignoreCase = true) == true
+                                    if (isCurrentSelected) {
+                                        selectedMoodFilter = null
+                                        onCategorySelect(null)
+                                    } else {
+                                        selectedMoodFilter = filter
+                                        val catChip = CategoryChip(filter.lowercase(), filter, "top ${filter.lowercase()} songs")
+                                        onCategorySelect(catChip)
+                                    }
                                 }
                         ) {
-                            Text(
-                                text = filter,
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
-                                    color = if (isSelected) Color.Black else Color.White,
-                                    fontSize = 13.sp
-                                ),
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp)
-                            )
+                            ) {
+                                if (isThisChipLoading) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(12.dp),
+                                        color = Color.Black,
+                                        strokeWidth = 1.5.dp
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
+                                }
+                                Text(
+                                    text = filter,
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        fontWeight = if (isSelected) FontWeight.ExtraBold else FontWeight.Medium,
+                                        color = if (isSelected) Color.Black else Color.White,
+                                        fontSize = 13.sp
+                                    )
+                                )
+                            }
                         }
                     }
                 }
+
                 Spacer(modifier = Modifier.height(10.dp))
             }
         }
 
-        // Live YouTube Music Fetched Home Shelves
-        if (liveHomeShelves.isNotEmpty()) {
-            items(liveHomeShelves) { shelf ->
+        // Live YouTube Music Fetched Home Shelves & Category Shelves
+        if (displayShelves.isNotEmpty()) {
+            items(displayShelves) { shelf ->
                 Column(modifier = Modifier.padding(bottom = 24.dp)) {
                     Row(
                         modifier = Modifier
@@ -421,99 +667,253 @@ fun HomeScreen(
             }
         }
 
-        // 2. YT Music Ranked Top 5 Charts (Ranked 1 to 5)
-        item {
-            Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                Text(
-                    text = "TOP CHARTS",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = SpotifyGreen,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.4.sp
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Text(
-                    text = "Most played right now",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = Color.White
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                )
+        // 2. Default Home Sections (Only shown when no Category Filter is active)
+        if (activeFilterName == null) {
+            // 2A. TOP CHARTS (Most played right now)
+            item {
+                Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                    Text(
+                        text = "TOP CHARTS",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = SpotifyGreen,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 10.sp,
+                            letterSpacing = 1.4.sp
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp)
+                    )
+                    Text(
+                        text = "Most played right now",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp,
+                            color = Color.White
+                        ),
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
+                    )
 
-                Spacer(modifier = Modifier.height(10.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                topChartSongs.forEachIndexed { index, song ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 5.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .clickable { onSongClick(song, filteredSongs, index) }
-                            .padding(vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "${index + 1}",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.ExtraBold,
-                                color = if (index == 0) SpotifyGreen else Color.White.copy(alpha = 0.7f),
-                                fontSize = 18.sp
-                            ),
-                            modifier = Modifier.width(28.dp)
-                        )
-
-                        AsyncImage(
-                            model = song.thumbnail,
-                            contentDescription = song.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(52.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                        )
-
-                        Spacer(modifier = Modifier.width(14.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = song.title,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = if (song.id == currentSong?.id) SpotifyGreen else Color.White,
-                                    fontSize = 14.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = "${song.author} • ${song.durationFormatted}",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = TextSecondaryGray,
-                                    fontSize = 12.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                    if (topChartSongs.isEmpty() || isLoading) {
+                        repeat(5) {
+                            app.spasiba.nativeapp2.ui.components.ChartItemSkeleton()
                         }
-
-                        IconButton(
-                            onClick = { onOptionsClick(song) },
-                            modifier = Modifier.size(36.dp)
+                    } else {
+                        topChartSongs.forEachIndexed { index, song ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 5.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable { onSongClick(song, topChartSongs, index) }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.MoreVert,
-                                contentDescription = "Options",
-                                tint = TextSecondaryGray,
-                                modifier = Modifier.size(18.dp)
+                            Text(
+                                text = "${index + 1}",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (index == 0) SpotifyGreen else Color.White.copy(alpha = 0.7f),
+                                    fontSize = 18.sp
+                                ),
+                                modifier = Modifier.width(28.dp)
                             )
+
+                            AsyncImage(
+                                model = song.thumbnail,
+                                contentDescription = song.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                            )
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = song.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        fontWeight = FontWeight.Bold,
+                                        color = if (song.id == currentSong?.id) SpotifyGreen else Color.White,
+                                        fontSize = 14.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Text(
+                                    text = "${song.author} • ${song.durationFormatted}",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = TextSecondaryGray,
+                                        fontSize = 12.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            IconButton(
+                                onClick = { onOptionsClick(song) },
+                                modifier = Modifier.size(36.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.MoreVert,
+                                    contentDescription = "Options",
+                                    tint = TextSecondaryGray,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
                         }
                     }
                 }
             }
         }
+
+            // 2B. QUICK PICKS (Placed directly below Most Played right now)
+            item {
+                Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 16.dp, vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Quick picks",
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 20.sp,
+                                    color = Color.White
+                                )
+                            )
+                            Text(
+                                text = "Start radio from any song",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextSecondaryGray,
+                                    fontSize = 12.sp
+                                )
+                            )
+                        }
+
+                        if (quickPicks.isNotEmpty()) {
+                            Surface(
+                                modifier = Modifier
+                                    .clip(CircleShape)
+                                    .clickable { onSongClick(quickPicks.first(), quickPicks, 0) },
+                                color = Color.White.copy(alpha = 0.1f)
+                            ) {
+                                Text(
+                                    text = "PLAY ALL",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.2.sp
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    if (quickPickColumns.isEmpty() || isLoading) {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(3) {
+                                Column(
+                                    modifier = Modifier.width(320.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    repeat(4) {
+                                        SongTileSkeleton()
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            items(quickPickColumns) { columnTracks ->
+                                Column(
+                                    modifier = Modifier.width(320.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    columnTracks.forEach { track ->
+                                        val isCurrentPlaying = track.id == currentSong?.id
+
+                                        AnimatedPressCard(
+                                            onClick = {
+                                                val index = filteredSongs.indexOfFirst { it.id == track.id }
+                                                onSongClick(track, filteredSongs, if (index >= 0) index else 0)
+                                            }
+                                        ) {
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(8.dp),
+                                                color = if (isCurrentPlaying) SpotifyGreen.copy(alpha = 0.18f) else Color.Transparent
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    AsyncImage(
+                                                        model = track.thumbnail,
+                                                        contentDescription = track.title,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .size(48.dp)
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                    )
+                                                    Spacer(modifier = Modifier.width(12.dp))
+                                                    Column(modifier = Modifier.weight(1f)) {
+                                                        Text(
+                                                            text = track.title,
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = if (isCurrentPlaying) SpotifyGreen else Color.White,
+                                                                fontSize = 14.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                        Text(
+                                                            text = "${track.author} • ${track.durationFormatted}",
+                                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                                color = TextSecondaryGray,
+                                                                fontSize = 12.sp
+                                                            ),
+                                                            maxLines = 1,
+                                                            overflow = TextOverflow.Ellipsis
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = { onOptionsClick(track) },
+                                                        modifier = Modifier.size(36.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.MoreVert,
+                                                            contentDescription = "Options",
+                                                            tint = TextSecondaryGray,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
 
         // 3. YT Music Circular Artist Spotlight Row
         item {
@@ -540,22 +940,26 @@ fun HomeScreen(
 
                 Spacer(modifier = Modifier.height(10.dp))
 
-                val artists = artistSpotlightSongs
-
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
-                    items(artists) { song ->
+                    items(artistNames) { artistName ->
+                        val songForArtist = remember(artistName, filteredSongs) {
+                            filteredSongs.firstOrNull { it.author.equals(artistName, ignoreCase = true) }
+                        }
+                        val avatarUrl = artistAvatars[artistName]
+                            ?: songForArtist?.thumbnail
+                            ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300"
                         Column(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             modifier = Modifier
                                 .width(100.dp)
-                                .clickable { onSearchClick() }
+                                .clickable { onArtistClick(artistName) }
                         ) {
                             AsyncImage(
-                                model = song.thumbnail,
-                                contentDescription = song.author,
+                                model = avatarUrl,
+                                contentDescription = artistName,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .size(100.dp)
@@ -566,7 +970,7 @@ fun HomeScreen(
                             Spacer(modifier = Modifier.height(8.dp))
 
                             Text(
-                                text = song.author,
+                                text = artistName,
                                 style = MaterialTheme.typography.bodyMedium.copy(
                                     fontWeight = FontWeight.Bold,
                                     color = Color.White,
@@ -679,197 +1083,7 @@ fun HomeScreen(
             }
         }
 
-        // 5. Language Spotlights Section ("Punjabi", "Hindi", "English", "Haryanvi", "South Hits", "Bhojpuri")
-        item {
-            Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                Text(
-                    text = "Languages",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 18.sp,
-                        color = Color.White
-                    ),
-                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp)
-                )
 
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    val languages = listOf(
-                        app.spasiba.nativeapp2.data.model.CategoryChip("punjabi", "Punjabi", "top punjabi songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("hindi", "Hindi", "top hindi bollywood songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("english", "English", "top english pop hits"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("south", "South Hits", "top tamil telugu songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("haryanvi", "Haryanvi", "top haryanvi songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("bhojpuri", "Bhojpuri", "top bhojpuri songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("gujarati", "Gujarati", "top gujarati songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("bengali", "Bengali", "top bengali hits"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("marathi", "Marathi", "top marathi songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("malayalam", "Malayalam", "top malayalam songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("kannada", "Kannada", "top kannada songs"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("latin", "Latin & Reggaeton", "top latin reggaeton hits"),
-                        app.spasiba.nativeapp2.data.model.CategoryChip("kpop", "K-Pop", "top kpop hits")
-                    )
-
-                    items(languages) { langCat ->
-                        val isSelected = selectedCategory?.id == langCat.id
-
-                        Surface(
-                            modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
-                                .clickable {
-                                    if (isSelected) onCategorySelect(null)
-                                    else onCategorySelect(langCat)
-                                },
-                            color = if (isSelected) SpotifyGreen else SpotifyCardSurface,
-                            border = androidx.compose.foundation.BorderStroke(
-                                1.dp,
-                                if (isSelected) SpotifyGreen else Color.White.copy(alpha = 0.12f)
-                            )
-                        ) {
-                            Text(
-                                text = langCat.label,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = if (isSelected) Color.Black else Color.White,
-                                    fontSize = 13.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 6. "Quick Picks" Shelf (2-column horizontal scroll rail with play button)
-        item {
-            if (quickPickColumns.isNotEmpty()) {
-                Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Quick picks",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 20.sp,
-                                    color = Color.White
-                                )
-                            )
-                            Text(
-                                text = "Start radio from any song",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = TextSecondaryGray,
-                                    fontSize = 12.sp
-                                )
-                            )
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .clip(CircleShape)
-                                .clickable { onSongClick(quickPicks.first(), quickPicks, 0) },
-                            color = Color.White.copy(alpha = 0.1f)
-                        ) {
-                            Text(
-                                text = "PLAY ALL",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = Color.White,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    letterSpacing = 1.2.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                            )
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        items(quickPickColumns) { columnTracks ->
-                            Column(
-                                modifier = Modifier.width(320.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                columnTracks.forEach { track ->
-                                    val isCurrentPlaying = track.id == currentSong?.id
-
-                                    AnimatedPressCard(
-                                        onClick = {
-                                            val index = filteredSongs.indexOfFirst { it.id == track.id }
-                                            onSongClick(track, filteredSongs, if (index >= 0) index else 0)
-                                        }
-                                    ) {
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(8.dp),
-                                            color = if (isCurrentPlaying) SpotifyGreen.copy(alpha = 0.18f) else Color.Transparent
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                AsyncImage(
-                                                    model = track.thumbnail,
-                                                    contentDescription = track.title,
-                                                    contentScale = ContentScale.Crop,
-                                                    modifier = Modifier
-                                                        .size(48.dp)
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                )
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = track.title,
-                                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                                            fontWeight = FontWeight.SemiBold,
-                                                            color = if (isCurrentPlaying) SpotifyGreen else Color.White,
-                                                            fontSize = 14.sp
-                                                        ),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                    Text(
-                                                        text = "${track.author} • ${track.durationFormatted}",
-                                                        style = MaterialTheme.typography.bodySmall.copy(
-                                                            color = TextSecondaryGray,
-                                                            fontSize = 12.sp
-                                                        ),
-                                                        maxLines = 1,
-                                                        overflow = TextOverflow.Ellipsis
-                                                    )
-                                                }
-                                                IconButton(
-                                                    onClick = { onOptionsClick(track) },
-                                                    modifier = Modifier.size(36.dp)
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.MoreVert,
-                                                        contentDescription = "Options",
-                                                        tint = TextSecondaryGray,
-                                                        modifier = Modifier.size(18.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
 
         // 7. "Mixed For You" Horizontal Shelf (Album art 70% of card, 160x160dp)
         item {
@@ -981,6 +1195,7 @@ fun HomeScreen(
             }
         }
     }
+}
 }
 
 // ------------------- Helper Sub-Composables -------------------
@@ -1375,30 +1590,10 @@ private fun AnimatedPressCard(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
-    var isPressed by remember { mutableStateOf(false) }
-
-    val scale by animateFloatAsState(
-        targetValue = if (isPressed) 0.96f else 1.0f,
-        animationSpec = tween(durationMillis = 120),
-        label = "pressScale"
-    )
-
     Box(
         modifier = modifier
-            .graphicsLayer {
-                scaleX = scale
-                scaleY = scale
-            }
-            .pointerInput(Unit) {
-                detectTapGestures(
-                    onPress = {
-                        isPressed = true
-                        tryAwaitRelease()
-                        isPressed = false
-                    },
-                    onTap = { onClick() }
-                )
-            }
+            .clip(RoundedCornerShape(12.dp))
+            .clickable { onClick() }
     ) {
         content()
     }

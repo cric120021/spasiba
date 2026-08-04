@@ -57,6 +57,19 @@ object LrcLyricsFetcher {
                         return@withContext parsed
                     }
                 }
+                val plainLyrics = json.optString("plainLyrics")
+                if (plainLyrics.isNotBlank()) {
+                    val rawLines = plainLyrics.lines().map { it.trim() }.filter { it.isNotBlank() }
+                    if (rawLines.isNotEmpty()) {
+                        val durMs = if (durationSeconds > 0) durationSeconds * 1000L else 180_000L
+                        val stepMs = durMs / rawLines.size.coerceAtLeast(1)
+                        val generated = rawLines.mapIndexed { idx, line ->
+                            LyricLine(timestampMs = idx * stepMs, text = line)
+                        }
+                        lrcCache[cacheKey] = generated
+                        return@withContext generated
+                    }
+                }
             }
 
             val searchQuery = "$cleanArtist $cleanTitle".trim()
@@ -81,6 +94,19 @@ object LrcLyricsFetcher {
                         if (parsed.isNotEmpty()) {
                             lrcCache[cacheKey] = parsed
                             return@withContext parsed
+                        }
+                    }
+                    val plain = item.optString("plainLyrics")
+                    if (plain.isNotBlank()) {
+                        val rawLines = plain.lines().map { it.trim() }.filter { it.isNotBlank() }
+                        if (rawLines.isNotEmpty()) {
+                            val durMs = if (durationSeconds > 0) durationSeconds * 1000L else 180_000L
+                            val stepMs = durMs / rawLines.size.coerceAtLeast(1)
+                            val generated = rawLines.mapIndexed { idx, line ->
+                                LyricLine(timestampMs = idx * stepMs, text = line)
+                            }
+                            lrcCache[cacheKey] = generated
+                            return@withContext generated
                         }
                     }
                 }

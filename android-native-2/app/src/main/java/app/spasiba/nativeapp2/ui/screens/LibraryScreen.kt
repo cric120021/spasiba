@@ -34,6 +34,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.PlaylistPlay
@@ -104,6 +105,7 @@ fun LibraryScreen(
     val context = LocalContext.current
     var activePlaylistDetail by remember { mutableStateOf<PlaylistEntity?>(null) }
     var isImportDialogOpen by remember { mutableStateOf(false) }
+    var songToDelete by remember { mutableStateOf<Song?>(null) }
 
     val scope = rememberCoroutineScope()
 
@@ -570,7 +572,7 @@ fun LibraryScreen(
             3 -> {
                 // DOWNLOADS & OFFLINE CACHE TAB
                 val activeDownloadsMap by (downloadManager?.downloads?.collectAsState(initial = emptyMap()) ?: remember { mutableStateOf(emptyMap()) })
-                val activeDownloadsList = activeDownloadsMap.values.toList()
+                val activeDownloadsList = activeDownloadsMap.values.filter { it.status != app.spasiba.nativeapp2.data.download.DownloadStatus.COMPLETED }
 
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
@@ -651,7 +653,7 @@ fun LibraryScreen(
 
                                         if (dItem.status == app.spasiba.nativeapp2.data.download.DownloadStatus.DOWNLOADING) {
                                             IconButton(onClick = { downloadManager?.pauseDownload(dItem.song.id) }) {
-                                                Icon(Icons.Default.PlayArrow, contentDescription = "Pause", tint = Color.White)
+                                                Icon(Icons.Default.Pause, contentDescription = "Pause", tint = Color.White)
                                             }
                                         } else if (dItem.status == app.spasiba.nativeapp2.data.download.DownloadStatus.PAUSED) {
                                             IconButton(onClick = { downloadManager?.resumeDownload(dItem.song.id) }) {
@@ -710,7 +712,7 @@ fun LibraryScreen(
                                 onSongClick = { onSongClick(song, downloadedList, index) },
                                 onLikeClick = { onLikeClick(song.id) },
                                 onOptionsClick = { onOptionsClick(song) },
-                                onSwipeToQueue = { onSwipeToQueue(song) }
+                                onSwipeToQueue = { songToDelete = song }
                             )
                         }
                     }
@@ -758,6 +760,40 @@ fun LibraryScreen(
             },
             dismissButton = {
                 TextButton(onClick = { isImportDialogOpen = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = UiSurfaceElevated
+        )
+    }
+
+    if (songToDelete != null) {
+        AlertDialog(
+            onDismissRequest = { songToDelete = null },
+            title = { Text("Delete Offline Track?", color = TextStrong, fontWeight = FontWeight.Bold) },
+            text = {
+                Text(
+                    "Are you sure you want to delete \"${songToDelete?.title}\" from your offline downloads?",
+                    color = TextMuted,
+                    fontSize = 14.sp
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val target = songToDelete
+                        if (target != null) {
+                            downloadManager?.deleteDownload(target.id)
+                            Toast.makeText(context, "Deleted ${target.title} from offline downloads", Toast.LENGTH_SHORT).show()
+                        }
+                        songToDelete = null
+                    }
+                ) {
+                    Text("Delete", color = Color(0xFFEF4444), fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { songToDelete = null }) {
                     Text("Cancel", color = TextMuted)
                 }
             },

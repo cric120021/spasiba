@@ -2390,6 +2390,9 @@ function getAudio() {
     singletonAudio = new Audio();
     singletonAudio.preload = "auto";
     singletonAudio.volume = getPlayerState().volume;
+    singletonAudio.setAttribute("playsinline", "true");
+    singletonAudio.setAttribute("webkit-playsinline", "true");
+    singletonAudio.setAttribute("x-webkit-airplay", "allow");
   }
 
   return singletonAudio;
@@ -3330,6 +3333,15 @@ export const audioController = {
 
     playerActions.primePlayback(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
 
+    // Synchronously prime the audio element during user gesture for iOS background playback
+    if (audio.paused && !audio.src) {
+      try {
+        void audio.play().catch(() => {});
+      } catch {
+        // Best effort
+      }
+    }
+
     try {
       const resolved = await fetchStream(track);
       activePlaybackEngine = "audio";
@@ -3598,6 +3610,27 @@ export const audioController = {
 
     markManualPauseRequested();
     audio.pause();
+  },
+  getAudioElement() {
+    return singletonAudio;
+  },
+  async playExplicit() {
+    clearManualPauseRequested();
+    const audio = getAudio();
+    if (audio.paused && audio.src) {
+      try {
+        await audio.play();
+      } catch {
+        // Best effort
+      }
+    }
+  },
+  pauseExplicit() {
+    markManualPauseRequested();
+    const audio = getAudio();
+    if (!audio.paused) {
+      audio.pause();
+    }
   },
   resume() {
     const { isPlaying } = getPlayerState();

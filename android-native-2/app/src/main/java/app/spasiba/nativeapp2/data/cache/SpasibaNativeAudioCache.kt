@@ -49,10 +49,26 @@ class SpasibaNativeAudioCache(private val context: Context) {
 
         synchronized(sessionLock) {
             if (!sessionPrepared) {
-                runCatching { audioDir.deleteRecursively() }
                 audioDir.mkdirs()
+                evictOldAudioCacheIfNecessary()
                 sessionPrepared = true
-                Log.d(LOG_TAG, "cleared native audio cache for new app session")
+                Log.d(LOG_TAG, "Initialized persistent 200MB LRU audio cache")
+            }
+        }
+    }
+
+    private fun evictOldAudioCacheIfNecessary() {
+        val maxBytes = 200 * 1024 * 1024L // 200 MB LRU
+        val files = audioDir.listFiles() ?: return
+        var totalBytes = files.sumOf { it.length() }
+        if (totalBytes > maxBytes) {
+            val sortedFiles = files.sortedBy { it.lastModified() }
+            for (file in sortedFiles) {
+                val size = file.length()
+                if (file.delete()) {
+                    totalBytes -= size
+                    if (totalBytes <= maxBytes) break
+                }
             }
         }
     }

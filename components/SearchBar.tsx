@@ -16,6 +16,7 @@ import {
 
 import { audioController } from "@/lib/audio-controller";
 import { getHomeCategoryConfig, HOME_CATEGORY_CHIPS } from "@/lib/home-category-chips";
+import { prefetchCategoryFeed } from "@/lib/home-category-feed-client";
 import {
   readMatchingSearchHistory,
   rememberSearchHistoryQuery,
@@ -253,14 +254,18 @@ function SearchBarComponent() {
   const headerHeightRef = useRef(112);
   const headerRafRef = useRef<number | null>(null);
   const currentQuery = searchParams.get("q") || "";
+  const selectedCategoryParam = searchParams.get("category") || "";
   const activeCategoryId = useMemo(() => {
+    if (selectedCategoryParam && getHomeCategoryConfig(selectedCategoryParam)) {
+      return selectedCategoryParam;
+    }
     if (!pathname.startsWith("/category/")) {
       return null;
     }
 
     const segments = pathname.split("/").filter(Boolean);
     return segments[1] || null;
-  }, [pathname]);
+  }, [pathname, selectedCategoryParam]);
   const activeCategoryConfig = useMemo(
     () => (activeCategoryId ? getHomeCategoryConfig(activeCategoryId) : null),
     [activeCategoryId]
@@ -1078,30 +1083,41 @@ function SearchBarComponent() {
             <div className="category-page-shell__chips snap-x snap-mandatory !gap-2 !px-0 !pb-0.5">
               {HOME_CATEGORY_CHIPS.map((category) => {
                 const isActive = activeCategoryId === category.id;
+                const categoryTargetUrl = isActive ? "/" : `/?category=${category.id}`;
 
                 return (
                   <Link
                     key={category.id}
-                    href={isActive ? "/" : `/category/${category.id}`}
+                    href={categoryTargetUrl}
+                    onClick={(e) => {
+                      if (isHomePage) {
+                        e.preventDefault();
+                        if (isActive) {
+                          router.push("/", { scroll: false });
+                        } else {
+                          router.push(`/?category=${category.id}`, { scroll: false });
+                        }
+                      }
+                    }}
                     onMouseEnter={() => {
                       if (!isActive) {
-                        prefetchCategoryPage(category.id);
+                        prefetchCategoryFeed(category.id);
                       }
                     }}
                     onFocus={() => {
                       if (!isActive) {
-                        prefetchCategoryPage(category.id);
+                        prefetchCategoryFeed(category.id);
                       }
                     }}
                     onTouchStart={() => {
                       if (!isActive) {
-                        prefetchCategoryPage(category.id);
+                        prefetchCategoryFeed(category.id);
                       }
                     }}
                     className={[
                       "snap-start whitespace-nowrap rounded-full px-3.5 py-2 text-[11px] font-medium transition",
                       isActive
-                        ? "bg-white text-slate-950 shadow-[0_12px_32px_rgba(255,255,255,0.12)]"
+                        ? "bg-white font-semibold text-slate-950 shadow-[0_12px_32px_rgba(255,255,255,0.14)]"
                         : "border border-white/[0.07] bg-white/[0.05] text-white/82 hover:bg-white/10"
                     ].join(" ")}
                   >

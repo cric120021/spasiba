@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -80,10 +81,24 @@ fun SearchScreen(
     onLikeClick: (String) -> Unit,
     onOptionsClick: (Song) -> Unit = {},
     onSwipeToQueue: (Song) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
     onBackClick: () -> Unit = {}
 ) {
     val focusManager = LocalFocusManager.current
     var isSearchSubmitted by remember { mutableStateOf(false) }
+
+    val processedSearchResults = remember(searchResults) {
+        searchResults.sortedWith(
+            compareByDescending<Song> { it.views }
+                .thenByDescending { song ->
+                    val t = song.title.lowercase()
+                    if (t.contains("official music video")) 3
+                    else if (t.contains("official video")) 2
+                    else if (t.contains("official audio")) 1
+                    else 0
+                }
+        )
+    }
 
     Column(
         modifier = Modifier
@@ -127,7 +142,12 @@ fun SearchScreen(
                             }
                     )
                     Spacer(modifier = Modifier.width(10.dp))
-                    Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.CenterStart) {
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
                         if (query.isEmpty()) {
                             Text(
                                 text = "Search songs, artists...",
@@ -143,10 +163,12 @@ fun SearchScreen(
                             modifier = Modifier.fillMaxWidth(),
                             singleLine = true,
                             maxLines = 1,
-	                            textStyle = MaterialTheme.typography.bodyMedium.copy(
-	                                color = TextStrong,
-	                                fontSize = 16.sp
-	                            ),
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentTeal),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = TextStrong,
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp
+                            ),
                             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
                             keyboardActions = KeyboardActions(onSearch = {
                                 if (query.isNotBlank()) {
@@ -472,192 +494,7 @@ fun SearchScreen(
                         items(6) {
                             SongTileSkeleton()
                         }
-                    } else if (searchResults.isNotEmpty()) {
-                        val topMatch = searchResults.first()
-                        val remainingResults = searchResults.drop(1)
-
-                        // 1. TOP RESULT / FEATURED FIRST MATCH HERO CARD
-                        item {
-                            Column(modifier = Modifier.padding(bottom = 20.dp)) {
-                                Text(
-                                    text = "TOP MATCH RESULT",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = AccentTeal,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        letterSpacing = 1.4.sp
-                                    ),
-                                    modifier = Modifier.padding(bottom = 10.dp)
-                                )
-
-                                Surface(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(20.dp))
-                                        .clickable { onSongClick(topMatch, searchResults, 0) },
-                                    shape = RoundedCornerShape(20.dp),
-                                    color = Color(0xFF1E293B).copy(alpha = 0.95f),
-                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, AccentTeal.copy(alpha = 0.4f))
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            AsyncImage(
-                                                model = topMatch.thumbnail,
-                                                contentDescription = topMatch.title,
-                                                contentScale = ContentScale.Crop,
-                                                modifier = Modifier
-                                                    .size(90.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                            )
-
-                                            Spacer(modifier = Modifier.width(16.dp))
-
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Surface(
-                                                    color = AccentTeal.copy(alpha = 0.2f),
-                                                    shape = RoundedCornerShape(8.dp)
-                                                ) {
-                                                    Text(
-                                                        text = "BEST MATCH",
-                                                        style = MaterialTheme.typography.labelSmall.copy(
-                                                            color = AccentTeal,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            fontSize = 9.sp,
-                                                            letterSpacing = 1.2.sp
-                                                        ),
-                                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
-                                                    )
-                                                }
-
-                                                Spacer(modifier = Modifier.height(6.dp))
-
-                                                Text(
-                                                    text = topMatch.title,
-                                                    style = MaterialTheme.typography.titleMedium.copy(
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = TextStrong,
-                                                        fontSize = 17.sp
-                                                    ),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-
-                                                Text(
-                                                    text = "${topMatch.author} • ${topMatch.durationFormatted}",
-                                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                                        color = TextMuted,
-                                                        fontSize = 13.sp
-                                                    ),
-                                                    maxLines = 1,
-                                                    overflow = TextOverflow.Ellipsis
-                                                )
-                                            }
-                                        }
-
-                                        Spacer(modifier = Modifier.height(14.dp))
-
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Surface(
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = AccentTeal,
-                                                modifier = Modifier.clickable { onSongClick(topMatch, searchResults, 0) }
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.PlayArrow,
-                                                        contentDescription = "Play Top Match",
-                                                        tint = Color.Black,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(6.dp))
-                                                    Text(
-                                                        text = "PLAY NOW",
-                                                        style = MaterialTheme.typography.labelMedium.copy(
-                                                            color = Color.Black,
-                                                            fontWeight = FontWeight.ExtraBold,
-                                                            fontSize = 12.sp,
-                                                            letterSpacing = 1.0.sp
-                                                        )
-                                                    )
-                                                }
-                                            }
-
-                                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                                val isLiked = likedSongs.contains(topMatch.id)
-                                                IconButton(
-                                                    onClick = { onLikeClick(topMatch.id) },
-                                                    modifier = Modifier
-                                                        .size(38.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color.White.copy(alpha = 0.08f))
-                                                ) {
-                                                    Icon(
-                                                        imageVector = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
-                                                        contentDescription = "Like",
-                                                        tint = if (isLiked) AccentTeal else Color.White,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-
-                                                IconButton(
-                                                    onClick = { onOptionsClick(topMatch) },
-                                                    modifier = Modifier
-                                                        .size(38.dp)
-                                                        .clip(CircleShape)
-                                                        .background(Color.White.copy(alpha = 0.08f))
-                                                ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.MoreVert,
-                                                        contentDescription = "Options",
-                                                        tint = Color.White,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-
-                        // 2. REMAINING RESULTS LIST VIEW
-                        if (remainingResults.isNotEmpty()) {
-                            item {
-                                Text(
-                                    text = "OTHER SONGS & TRACKS (${remainingResults.size})",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = TextMuted,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        letterSpacing = 1.4.sp
-                                    ),
-                                    modifier = Modifier.padding(bottom = 8.dp)
-                                )
-                            }
-
-                            itemsIndexed(remainingResults) { index, song ->
-                                SongTile(
-                                    song = song,
-                                    isPlaying = song.id == currentSong?.id,
-                                    isLiked = likedSongs.contains(song.id),
-                                    onSongClick = { onSongClick(song, searchResults, index + 1) },
-                                    onLikeClick = { onLikeClick(song.id) },
-                                    onOptionsClick = { onOptionsClick(song) },
-                                    onSwipeToQueue = { onSwipeToQueue(song) }
-                                )
-                            }
-                        }
-                    } else {
+                    } else if (processedSearchResults.isEmpty()) {
                         item {
                             Box(
                                 modifier = Modifier
@@ -673,6 +510,143 @@ fun SearchScreen(
                                     )
                                 )
                             }
+                        }
+                    } else {
+                        val topMatch = processedSearchResults.first()
+                        val topArtistName = topMatch.author.ifBlank { query }
+
+                        // 1. TOP RESULT / FEATURED ARTIST MATCH HERO CARD
+                        item {
+                            Column(modifier = Modifier.padding(bottom = 20.dp)) {
+                                Text(
+                                    text = "TOP MATCH ARTIST",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = AccentTeal,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        letterSpacing = 1.4.sp
+                                    ),
+                                    modifier = Modifier.padding(bottom = 10.dp)
+                                )
+
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(22.dp))
+                                        .clickable { onArtistClick(topArtistName) },
+                                    shape = RoundedCornerShape(22.dp),
+                                    color = Color(0xFF1E293B).copy(alpha = 0.95f),
+                                    border = androidx.compose.foundation.BorderStroke(1.5.dp, AccentTeal.copy(alpha = 0.5f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier.padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        // Circular Artist Avatar
+                                        Box(
+                                            modifier = Modifier
+                                                .size(76.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White.copy(alpha = 0.1f))
+                                        ) {
+                                            AsyncImage(
+                                                model = topMatch.thumbnail,
+                                                contentDescription = topArtistName,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .clip(CircleShape)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(16.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Surface(
+                                                color = AccentTeal.copy(alpha = 0.2f),
+                                                shape = RoundedCornerShape(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "ARTIST",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        color = AccentTeal,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        fontSize = 9.sp,
+                                                        letterSpacing = 1.2.sp
+                                                    ),
+                                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(6.dp))
+
+                                            Text(
+                                                text = topArtistName,
+                                                style = MaterialTheme.typography.titleMedium.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextStrong,
+                                                    fontSize = 18.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+
+                                            Spacer(modifier = Modifier.height(2.dp))
+
+                                            Text(
+                                                text = "Artist • YouTube Music Official Profile",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = TextMuted,
+                                                    fontSize = 13.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+
+                                        Surface(
+                                            shape = CircleShape,
+                                            color = AccentTeal,
+                                            modifier = Modifier.size(42.dp)
+                                        ) {
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Default.PlayArrow,
+                                                    contentDescription = "Play Artist",
+                                                    tint = Color.Black,
+                                                    modifier = Modifier.size(24.dp)
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        // 2. REMAINING RESULTS LIST VIEW
+                        item {
+                            Text(
+                                text = "SONGS & MUSIC VIDEOS (${processedSearchResults.size})",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = TextMuted,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 1.4.sp
+                                ),
+                                modifier = Modifier.padding(bottom = 8.dp)
+                            )
+                        }
+
+                        itemsIndexed(processedSearchResults) { index, song ->
+                            SongTile(
+                                song = song,
+                                isPlaying = song.id == currentSong?.id,
+                                isLiked = likedSongs.contains(song.id),
+                                onSongClick = { onSongClick(song, processedSearchResults, index) },
+                                onLikeClick = { onLikeClick(song.id) },
+                                onOptionsClick = { onOptionsClick(song) },
+                                onSwipeToQueue = { onSwipeToQueue(song) }
+                            )
                         }
                     }
                 }

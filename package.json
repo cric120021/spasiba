@@ -3,14 +3,15 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -H 0.0.0.0 -p 3000",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
     "cap:sync": "cap sync android",
     "cap:open": "cap open android",
     "android:debug": "cd android && ./gradlew assembleDebug",
-    "android-native:debug": "cd android-native && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleDebug"
+    "android-native:debug": "cd android-native && JAVA_HOME=\"/Applications/Android Studio.app/Contents/jbr/Contents/Home\" ./gradlew assembleDebug",
+    "socket:start": "node socket-server.js"
   },
   "engines": {
     "node": ">=20.0.0"
@@ -27,6 +28,7 @@
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "tailwindcss": "^4.1.4",
+    "ws": "^8.18.0",
     "youtubei.js": "^17.0.1",
     "yt-search": "^2.13.1"
   },

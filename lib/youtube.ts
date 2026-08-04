@@ -42,7 +42,7 @@ const DISCOVERY_ARTIST_CAP = 2;
 const DISCOVERY_MIN_VISIBLE_TRACKS = 4;
 const STREAM_FRESH_BUFFER_MS = 30_000;
 const STREAM_CANDIDATE_LIMIT = 6;
-const YT_DLP_FORMAT_SELECTOR = "bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[acodec*=mp4a]/bestaudio[ext=webm]/bestaudio/best";
+const YT_DLP_FORMAT_SELECTOR = "18/bestaudio[ext=m4a]/best[ext=mp4]/bestaudio[acodec*=mp4a]/bestaudio[ext=webm]/bestaudio/best";
 const YT_DLP_PRINT_TEMPLATE = "%(format_id)s\t%(ext)s\t%(acodec)s\t%(vcodec)s\t%(url)s";
 const YT_DLP_EXEC_TIMEOUT_MS = 15_000;
 const STREAM_PLAYER_CLIENT_SETS = [
@@ -778,7 +778,7 @@ async function resolveBestAudioStreamWithYtDlp(videoUrl: string) {
 
   const { stdout } = await execFileAsync(
     binaryPath,
-    ["--print", YT_DLP_PRINT_TEMPLATE, "-f", YT_DLP_FORMAT_SELECTOR, "--no-playlist", "--no-warnings", videoUrl],
+    ["--print", YT_DLP_PRINT_TEMPLATE, "-f", YT_DLP_FORMAT_SELECTOR, "--extractor-args", "youtube:player_client=ios,mweb", "--no-playlist", "--no-warnings", videoUrl],
     {
       timeout: YT_DLP_EXEC_TIMEOUT_MS,
       maxBuffer: 2 * 1024 * 1024
@@ -1095,6 +1095,92 @@ function collectMusicQueueSongs(node: unknown, bucket: Song[], seenTrackIds: Set
   }
 }
 
+export function rankSearchResults(query: string, songs: Song[]): Song[] {
+  const normalizedQuery = createQueryKey(query);
+
+  if (!normalizedQuery || !songs.length) {
+    return songs;
+  }
+
+  const queryTokens = normalizedQuery.split(/\s+/).filter(Boolean);
+
+  const matchesAuthor = (author: string) => {
+    const normAuthor = createQueryKey(author);
+    if (!normAuthor) return false;
+    return normAuthor === normalizedQuery || normAuthor.includes(normalizedQuery) || normalizedQuery.includes(normAuthor);
+  };
+
+  const matchesTitle = (title: string) => {
+    const normTitle = createQueryKey(title);
+    if (!normTitle) return false;
+    return normTitle.includes(normalizedQuery);
+  };
+
+  let authorMatchCount = 0;
+  let titleMatchCount = 0;
+
+  for (const song of songs) {
+    if (matchesAuthor(song.author)) {
+      authorMatchCount++;
+    }
+    if (matchesTitle(song.title)) {
+      titleMatchCount++;
+    }
+  }
+
+  // Only consider query an Artist Search if author matches outnumber or dominate title matches
+  const isArtistSearch =
+    authorMatchCount > 0 &&
+    (titleMatchCount === 0 || (authorMatchCount >= songs.length * 0.4 && titleMatchCount < songs.length * 0.3));
+
+  return [...songs].sort((left, right) => {
+    const leftTitle = createQueryKey(left.title);
+    const rightTitle = createQueryKey(right.title);
+    const leftAuthor = createQueryKey(left.author);
+    const rightAuthor = createQueryKey(right.author);
+
+    let leftScore = 0;
+    let rightScore = 0;
+
+    if (isArtistSearch) {
+      // ARTIST SEARCH MODE: Only put artist results on top when an artist name is searched
+      if (leftAuthor === normalizedQuery || leftAuthor.includes(normalizedQuery) || normalizedQuery.includes(leftAuthor)) {
+        leftScore += 80000;
+      }
+      if (rightAuthor === normalizedQuery || rightAuthor.includes(normalizedQuery) || normalizedQuery.includes(rightAuthor)) {
+        rightScore += 80000;
+      }
+
+      leftScore += Math.min(10000, Math.log10(Math.max(1, left.views || 1)) * 1000);
+      rightScore += Math.min(10000, Math.log10(Math.max(1, right.views || 1)) * 1000);
+    } else {
+      // NORMAL SONG SEARCH MODE: Song title matches MUST be on top!
+      if (leftTitle === normalizedQuery) leftScore += 100000;
+      if (rightTitle === normalizedQuery) rightScore += 100000;
+
+      if (leftTitle.startsWith(normalizedQuery)) leftScore += 50000;
+      if (rightTitle.startsWith(normalizedQuery)) rightScore += 50000;
+
+      if (leftTitle.includes(normalizedQuery)) leftScore += 20000;
+      if (rightTitle.includes(normalizedQuery)) rightScore += 20000;
+
+      for (const token of queryTokens) {
+        if (leftTitle.includes(token)) leftScore += 2000;
+        if (rightTitle.includes(token)) rightScore += 2000;
+      }
+
+      // Heavily penalize songs whose title does not contain the query in normal song search mode
+      if (!leftTitle.includes(normalizedQuery)) leftScore -= 30000;
+      if (!rightTitle.includes(normalizedQuery)) rightScore -= 30000;
+
+      leftScore += Math.min(5000, Math.log10(Math.max(1, left.views || 1)) * 500);
+      rightScore += Math.min(5000, Math.log10(Math.max(1, right.views || 1)) * 500);
+    }
+
+    return rightScore - leftScore;
+  });
+}
+
 export async function searchYouTube(
   query: string,
   limit = DEFAULT_RESULT_LIMIT,
@@ -1139,7 +1225,8 @@ export async function searchYouTube(
   )
     .then((response) => {
       const videos = Array.isArray(response.videos) ? response.videos : [];
-      const tracks = videos.slice(0, fetchLimit).map(mapResultToSong);
+      const rawTracks = videos.slice(0, fetchLimit).map(mapResultToSong);
+      const tracks = rankSearchResults(query, rawTracks);
       writeCache(searchCache, cacheKey, tracks, SEARCH_TTL_MS);
       return tracks;
     })

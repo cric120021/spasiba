@@ -249,10 +249,10 @@ export default function PlayerBootstrap() {
 
     try {
       navigator.mediaSession.setActionHandler("play", () => {
-        void audioController.togglePlayback();
+        void audioController.playExplicit();
       });
       navigator.mediaSession.setActionHandler("pause", () => {
-        void audioController.togglePlayback();
+        audioController.pauseExplicit();
       });
       navigator.mediaSession.setActionHandler("previoustrack", () => {
         void audioController.playPrevious();
@@ -274,7 +274,7 @@ export default function PlayerBootstrap() {
         audioController.seekToSeconds(activeTime + (details.seekOffset || 10));
       });
     } catch {
-      // Android browsers can expose Media Session with partial action support.
+      // Android / iOS browsers can expose Media Session with partial action support.
     }
 
     return () => {
@@ -324,7 +324,7 @@ export default function PlayerBootstrap() {
   }, [currentSong, isLoading, isPlaying, isMobileSessionDevice]);
 
   useEffect(() => {
-    if (!isMobileStandalone || typeof document === "undefined" || typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+    if (!isMobileSessionDevice || typeof document === "undefined" || typeof navigator === "undefined" || !("mediaSession" in navigator)) {
       return;
     }
 
@@ -342,6 +342,10 @@ export default function PlayerBootstrap() {
 
       if (activePlaying || activeLoading) {
         audioController.armBackgroundPlaybackGuard();
+        const audio = audioController.getAudioElement();
+        if (audio && audio.paused && audio.src) {
+          void audio.play().catch(() => {});
+        }
       }
 
       navigator.mediaSession.playbackState = activePlaying || activeLoading ? "playing" : "paused";
@@ -367,7 +371,7 @@ export default function PlayerBootstrap() {
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
     return () => document.removeEventListener("visibilitychange", handleVisibilityChange);
-  }, [isMobileStandalone]);
+  }, [isMobileSessionDevice]);
 
   useEffect(() => {
     if (
@@ -376,21 +380,24 @@ export default function PlayerBootstrap() {
       !("mediaSession" in navigator) ||
       typeof navigator.mediaSession.setPositionState !== "function" ||
       !duration ||
-      !Number.isFinite(duration)
+      !Number.isFinite(duration) ||
+      duration <= 0
     ) {
       return;
     }
 
     try {
+      const validPosition = Math.max(0, Math.min(currentTime, duration));
+      const validDuration = Math.max(validPosition + 0.1, duration);
       navigator.mediaSession.setPositionState({
-        duration,
+        duration: validDuration,
         playbackRate: 1,
-        position: Math.min(currentTime, duration)
+        position: validPosition
       });
     } catch {
       // Position state is optional and can fail on partial implementations.
     }
-  }, [currentTime, duration, isMobileSessionDevice]);
+  }, [Math.floor(currentTime), Math.floor(duration), isMobileSessionDevice]);
 
   return null;
 }

@@ -95,18 +95,14 @@ function scoreSongForLocalSuggestion(query: string, track: Song) {
 
   if (title === normalizedQuery) {
     score += 200;
+  } else if (title.startsWith(normalizedQuery)) {
+    score += 150;
+  } else if (title.includes(normalizedQuery)) {
+    score += 100;
   }
 
-  if (title.startsWith(normalizedQuery)) {
-    score += 120;
-  }
-
-  if (author.startsWith(normalizedQuery)) {
-    score += 80;
-  }
-
-  if (haystack.includes(normalizedQuery)) {
-    score += 60;
+  if (author === normalizedQuery || author.startsWith(normalizedQuery)) {
+    score += title.includes(normalizedQuery) ? 20 : 80;
   }
 
   for (const token of normalizedQuery.split(/\s+/).filter(Boolean)) {
@@ -115,7 +111,7 @@ function scoreSongForLocalSuggestion(query: string, track: Song) {
     }
 
     if (author.includes(token)) {
-      score += 10;
+      score += 5;
     }
   }
 

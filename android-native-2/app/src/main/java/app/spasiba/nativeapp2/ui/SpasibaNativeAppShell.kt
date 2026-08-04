@@ -1,5 +1,7 @@
 package app.spasiba.nativeapp2.ui
 
+import app.spasiba.nativeapp2.MainActivity
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
@@ -30,7 +32,13 @@ import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material.icons.outlined.Subscriptions
 import androidx.compose.material.icons.outlined.VideoLibrary
 import androidx.compose.material.icons.rounded.GraphicEq
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.rounded.Home
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.material.icons.rounded.LibraryMusic
 import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Subscriptions
@@ -42,7 +50,11 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
+import androidx.compose.material3.Surface
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -72,6 +84,8 @@ import app.spasiba.nativeapp2.ui.components.MiniPlayerDock
 import app.spasiba.nativeapp2.ui.components.SaveToPlaylistSheet
 import app.spasiba.nativeapp2.ui.components.TrackOptionsMenu
 import app.spasiba.nativeapp2.ui.screens.CategoryFeedScreen
+import app.spasiba.nativeapp2.ui.screens.EunoiaScreen
+import app.spasiba.nativeapp2.ui.screens.FriendsListScreen
 import app.spasiba.nativeapp2.ui.screens.HomeScreen
 import app.spasiba.nativeapp2.ui.screens.LibraryScreen
 import app.spasiba.nativeapp2.ui.screens.PlaylistOperationsScreen
@@ -89,21 +103,47 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.mutableStateListOf
-import androidx.compose.ui.text.font.FontWeight
 
 @Composable
-fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
-    val backStack = remember { mutableStateListOf(0) } // 0 = Home, 1 = Search, 2 = Library, 3 = Profile, 4 = Playlists
+fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int = 0) {
+    val backStack = remember { mutableStateListOf(initialScreen) } // 0 = Home, 1 = Search, 2 = Eunoia, 3 = Library, 4 = Profile, 5 = Playlists
     val selectedScreen = backStack.lastOrNull() ?: 0
+    val currentScreen = selectedScreen
+
+    var selectedCategory by remember { mutableStateOf<CategoryChip?>(null) }
+    var activeChatFriend by remember { mutableStateOf<app.spasiba.nativeapp2.data.engine.EunoiaFriend?>(null) }
+    var selectedArtistName by remember { mutableStateOf<String?>(null) }
 
     fun navigateTo(screen: Int) {
+        selectedCategory = null
         if (screen == 0) {
             backStack.clear()
             backStack.add(0)
         } else if (backStack.lastOrNull() != screen) {
             backStack.add(screen)
+        }
+    }
+
+    val requestedTab by MainActivity.requestedTab.collectAsState()
+    val requestedChatFriendId by MainActivity.requestedChatFriendId.collectAsState()
+    val requestedChatFriendName by MainActivity.requestedChatFriendName.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(requestedTab, requestedChatFriendId) {
+        if (!requestedChatFriendId.isNullOrBlank()) {
+            activeChatFriend = app.spasiba.nativeapp2.data.engine.EunoiaFriend(
+                friendId = requestedChatFriendId!!,
+                name = requestedChatFriendName ?: requestedChatFriendId!!
+            )
+            navigateTo(7)
+            MainActivity.requestedChatFriendId.value = null
+            MainActivity.requestedChatFriendName.value = null
+            MainActivity.requestedTab.value = null
+        } else {
+            requestedTab?.let { target ->
+                navigateTo(target)
+                MainActivity.requestedTab.value = null
+            }
         }
     }
 
@@ -143,20 +183,34 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
     val likedSongsList by playerManager.repository.likedSongs.collectAsState(initial = emptyList())
     val playlists by playerManager.repository.playlists.collectAsState(initial = emptyList())
     val historySongs by playerManager.repository.listeningHistory.collectAsState(initial = emptyList())
-    val downloadManager = remember { app.spasiba.nativeapp2.data.download.SpasibaDownloadManager(context) }
+    val downloadManager = remember(context) { app.spasiba.nativeapp2.data.download.SpasibaDownloadManager.getInstance(context) }
 
+    val scope = rememberCoroutineScope()
     var homeSongs by remember { mutableStateOf(YouTubeMusicApi.getFallbackTracks()) }
     var isHomeLoading by remember { mutableStateOf(false) }
-    var selectedCategory by remember { mutableStateOf<CategoryChip?>(null) }
+
+    val fcmManager = remember { app.spasiba.nativeapp2.data.engine.FcmTokenManager.getInstance(context) }
+    val isDeviceBlocked by fcmManager.isDeviceBlocked.collectAsState()
+    val blockReason by fcmManager.blockReason.collectAsState()
+    val isEunoiaDisabled by fcmManager.isEunoiaDisabled.collectAsState()
+    val isMobileRequired by fcmManager.isMobileRequired.collectAsState()
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        fcmManager.initialize(scope)
+    }
     var selectedUserLanguages by remember { mutableStateOf(setOf("Hindi", "Punjabi", "English")) }
+
+    val sessionManager = remember { app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context) }
+    androidx.compose.runtime.LaunchedEffect(currentScreen, activeChatFriend) {
+        sessionManager.activeScreen.value = currentScreen
+        sessionManager.activeChatFriendId.value = activeChatFriend?.friendId
+    }
 
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<Song>>(emptyList()) }
     var isSearching by remember { mutableStateOf(false) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
-
-    val scope = rememberCoroutineScope()
 
     // Fetch initial home recommendations
     remember {
@@ -165,9 +219,6 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
             val fetched = YouTubeMusicApi.getHomeRecommendations()
             homeSongs = fetched
             isHomeLoading = false
-            if (playerManager.currentSong.value == null && fetched.isNotEmpty()) {
-                playerManager.setQueue(fetched, fetched.first().id)
-            }
         }
     }
 
@@ -186,25 +237,26 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                 .fillMaxSize()
                 .background(getBackgroundGradient(currentThemeMode))
         ) {
-            val activeSong = currentSong ?: homeSongs.firstOrNull() ?: YouTubeMusicApi.getFallbackTracks().first()
-                val progressFraction = if (durationMs > 0L) {
-                    (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
-                } else 0f
-                val posSec = positionMs / 1000
-                val durSec = durationMs / 1000
-                val posFormatted = String.format("%d:%02d", posSec / 60, posSec % 60)
-                val durFormatted = String.format("%d:%02d", durSec / 60, durSec % 60)
-                val upcomingCount = (queue.size - currentIndex - 1).coerceAtLeast(0)
+            val activeSong = currentSong
+            val progressFraction = if (durationMs > 0L) {
+                (positionMs.toFloat() / durationMs.toFloat()).coerceIn(0f, 1f)
+            } else 0f
+            val posSec = positionMs / 1000
+            val durSec = durationMs / 1000
+            val posFormatted = String.format("%d:%02d", posSec / 60, posSec % 60)
+            val durFormatted = String.format("%d:%02d", durSec / 60, durSec % 60)
+            val upcomingCount = (queue.size - currentIndex - 1).coerceAtLeast(0)
 
-                Scaffold(
-                    containerColor = Color.Transparent,
-                    bottomBar = {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.Black)
-                        ) {
-                            // 1. Mini Player attached directly above Bottom Navigation
+            Scaffold(
+                containerColor = Color.Transparent,
+                bottomBar = {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(Color.Black)
+                    ) {
+                        // 1. Mini Player attached directly above Bottom Navigation (only when a song is active)
+                        if (activeSong != null) {
                             MiniPlayerDock(
                                 song = activeSong,
                                 isPlaying = isPlaying,
@@ -218,6 +270,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                                 onNextClick = { playerManager.playNext() },
                                 onOptionsClick = { selectedOptionsMenuSong = activeSong }
                             )
+                        }
 
                             // 2. YT Music Official Compact Bottom Navigation Bar (Elevated Text & Icons)
                             Row(
@@ -244,6 +297,12 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                                         modifier = Modifier
                                             .weight(1f)
                                             .clickable {
+                                                if (screenId == 2) {
+                                                    if (isEunoiaDisabled) {
+                                                        android.widget.Toast.makeText(context, "Eunoia feature access has been restricted for your account by administrator.", android.widget.Toast.LENGTH_LONG).show()
+                                                        return@clickable
+                                                    }
+                                                }
                                                 navigateTo(screenId)
                                             }
                                             .offset(y = (-6).dp),
@@ -280,6 +339,10 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                         var categorySongs by remember { mutableStateOf<List<Song>>(emptyList()) }
                         var isCategoryLoading by remember { mutableStateOf(false) }
 
+                        val homeListState = androidx.compose.runtime.saveable.rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
+                            androidx.compose.foundation.lazy.LazyListState()
+                        }
+
                         androidx.compose.runtime.LaunchedEffect(selectedCategory) {
                             if (selectedCategory != null) {
                                 isCategoryLoading = true
@@ -290,54 +353,39 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                             }
                         }
 
-                        // If a category is selected (from chips or horizontal rails), show CategoryFeedScreen
-                        if (selectedCategory != null) {
-                            CategoryFeedScreen(
-                                category = selectedCategory!!,
-                                categoryFeedSongs = categorySongs,
+                        // Active Screen Content
+                        when (selectedScreen) {
+                            0 -> HomeScreen(
+                                recommendedSongs = homeSongs,
                                 currentSong = currentSong,
                                 likedSongs = likedSongIds,
-                                isLoading = isCategoryLoading,
-                                onBackClick = { selectedCategory = null },
+                                recentlyPlayed = historySongs,
+                                selectedLanguages = selectedUserLanguages,
+                                isLoading = isHomeLoading,
+                                selectedCategory = selectedCategory,
+                                onCategorySelect = { cat ->
+                                    selectedCategory = cat
+                                },
+                                onSearchClick = { navigateTo(1) },
+                                onLibraryClick = { navigateTo(3) },
+                                onProfileClick = { navigateTo(4) },
                                 onSongClick = { song, queueList, idx ->
-                                    playerManager.playQueue(queueList, idx, sourceLabel = "Category: ${selectedCategory!!.label}")
+                                    playerManager.playQueue(queueList, idx, sourceLabel = "Home")
                                 },
                                 onLikeClick = { songId ->
-                                    val s = (categorySongs + homeSongs).find { it.id == songId } ?: Song(songId, "Track", "Artist", "https://i.ytimg.com/vi/$songId/hqdefault.jpg")
+                                    val s = (homeSongs + historySongs).find { it.id == songId } ?: Song(songId, "Track", "Artist", "https://i.ytimg.com/vi/$songId/hqdefault.jpg")
                                     playerManager.toggleLike(s)
                                 },
                                 onOptionsClick = { song -> selectedOptionsMenuSong = song },
-                                onSwipeToQueue = { song -> playerManager.playNextInQueue(song) }
+                                onSwipeToQueue = { song -> playerManager.playNextInQueue(song) },
+                                onArtistClick = { artistName ->
+                                    selectedArtistName = artistName
+                                    navigateTo(9)
+                                },
+                                listState = homeListState
                             )
-                        } else {
-                            // Active Screen Content
-                            when (selectedScreen) {
-                                0 -> HomeScreen(
-                                    recommendedSongs = homeSongs,
-                                    currentSong = currentSong,
-                                    likedSongs = likedSongIds,
-                                    recentlyPlayed = historySongs,
-                                    selectedLanguages = selectedUserLanguages,
-                                    isLoading = isHomeLoading,
-                                    selectedCategory = selectedCategory,
-                                    onCategorySelect = { cat ->
-                                        selectedCategory = cat
-                                    },
-                                    onSearchClick = { navigateTo(1) },
-                                    onLibraryClick = { navigateTo(3) },
-                                    onProfileClick = { navigateTo(4) },
-                                    onSongClick = { song, _, _ ->
-                                        playerManager.playSingleSongWithRadio(song, sourceLabel = "Spasiba Radio")
-                                    },
-                                    onLikeClick = { songId ->
-                                        val s = (homeSongs + searchResults).find { it.id == songId } ?: Song(songId, "Track", "Artist", "https://i.ytimg.com/vi/$songId/hqdefault.jpg")
-                                        playerManager.toggleLike(s)
-                                    },
-                                    onOptionsClick = { song -> selectedOptionsMenuSong = song },
-                                    onSwipeToQueue = { song -> playerManager.playNextInQueue(song) }
-                                )
 
-                                1 -> SearchScreen(
+                            1 -> SearchScreen(
                                     query = searchQuery,
                                     onQueryChange = { q ->
                                         searchQuery = q
@@ -385,6 +433,10 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                                     },
                                     onOptionsClick = { song -> selectedOptionsMenuSong = song },
                                     onSwipeToQueue = { song -> playerManager.playNextInQueue(song) },
+                                    onArtistClick = { artist ->
+                                        selectedArtistName = artist
+                                        navigateTo(9)
+                                    },
                                     onBackClick = { navigateBack() }
                                 )
 
@@ -430,15 +482,98 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                                 },
                                 onBackClick = { navigateBack() },
                                 onOpenLibrary = { navigateTo(3) },
-                                onOpenPlaylistOperations = { navigateTo(5) }
+                                onOpenPlaylistOperations = { navigateTo(5) },
+                                onOpenAllFriends = { navigateTo(6) },
+                                onQuickInviteFriend = { friend ->
+                                    val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                                    sessionManager.sendInvite(friend.friendId, friend.name)
+                                    navigateTo(2)
+                                    Toast.makeText(context, "Sending invite to ${friend.name}...", Toast.LENGTH_SHORT).show()
+                                },
+                                onOpenFriendChat = { friend ->
+                                    activeChatFriend = friend
+                                    navigateTo(7)
+                                }
                             )
 
                             5 -> PlaylistOperationsScreen(
                                 playerManager = playerManager,
                                 onBackClick = { navigateBack() }
                             )
+
+                            6 -> FriendsListScreen(
+                                onBackClick = { navigateBack() },
+                                onQuickInviteFriend = { friend ->
+                                    val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                                    sessionManager.sendInvite(friend.friendId, friend.name)
+                                    navigateTo(2)
+                                    Toast.makeText(context, "Sending invite to ${friend.name}...", Toast.LENGTH_SHORT).show()
+                                },
+                                onOpenFriendChat = { friend ->
+                                    activeChatFriend = friend
+                                    navigateTo(7)
+                                }
+                            )
+
+                            7 -> {
+                                activeChatFriend?.let { friend ->
+                                    val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                                    app.spasiba.nativeapp2.ui.screens.FriendChatScreen(
+                                        friendId = friend.friendId,
+                                        friendName = friend.name,
+                                        onBackClick = { navigateBack() },
+                                        onOpenDetails = { navigateTo(8) },
+                                        onRemoveFriend = { targetId ->
+                                            sessionManager.removeFriendSignal(targetId)
+                                        },
+                                        onQuickInvite = { targetFriend ->
+                                            sessionManager.sendInvite(targetFriend.friendId, targetFriend.name)
+                                            navigateTo(2)
+                                            Toast.makeText(context, "Sending invite to ${targetFriend.name}...", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+
+                            8 -> {
+                                activeChatFriend?.let { friend ->
+                                    val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                                    app.spasiba.nativeapp2.ui.screens.FriendProfileDetailsScreen(
+                                        friendId = friend.friendId,
+                                        friendName = friend.name,
+                                        onBackClick = { navigateBack() },
+                                        onOpenChat = { navigateBack() },
+                                        onRemoveFriend = { targetId ->
+                                            sessionManager.removeFriendSignal(targetId)
+                                        },
+                                        onQuickInvite = { targetFriend ->
+                                            sessionManager.sendInvite(targetFriend.friendId, targetFriend.name)
+                                            navigateTo(2)
+                                            Toast.makeText(context, "Sending invite to ${targetFriend.name}...", Toast.LENGTH_SHORT).show()
+                                        }
+                                    )
+                                }
+                            }
+
+                            9 -> {
+                                selectedArtistName?.let { artist ->
+                                    app.spasiba.nativeapp2.ui.screens.ArtistDetailsScreen(
+                                        artistName = artist,
+                                        currentSong = currentSong,
+                                        likedSongs = likedSongIds,
+                                        onBackClick = { navigateBack() },
+                                        onSongClick = { song, queueList, idx ->
+                                            playerManager.playQueue(queueList, idx, sourceLabel = "Artist: $artist")
+                                        },
+                                        onLikeClick = { songId ->
+                                            val s = (homeSongs + historySongs).find { it.id == songId } ?: Song(songId, "Track", artist, "https://i.ytimg.com/vi/$songId/hqdefault.jpg")
+                                            playerManager.toggleLike(s)
+                                        },
+                                        onOptionsClick = { song -> selectedOptionsMenuSong = song }
+                                    )
+                                }
+                            }
                         }
-                    }
 
                         // Context Option Sheets & Modals
                         selectedOptionsMenuSong?.let { song ->
@@ -458,13 +593,9 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                                     Toast.makeText(context, "📥 Download started for '${targetSong.title}'", Toast.LENGTH_SHORT).show()
                                 },
                                 onViewArtist = { artistName ->
-                                    navigateTo(1)
-                                    searchQuery = artistName
-                                    scope.launch {
-                                        isSearching = true
-                                        searchResults = YouTubeMusicApi.searchSongs(artistName)
-                                        isSearching = false
-                                    }
+                                    selectedOptionsMenuSong = null
+                                    selectedArtistName = artistName
+                                    navigateTo(9)
                                 }
                             )
                         }
@@ -543,6 +674,62 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager) {
                         repeatState = repeatState,
                         onRepeatClick = { playerManager.toggleRepeat() }
                     )
+                }
+
+                // Full Screen Blocked Overlay (Overrides interface only if blocked by Admin)
+                if (isDeviceBlocked) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .background(Color(0xFF0F0505))
+                            .padding(24.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Block,
+                                contentDescription = "Blocked",
+                                tint = Color(0xFFEF4444),
+                                modifier = Modifier.size(80.dp)
+                            )
+                            Spacer(modifier = Modifier.height(20.dp))
+                            Text(
+                                text = "ACCESS RESTRICTED",
+                                style = MaterialTheme.typography.headlineMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFEF4444)
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Text(
+                                text = blockReason,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = Color.White.copy(alpha = 0.85f),
+                                    textAlign = TextAlign.Center
+                                ),
+                                modifier = Modifier.padding(horizontal = 16.dp)
+                            )
+                            Spacer(modifier = Modifier.height(24.dp))
+                            Surface(
+                                shape = RoundedCornerShape(12.dp),
+                                color = Color.White.copy(alpha = 0.08f),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                            ) {
+                                Text(
+                                    text = "Device ID: ${fcmManager.deviceId.value}",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.LightGray,
+                                        fontSize = 12.sp,
+                                        fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace
+                                    ),
+                                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+                                )
+                            }
+                        }
+                    }
                 }
             }
         }

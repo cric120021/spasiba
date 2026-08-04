@@ -27,13 +27,17 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddPhotoAlternate
+import androidx.compose.material.icons.filled.ChatBubbleOutline
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PersonAdd
+import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistPlay
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -43,7 +47,10 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -74,6 +81,11 @@ import app.spasiba.nativeapp2.utils.ShareUtils
 import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import app.spasiba.nativeapp2.data.engine.EunoiaFriend
+import app.spasiba.nativeapp2.data.engine.EunoiaFriendManager
+import app.spasiba.nativeapp2.data.engine.EunoiaSessionManager
+
 @Composable
 fun ProfileScreen(
     playerManager: NativePlayerManager,
@@ -81,6 +93,9 @@ fun ProfileScreen(
     onBackClick: () -> Unit = {},
     onOpenLibrary: () -> Unit = {},
     onOpenPlaylistOperations: () -> Unit = {},
+    onOpenAllFriends: () -> Unit = {},
+    onQuickInviteFriend: (EunoiaFriend) -> Unit = {},
+    onOpenFriendChat: (EunoiaFriend) -> Unit = {},
     selectedLanguages: Set<String> = setOf("Hindi", "Punjabi", "English"),
     onToggleLanguage: (String) -> Unit = {},
     modifier: Modifier = Modifier
@@ -88,6 +103,12 @@ fun ProfileScreen(
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { context.getSharedPreferences("spasiba_user_prefs", Context.MODE_PRIVATE) }
+    
+    val sessionManager = remember { EunoiaSessionManager.getInstance(context) }
+    val friendManager = remember { EunoiaFriendManager.getInstance(context) }
+    val friendEventTime by sessionManager.friendEventFlow.collectAsState()
+    var friendsList by remember(friendEventTime) { mutableStateOf(friendManager.getFriends()) }
+    var isAddFriendDialogOpen by remember { mutableStateOf(false) }
     
     // User Profile Observation & Auto Hardware Registration
     val dbProfile by playerManager.repository.userProfile.collectAsState(initial = null)
@@ -113,6 +134,10 @@ fun ProfileScreen(
         mutableStateOf(prefs.getString("video_download_quality", "Ask each time") ?: "Ask each time")
     }
 
+    var isEunoiaEnabled by remember {
+        mutableStateOf(prefs.getBoolean("eunoia_enabled", true))
+    }
+
     var isEditPhotoDialogOpen by remember { mutableStateOf(false) }
     var photoUrlInput by remember { mutableStateOf(profilePhotoUri ?: "") }
 
@@ -120,19 +145,32 @@ fun ProfileScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri: Uri? ->
         if (uri != null) {
-            runCatching {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            }
-            val uriStr = uri.toString()
-            profilePhotoUri = uriStr
-            photoUrlInput = uriStr
-            prefs.edit().putString("profile_photo_uri", uriStr).apply()
-            scope.launch {
-                playerManager.repository.saveProfilePhoto(uriStr)
-                Toast.makeText(context, "Profile photo updated from Gallery!", Toast.LENGTH_SHORT).show()
+            scope.launch(kotlinx.coroutines.Dispatchers.IO) {
+                val permanentPath = try {
+                    val inputStream = context.contentResolver.openInputStream(uri)
+                    val destFile = java.io.File(context.filesDir, "profile_photo.jpg")
+                    val outputStream = java.io.FileOutputStream(destFile)
+                    inputStream?.use { input ->
+                        outputStream.use { output ->
+                            input.copyTo(output)
+                        }
+                    }
+                    Uri.fromFile(destFile).toString()
+                } catch (e: Exception) {
+                    uri.toString()
+                }
+
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    profilePhotoUri = permanentPath
+                    photoUrlInput = permanentPath
+                    prefs.edit().putString("profile_photo_uri", permanentPath).apply()
+                }
+
+                playerManager.repository.saveProfilePhoto(permanentPath)
+                sessionManager.broadcastProfileUpdateSignal(newPhotoUri = permanentPath)
+                kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Main) {
+                    Toast.makeText(context, "Profile photo saved permanently!", Toast.LENGTH_SHORT).show()
+                }
             }
         }
     }
@@ -199,8 +237,7 @@ fun ProfileScreen(
                                         galleryLauncher.launch("image/*")
                                     },
                                 shape = CircleShape,
-                                color = AccentTeal.copy(alpha = 0.2f),
-                                border = androidx.compose.foundation.BorderStroke(1.5.dp, AccentTeal)
+                                color = AccentTeal.copy(alpha = 0.2f)
                             ) {
                                 if (!profilePhotoUri.isNullOrBlank()) {
                                     AsyncImage(
@@ -300,6 +337,232 @@ fun ProfileScreen(
                                     contentDescription = "Copy",
                                     tint = TextMuted,
                                     modifier = Modifier.size(12.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Eunoia Friends & 1-Click Invites Card (Prominently Placed near Top)
+        item {
+            val pendingCount = friendsList.count { it.status != app.spasiba.nativeapp2.data.engine.EunoiaFriendStatus.ACCEPTED }
+            val acceptedList = friendsList.filter { it.status == app.spasiba.nativeapp2.data.engine.EunoiaFriendStatus.ACCEPTED }
+
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = Color.White.copy(alpha = 0.04f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+            ) {
+                Column(modifier = Modifier.padding(20.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "FRIENDS & LISTEN TOGETHER",
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    color = Color(0xFF10B981),
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    letterSpacing = 1.4.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(2.dp))
+                            Text(
+                                text = "My Friends (${acceptedList.size})",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextStrong,
+                                    fontSize = 17.sp
+                                )
+                            )
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Button(
+                                onClick = { isAddFriendDialogOpen = true },
+                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                shape = RoundedCornerShape(16.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
+                                modifier = Modifier.height(34.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PersonAdd,
+                                    contentDescription = "Add Friend",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text("Add", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    // Up to MAX 2 Friend Contact Cards FIRST
+                    if (acceptedList.isEmpty()) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
+                                .padding(16.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "No friends added yet. Tap '+ Add' to save a friend's code or tap 'View All' below!",
+                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp),
+                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                            )
+                        }
+                    } else {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            acceptedList.take(2).forEach { friend ->
+                                Surface(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable { onOpenFriendChat(friend) },
+                                    shape = RoundedCornerShape(16.dp),
+                                    color = Color(0xFF14141F),
+                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(38.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF262636)),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            if (!friend.photoUri.isNullOrBlank()) {
+                                                AsyncImage(
+                                                    model = friend.photoUri,
+                                                    contentDescription = friend.displayName,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier.fillMaxSize()
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = friend.displayName.take(1).uppercase(),
+                                                    style = MaterialTheme.typography.titleMedium.copy(
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                )
+                                            }
+                                        }
+
+                                        Spacer(modifier = Modifier.width(12.dp))
+
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = friend.displayName,
+                                                style = MaterialTheme.typography.titleSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = TextStrong,
+                                                    fontSize = 14.sp
+                                                )
+                                            )
+                                            Text(
+                                                text = friend.friendId,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = TextMuted,
+                                                    fontSize = 11.sp
+                                                )
+                                            )
+                                        }
+
+                                        // 💬 1st Option: Chat Button
+                                        IconButton(
+                                            onClick = { onOpenFriendChat(friend) },
+                                            modifier = Modifier.size(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.ChatBubbleOutline,
+                                                contentDescription = "Chat",
+                                                tint = Color(0xFF10B981),
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+
+                                        Spacer(modifier = Modifier.width(4.dp))
+
+                                        // ⚡ 2nd Option: Quick Invite Button
+                                        Button(
+                                            onClick = {
+                                                if (!isEunoiaEnabled) {
+                                                    Toast.makeText(context, "Please enable Eunoia in Profile Settings to send invites.", Toast.LENGTH_SHORT).show()
+                                                } else {
+                                                    onQuickInviteFriend(friend)
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                                            shape = RoundedCornerShape(12.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier.height(34.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Rounded.Bolt,
+                                                contentDescription = "Quick Invite",
+                                                tint = Color.Black,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Invite", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    // "View All" Button (BELOW the max 2 contact cards)
+                    Button(
+                        onClick = onOpenAllFriends,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(48.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f)),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                        contentPadding = PaddingValues(horizontal = 16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = if (pendingCount > 0) "View All ($pendingCount Pending Request)" else "View All Friends",
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(
+                                    text = "View All",
+                                    color = Color(0xFF10B981),
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "View All",
+                                    tint = Color(0xFF10B981),
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
@@ -808,6 +1071,7 @@ fun ProfileScreen(
                             scope.launch {
                                 playerManager.repository.updateUsername(username)
                             }
+                            sessionManager.broadcastProfileUpdateSignal(newName = username)
                         }
                         isEditNameDialogOpen = false
                     },
@@ -878,6 +1142,76 @@ fun ProfileScreen(
                     Text("Cancel", color = TextMuted)
                 }
             }
+        )
+    }
+
+    if (isAddFriendDialogOpen) {
+        var friendCodeInput by remember { mutableStateOf("") }
+        var friendNameInput by remember { mutableStateOf("") }
+
+        AlertDialog(
+            onDismissRequest = { isAddFriendDialogOpen = false },
+            title = {
+                Text("Add Friend with Code", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 18.sp)
+            },
+            text = {
+                Column {
+                    Text("Enter your friend's code or Device ID:", color = TextMuted, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = friendCodeInput,
+                        onValueChange = { friendCodeInput = it.uppercase() },
+                        placeholder = { Text("e.g. SPASIBA-9A2F41", color = Color.Gray, fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF10B981),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    Text("Friend Name (Optional):", color = TextMuted, fontSize = 13.sp)
+                    Spacer(modifier = Modifier.height(8.dp))
+                    OutlinedTextField(
+                        value = friendNameInput,
+                        onValueChange = { friendNameInput = it },
+                        placeholder = { Text("e.g. Alex", color = Color.Gray, fontSize = 13.sp) },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedTextColor = Color.White,
+                            unfocusedTextColor = Color.White,
+                            focusedBorderColor = Color(0xFF10B981),
+                            unfocusedBorderColor = Color.White.copy(alpha = 0.2f)
+                        )
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (friendCodeInput.isNotBlank()) {
+                            sessionManager.sendFriendRequestSignal(friendCodeInput, friendNameInput)
+                            friendsList = friendManager.getFriends()
+                            isAddFriendDialogOpen = false
+                            Toast.makeText(context, "Friend request sent to $friendCodeInput!", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981))
+                ) {
+                    Text("Send Request", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { isAddFriendDialogOpen = false }) {
+                    Text("Cancel", color = TextMuted)
+                }
+            },
+            containerColor = Color(0xFF14141E)
         )
     }
 }

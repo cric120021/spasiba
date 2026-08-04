@@ -21,6 +21,7 @@ import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.QueuePlayNext
 import androidx.compose.material.icons.filled.Share
 import android.content.Context
+import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -122,7 +123,7 @@ fun TrackOptionsMenu(
             }
 
             TrackOptionRow(
-                icon = androidx.compose.material.icons.Icons.Default.Download,
+                icon = androidx.compose.material.icons.Icons.Outlined.Download,
                 title = "Download Track",
                 tint = app.spasiba.nativeapp2.ui.theme.AccentTeal,
                 onClick = { isDownloadDialogOpen = true }
