@@ -921,15 +921,28 @@ async function resolveBestAudioStreamWithPiped(videoIdOrUrl: string): Promise<St
       const audioStreams = data.audioStreams || [];
       if (!audioStreams.length) continue;
 
-      const bestStream = audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
-      if (bestStream?.url) {
-        return [
-          {
-            url: bestStream.url,
-            mimeType: bestStream.mimeType || "audio/mp4",
+      // Filter for Safari/iOS-compatible container formats (MP4, M4A, AAC, MP3). Avoid WebM/Opus!
+      const compatibleStreams = audioStreams.filter((stream) => {
+        const mime = (stream.mimeType || "").toLowerCase();
+        return mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") || mime.includes("mpeg");
+      });
+
+      const targetStreams = compatibleStreams.length > 0 ? compatibleStreams : audioStreams;
+      const sortedStreams = targetStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0));
+
+      const candidates: StreamCandidate[] = [];
+      for (const s of sortedStreams) {
+        if (s.url) {
+          candidates.push({
+            url: s.url,
+            mimeType: s.mimeType || "audio/mp4",
             expiresAt: Date.now() + 1000 * 60 * 60 * 3
-          }
-        ];
+          });
+        }
+      }
+
+      if (candidates.length > 0) {
+        return candidates;
       }
     } catch {
       // Try next Piped instance

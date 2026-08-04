@@ -2539,8 +2539,15 @@ function getCandidateSupportScore(audio: HTMLAudioElement, candidate: StreamCand
 
 function rankStreamCandidates(audio: HTMLAudioElement, stream: StreamResponse) {
   const candidates = getStreamCandidates(stream);
+  const isIOS = getDeviceInfo().isIOS;
 
-  return [...candidates].sort((left, right) => {
+  const validCandidates = isIOS
+    ? candidates.filter((c) => getCandidateSupportScore(audio, c) > 0)
+    : candidates;
+
+  const listToRank = validCandidates.length > 0 ? validCandidates : candidates;
+
+  return [...listToRank].sort((left, right) => {
     const supportDifference = getCandidateSupportScore(audio, right) - getCandidateSupportScore(audio, left);
 
     if (supportDifference !== 0) {
@@ -3404,12 +3411,19 @@ export const audioController = {
         preferEmbeddedPlayback = true;
       }
 
-      try {
-        await playWithEmbeddedYouTube(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
-      } catch (fallbackError) {
-        playerActions.setError(fallbackError instanceof Error ? fallbackError.message : message);
-        playerActions.setPlayback(false);
+      if (canFallbackToEmbeddedPlayback) {
+        try {
+          await playWithEmbeddedYouTube(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
+          return;
+        } catch (fallbackError) {
+          playerActions.setError(fallbackError instanceof Error ? fallbackError.message : message);
+          playerActions.setPlayback(false);
+          return;
+        }
       }
+
+      playerActions.setError(message);
+      playerActions.setPlayback(false);
     }
   },
   async playNext() {
