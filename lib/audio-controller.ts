@@ -320,7 +320,7 @@ function buildNativeQueuePayload(queue: Song[], currentIndex: number) {
 
 function shouldGuardBackgroundPlayback() {
   const device = getDeviceInfo();
-  return device.isStandalone && device.isIOS;
+  return device.isIOS || device.isAndroid;
 }
 
 export function shouldUseNativePlayback() {
@@ -328,11 +328,7 @@ export function shouldUseNativePlayback() {
 }
 
 function armBackgroundPlaybackGuard() {
-  if (!shouldGuardBackgroundPlayback()) {
-    return;
-  }
-
-  backgroundPlaybackGuardUntil = Date.now() + 8_000;
+  backgroundPlaybackGuardUntil = Date.now() + 1000 * 60 * 60 * 24;
   backgroundPlaybackResumeAttempts = 0;
 }
 
@@ -350,10 +346,6 @@ function clearManualPauseRequested() {
 }
 
 function shouldResumeBackgroundPlayback() {
-  if (!shouldGuardBackgroundPlayback()) {
-    return false;
-  }
-
   if (manualPauseRequested) {
     return false;
   }
@@ -362,12 +354,13 @@ function shouldResumeBackgroundPlayback() {
     return false;
   }
 
-  if (Date.now() > backgroundPlaybackGuardUntil) {
+  const device = getDeviceInfo();
+  if (!device.isIOS && !device.isAndroid) {
     return false;
   }
 
   const { currentSong, isPlaying } = getPlayerState();
-  return Boolean(currentSong && isPlaying && backgroundPlaybackResumeAttempts < 2);
+  return Boolean(currentSong && isPlaying);
 }
 
 function noteBackgroundPlaybackResumeAttempt() {
