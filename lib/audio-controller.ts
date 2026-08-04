@@ -3404,12 +3404,6 @@ export const audioController = {
         preferEmbeddedPlayback = true;
       }
 
-      if (!canFallbackToEmbeddedPlayback) {
-        playerActions.setError(message);
-        playerActions.setPlayback(false);
-        return;
-      }
-
       try {
         await playWithEmbeddedYouTube(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
       } catch (fallbackError) {

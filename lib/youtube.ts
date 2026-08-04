@@ -897,6 +897,49 @@ async function resolveBestAudioStreamWithYoutubeJs(videoIdOrUrl: string) {
   return candidates;
 }
 
+async function resolveBestAudioStreamWithPiped(videoIdOrUrl: string): Promise<StreamCandidate[]> {
+  const match = videoIdOrUrl.match(/(?:v=|\/)([a-zA-Z0-9_-]{11})/);
+  const videoId = match ? match[1] : videoIdOrUrl;
+
+  const PIPED_INSTANCES = [
+    "https://pipedapi.kavin.rocks",
+    "https://api.piped.privacydev.net",
+    "https://pipedapi.mha.fi",
+    "https://pipedapi.adminforge.de"
+  ];
+
+  for (const instance of PIPED_INSTANCES) {
+    try {
+      const response = await fetch(`${instance}/streams/${videoId}`, {
+        headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)" },
+        signal: AbortSignal.timeout(4000)
+      });
+
+      if (!response.ok) continue;
+
+      const data = (await response.json()) as { audioStreams?: Array<{ url?: string; mimeType?: string; bitrate?: number }> };
+      const audioStreams = data.audioStreams || [];
+      if (!audioStreams.length) continue;
+
+      const bestStream = audioStreams.sort((a, b) => (b.bitrate || 0) - (a.bitrate || 0))[0];
+      if (bestStream?.url) {
+        return [
+          {
+            url: bestStream.url,
+            mimeType: bestStream.mimeType || "audio/mp4",
+            audioBitrate: bestStream.bitrate || 128000,
+            expiresAt: Date.now() + 1000 * 60 * 60 * 3
+          }
+        ];
+      }
+    } catch {
+      // Try next Piped instance
+    }
+  }
+
+  throw new Error("Piped API failed to resolve stream.");
+}
+
 async function resolveBestAudioStream(videoUrl: string) {
   const attemptErrors: string[] = [];
 
@@ -924,6 +967,13 @@ async function resolveBestAudioStream(videoUrl: string) {
   } catch (error) {
     const message = error instanceof Error ? error.message : "ytdl-core failed.";
     attemptErrors.push(`ytdl-core: ${message}`);
+  }
+
+  try {
+    return await resolveBestAudioStreamWithPiped(videoUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Piped failed.";
+    attemptErrors.push(`piped: ${message}`);
   }
 
   throw new Error(attemptErrors.join(" "));
