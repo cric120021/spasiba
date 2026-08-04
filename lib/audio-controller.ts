@@ -487,7 +487,10 @@ function scheduleDeferredQueueEnhancement(trackId: string, delayMs = DEFERRED_QU
 }
 
 function shouldAllowEmbeddedFallback() {
-  return isHostedRuntime() || !getDeviceInfo().isIOS;
+  if (getDeviceInfo().isIOS) {
+    return false;
+  }
+  return isHostedRuntime();
 }
 
 function shouldTryBrowserSideStreamResolution() {
@@ -519,6 +522,9 @@ function getUpcomingPreloadCount() {
 }
 
 function shouldUseEmbeddedPlayback() {
+  if (getDeviceInfo().isIOS) {
+    return false;
+  }
   return preferEmbeddedPlayback;
 }
 
