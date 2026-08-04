@@ -2486,6 +2486,18 @@ function getCandidateSupportScore(audio: HTMLAudioElement, candidate: StreamCand
     return 0;
   }
 
+  const isIOS = getDeviceInfo().isIOS;
+  const mime = candidate.mimeType.toLowerCase();
+
+  if (isIOS) {
+    if (mime.includes("webm") || mime.includes("opus")) {
+      return -10;
+    }
+    if (mime.includes("mp4") || mime.includes("m4a") || mime.includes("aac") || mime.includes("mpeg")) {
+      return 100;
+    }
+  }
+
   const support = audio.canPlayType(candidate.mimeType);
 
   if (support === "probably") {
