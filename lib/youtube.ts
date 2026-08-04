@@ -927,7 +927,6 @@ async function resolveBestAudioStreamWithPiped(videoIdOrUrl: string): Promise<St
           {
             url: bestStream.url,
             mimeType: bestStream.mimeType || "audio/mp4",
-            audioBitrate: bestStream.bitrate || 128000,
             expiresAt: Date.now() + 1000 * 60 * 60 * 3
           }
         ];
