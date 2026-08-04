@@ -943,6 +943,20 @@ async function resolveBestAudioStream(videoUrl: string) {
   const attemptErrors: string[] = [];
 
   try {
+    return await resolveBestAudioStreamWithPiped(videoUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Piped failed.";
+    attemptErrors.push(`piped: ${message}`);
+  }
+
+  try {
+    return await resolveBestAudioStreamWithYoutubeJs(videoUrl);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "youtubei.js failed.";
+    attemptErrors.push(`youtubei.js: ${message}`);
+  }
+
+  try {
     return await resolveBestAudioStreamWithYtDlp(videoUrl);
   } catch (error) {
     const message =
@@ -955,24 +969,10 @@ async function resolveBestAudioStream(videoUrl: string) {
   }
 
   try {
-    return await resolveBestAudioStreamWithYoutubeJs(videoUrl);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "youtubei.js failed.";
-    attemptErrors.push(`youtubei.js: ${message}`);
-  }
-
-  try {
     return await resolveBestAudioStreamWithYtdl(videoUrl);
   } catch (error) {
     const message = error instanceof Error ? error.message : "ytdl-core failed.";
     attemptErrors.push(`ytdl-core: ${message}`);
-  }
-
-  try {
-    return await resolveBestAudioStreamWithPiped(videoUrl);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : "Piped failed.";
-    attemptErrors.push(`piped: ${message}`);
   }
 
   throw new Error(attemptErrors.join(" "));
