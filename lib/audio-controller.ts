@@ -197,6 +197,33 @@ let pendingHiddenYouTubeQueueSync: { queue: Song[]; currentIndex: number } | nul
 let listenerProfile = createEmptyListenerProfile();
 let listenerProfileVisitorId = "";
 let listenerProfileHydrationPromise: Promise<void> | null = null;
+const SILENT_AUDIO_WAV = "data:audio/wav;base64,UklGRjIAAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQAAAAA=";
+
+function syncMediaSessionMetadata(track: Song) {
+  if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+    return;
+  }
+
+  try {
+    navigator.mediaSession.playbackState = "playing";
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: track.title,
+      artist: track.author,
+      album: "Spasiba",
+      artwork: [
+        { src: track.thumbnail, sizes: "96x96", type: "image/jpeg" },
+        { src: track.thumbnail, sizes: "128x128", type: "image/jpeg" },
+        { src: track.thumbnail, sizes: "192x192", type: "image/jpeg" },
+        { src: track.thumbnail, sizes: "256x256", type: "image/jpeg" },
+        { src: track.thumbnail, sizes: "384x384", type: "image/jpeg" },
+        { src: track.thumbnail, sizes: "512x512", type: "image/jpeg" }
+      ]
+    });
+  } catch {
+    // Best effort metadata sync
+  }
+}
+
 let backgroundPlaybackGuardUntil = 0;
 let backgroundPlaybackResumeAttempts = 0;
 let manualPauseRequested = false;
@@ -3345,10 +3372,12 @@ export const audioController = {
     }
 
     playerActions.primePlayback(track, nextPlaybackQueue.queue, nextPlaybackQueue.currentIndex, queueContext);
+    syncMediaSessionMetadata(track);
 
-    // Synchronously prime the audio element during user gesture for iOS background playback
-    if (audio.paused && !audio.src) {
+    // Synchronously unlock singletonAudio with silent WAV on user gesture
+    if (audio.paused || !audio.src) {
       try {
+        audio.src = SILENT_AUDIO_WAV;
         void audio.play().catch(() => {});
       } catch {
         // Best effort
