@@ -10,6 +10,15 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.unit.IntOffset
+import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -17,8 +26,10 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -41,6 +52,7 @@ import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PersonAdd
@@ -100,6 +112,7 @@ import app.spasiba.nativeapp2.ui.theme.AccentTeal
 import app.spasiba.nativeapp2.ui.theme.TextMuted
 import app.spasiba.nativeapp2.ui.theme.TextStrong
 import coil.compose.AsyncImage
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
@@ -240,7 +253,6 @@ fun EunoiaScreen(
 
     val prefs = remember { context.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
     var isEunoiaEnabled by remember { mutableStateOf(prefs.getBoolean("eunoia_enabled", true)) }
-    var isFloatingChatOpen by remember { mutableStateOf(false) }
     var isInviteDialogOpen by remember { mutableStateOf(false) }
     var inviteInputId by remember { mutableStateOf("") }
     var inviteInputName by remember { mutableStateOf("") }
@@ -357,7 +369,7 @@ fun EunoiaScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF070709))
+            .background(Color(0xFF030303))
     ) {
         AsyncImage(
             model = activeSong.thumbnail,
@@ -365,9 +377,9 @@ fun EunoiaScreen(
             contentScale = ContentScale.Crop,
             modifier = Modifier
                 .fillMaxSize()
-                .blur(80.dp)
-                .scale(1.2f)
-                .background(Color.Black.copy(alpha = 0.7f))
+                .blur(100.dp)
+                .scale(1.3f)
+                .background(Color.Black.copy(alpha = 0.88f))
         )
         Box(
             modifier = Modifier
@@ -375,9 +387,9 @@ fun EunoiaScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            Color.Black.copy(alpha = 0.75f),
-                            Color(0xFF0A0A0F).copy(alpha = 0.88f),
-                            Color(0xFF050508)
+                            Color(0xFF030303).copy(alpha = 0.82f),
+                            Color(0xFF030303).copy(alpha = 0.94f),
+                            Color(0xFF030303)
                         )
                     )
                 )
@@ -491,244 +503,246 @@ fun EunoiaScreen(
 
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Player Hero Card
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.cardColors(containerColor = Color.Black.copy(alpha = 0.45f)),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f))
-            ) {
-                Column(modifier = Modifier.padding(12.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        AsyncImage(
-                            model = activeSong.thumbnail,
-                            contentDescription = activeSong.title,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(56.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                        )
-
-                        Spacer(modifier = Modifier.width(12.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = activeSong.title,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 15.sp
-                                ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                            Text(
-                                text = activeSong.author,
-                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
-
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            IconButton(
-                                onClick = {
-                                    playerManager.playPrevious()
-                                    sessionManager.emitPlaybackAction("previous")
-                                },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(imageVector = Icons.Default.SkipPrevious, contentDescription = "Previous", tint = Color.White, modifier = Modifier.size(18.dp))
-                            }
-
-                            Box(
-                                modifier = Modifier
-                                    .size(42.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                                    .clickable {
-                                        if (isPlaying) {
-                                            playerManager.exoPlayer.pause()
-                                            sessionManager.emitPlaybackAction("pause")
-                                        } else {
-                                            playerManager.exoPlayer.play()
-                                            sessionManager.emitPlaybackAction("play")
-                                        }
-                                    },
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "Pause" else "Play",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-
-                            IconButton(
-                                onClick = {
-                                    playerManager.playNext()
-                                    sessionManager.emitPlaybackAction("next")
-                                },
-                                modifier = Modifier.size(30.dp)
-                            ) {
-                                Icon(imageVector = Icons.Default.SkipNext, contentDescription = "Next", tint = Color.White, modifier = Modifier.size(18.dp))
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    // Independent Seekbar
-                    Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp)) {
-                        androidx.compose.material3.Slider(
-                            value = sliderProgress,
-                            onValueChange = { targetFraction ->
-                                val targetPosMs = (targetFraction * durSec * 1000L).toLong()
-                                playerManager.seekTo(targetPosMs)
-                            },
-                            onValueChangeFinished = {
-                                val currentPosMs = playerManager.positionMs.value
-                                sessionManager.emitPlaybackAction("seek", org.json.JSONObject().apply {
-                                    put("positionMs", currentPosMs)
-                                })
-                            },
-                            colors = androidx.compose.material3.SliderDefaults.colors(
-                                thumbColor = Color.White,
-                                activeTrackColor = Color.White,
-                                inactiveTrackColor = Color.White.copy(alpha = 0.2f)
-                            ),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(22.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(2.dp))
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(posFormatted, style = MaterialTheme.typography.labelSmall.copy(color = TextMuted, fontSize = 9.sp))
-                            Text(durFormatted, style = MaterialTheme.typography.labelSmall.copy(color = TextMuted, fontSize = 9.sp))
-                        }
-                    }
-                }
-            }
-
             Spacer(modifier = Modifier.height(4.dp))
 
-            // Quick Reaction Flying Emoji Bar (NO TOAST ALERTS)
-            LazyRow(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Player Hero (Card-Less Floating Layout)
+            Column(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                val quickReactions = listOf("❤️", "🔥", "✨", "🎵", "💓", "🥺", "🎧")
-                items(quickReactions) { reactionEmoji ->
-                    Surface(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .clickable {
-                                sessionManager.triggerFlyingReaction(reactionEmoji)
-                            },
-                        color = Color.White.copy(alpha = 0.08f),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Text(
-                            text = reactionEmoji,
-                            fontSize = 18.sp,
-                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // MUSIC CHAT STREAM WITH AUTO SCROLL
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f),
-                color = Color.Black.copy(alpha = 0.45f),
-                shape = RoundedCornerShape(20.dp),
-                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-            ) {
-                Column(
+                // Centered Full-Bleed Rounded Album Artwork (YouTube Music 1:1 Aspect Ratio)
+                Box(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(8.dp)
+                        .fillMaxWidth(0.55f)
+                        .aspectRatio(1f)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Color.White.copy(alpha = 0.08f))
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    AsyncImage(
+                        model = activeSong.thumbnail,
+                        contentDescription = activeSong.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier.fillMaxSize()
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
+
+                Text(
+                    text = activeSong.title,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 18.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = activeSong.author,
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = TextMuted,
+                        fontSize = 13.sp
+                    ),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // YouTube Music Native Dynamic Seeker Bar
+                app.spasiba.nativeapp2.ui.components.YouTubeMusicSeekerBar(
+                    progressFraction = sliderProgress,
+                    positionFormatted = posFormatted,
+                    durationFormatted = durFormatted,
+                    onSeek = { targetFraction ->
+                        val targetPosMs = (targetFraction * durSec * 1000L).toLong()
+                        playerManager.seekTo(targetPosMs)
+                    },
+                    onSeekFinished = {
+                        val currentPosMs = playerManager.positionMs.value
+                        sessionManager.emitPlaybackAction("seek", org.json.JSONObject().apply {
+                            put("positionMs", currentPosMs)
+                        })
+                    },
+                    modifier = Modifier.padding(horizontal = 4.dp)
+                )
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Media Playback Controls Row
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    IconButton(
+                        onClick = {
+                            playerManager.playPrevious()
+                            sessionManager.emitPlaybackAction("previous")
+                        },
+                        modifier = Modifier.size(44.dp)
                     ) {
-                        Text(
-                            text = "EUNOIA CHAT STREAM",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = TextMuted,
-                                letterSpacing = 1.sp,
-                                fontSize = 11.sp
-                            )
-                        )
-                        Text(
-                            text = "My ID: $myDeviceId",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = AccentTeal,
-                                fontSize = 11.sp
-                            )
+                        Icon(
+                            imageVector = Icons.Default.SkipPrevious,
+                            contentDescription = "Previous",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    LazyColumn(
-                        state = chatListState,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        items(sessionMessages) { msg ->
-                            EunoiaMessageRow(message = msg)
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(4.dp))
-
-                    val sendMessageAction = {
-                        if (chatInputValue.isNotBlank()) {
-                            sessionManager.sendMessage(chatInputValue)
-                            chatInputValue = ""
-                        }
-                    }
+                    Spacer(modifier = Modifier.width(20.dp))
 
                     Box(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(24.dp))
-                            .background(Color.Black.copy(alpha = 0.35f))
-                            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(24.dp))
-                            .clickable { isFloatingChatOpen = true }
-                            .padding(horizontal = 16.dp, vertical = 12.dp)
+                            .size(52.dp)
+                            .clip(CircleShape)
+                            .background(Color.White)
+                            .clickable {
+                                if (isPlaying) {
+                                    playerManager.exoPlayer.pause()
+                                    sessionManager.emitPlaybackAction("pause")
+                                } else {
+                                    playerManager.exoPlayer.play()
+                                    sessionManager.emitPlaybackAction("play")
+                                }
+                            },
+                        contentAlignment = Alignment.Center
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text(
-                                text = if (chatInputValue.isBlank()) "Send lyric or message..." else chatInputValue,
-                                color = if (chatInputValue.isBlank()) TextMuted else Color.White,
-                                fontSize = 13.sp,
-                                modifier = Modifier.weight(1f),
-                                maxLines = 1
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.Black,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(20.dp))
+
+                    IconButton(
+                        onClick = {
+                            playerManager.playNext()
+                            sessionManager.emitPlaybackAction("next")
+                        },
+                        modifier = Modifier.size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.SkipNext,
+                            contentDescription = "Next",
+                            tint = Color.White,
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // MUSIC CHAT STREAM (Card-Less Floating Canvas)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .padding(horizontal = 4.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "ROOM CHAT & ACTIVITY",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = TextMuted,
+                            letterSpacing = 1.sp,
+                            fontSize = 11.sp
+                        )
+                    )
+                    Text(
+                        text = "ID: $myDeviceId",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = AccentTeal,
+                            fontSize = 11.sp
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(4.dp))
+
+                LazyColumn(
+                    state = chatListState,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    items(sessionMessages) { msg ->
+                        EunoiaMessageRow(message = msg)
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Integrated Text Input Bar
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(46.dp),
+                    color = Color(0xFF181822),
+                    shape = CircleShape,
+                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(horizontal = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        OutlinedTextField(
+                            value = chatInputValue,
+                            onValueChange = { chatInputValue = it },
+                            placeholder = { Text("Write a message...", color = TextMuted, fontSize = 13.sp) },
+                            modifier = Modifier.weight(1f),
+                            singleLine = true,
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedTextColor = Color.White,
+                                unfocusedTextColor = Color.White,
+                                focusedBorderColor = Color.Transparent,
+                                unfocusedBorderColor = Color.Transparent,
+                                focusedContainerColor = Color.Transparent,
+                                unfocusedContainerColor = Color.Transparent
+                            ),
+                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                            ),
+                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                onSend = {
+                                    if (chatInputValue.isNotBlank()) {
+                                        sessionManager.sendMessage(chatInputValue)
+                                        chatInputValue = ""
+                                    }
+                                }
                             )
+                        )
+
+                        IconButton(
+                            onClick = {
+                                if (chatInputValue.isNotBlank()) {
+                                    sessionManager.sendMessage(chatInputValue)
+                                    chatInputValue = ""
+                                }
+                            },
+                            modifier = Modifier
+                                .size(34.dp)
+                                .clip(CircleShape)
+                                .background(Color.White)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Send,
+                                imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                                tint = Color.Black,
+                                modifier = Modifier.size(16.dp)
                             )
                         }
                     }
@@ -835,104 +849,128 @@ fun EunoiaScreen(
             )
         }
 
-        // FLOATING TEMPORARY EDIT BOX STICKY ATTACHED TO TOP OF KEYBOARD
-        if (isFloatingChatOpen) {
-            val focusRequester = remember { FocusRequester() }
-            LaunchedEffect(Unit) {
-                focusRequester.requestFocus()
-            }
+        // -----------------------------------------------------------
+        // ULTRA-ELASTIC PHYSICS DRAGGABLE REACTION FLOATER (SPRING REBOUND)
+        // -----------------------------------------------------------
+        var isReactionDockExpanded by remember { mutableStateOf(false) }
+        val animOffsetX = remember { Animatable(0f) }
+        val animOffsetY = remember { Animatable(0f) }
+        val quickReactions = listOf("❤️", "🔥", "✨", "🎵", "💓", "🥺", "🎧", "👏", "😭")
 
-            Dialog(
-                onDismissRequest = { isFloatingChatOpen = false },
-                properties = DialogProperties(
-                    usePlatformDefaultWidth = false,
-                    decorFitsSystemWindows = false
-                )
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(bottom = 130.dp, end = 16.dp),
+            contentAlignment = Alignment.BottomEnd
+        ) {
+            Row(
+                modifier = Modifier.offset {
+                    IntOffset(animOffsetX.value.roundToInt(), animOffsetY.value.roundToInt())
+                },
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black.copy(alpha = 0.5f))
-                        .clickable(
-                            interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
-                            indication = null
-                        ) {
-                            isFloatingChatOpen = false
-                        }
-                        .imePadding(),
-                    contentAlignment = Alignment.BottomCenter
-                ) {
+                // Expandable Horizontal Emoji Pack (Appears to the left of the circular button)
+                AnimatedVisibility(visible = isReactionDockExpanded) {
                     Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(start = 12.dp, end = 12.dp, bottom = 8.dp, top = 4.dp)
-                            .clickable(enabled = false) {},
-                        color = Color(0xFF14141F),
-                        shape = RoundedCornerShape(24.dp),
-                        border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.35f)),
-                        shadowElevation = 16.dp
+                        modifier = Modifier.padding(end = 8.dp),
+                        shape = CircleShape,
+                        color = Color(0xFF1E1E26),
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 4.dp),
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            OutlinedTextField(
-                                value = chatInputValue,
-                                onValueChange = { chatInputValue = it },
-                                placeholder = { Text("Write message...", color = Color.Gray, fontSize = 14.sp) },
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .focusRequester(focusRequester),
-                                singleLine = true,
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color.White,
-                                    unfocusedTextColor = Color.White,
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent
-                                ),
-                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                    imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                                ),
-                                keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                    onSend = {
-                                        if (chatInputValue.isNotBlank()) {
-                                            sessionManager.sendMessage(chatInputValue)
-                                            chatInputValue = ""
-                                            isFloatingChatOpen = false
-                                        }
-                                    }
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            IconButton(
-                                onClick = {
-                                    if (chatInputValue.isNotBlank()) {
-                                        sessionManager.sendMessage(chatInputValue)
-                                        chatInputValue = ""
-                                        isFloatingChatOpen = false
-                                    }
-                                },
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .clip(CircleShape)
-                                    .background(Color.White)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.Send,
-                                    contentDescription = "Send",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(18.dp)
-                                )
+                            items(quickReactions) { reactionEmoji ->
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .clip(CircleShape)
+                                        .clickable {
+                                            sessionManager.triggerFlyingReaction(reactionEmoji)
+                                            isReactionDockExpanded = false
+                                        },
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = reactionEmoji,
+                                        fontSize = 20.sp
+                                    )
+                                }
                             }
                         }
                     }
                 }
+
+                // Elastic Physics Circular Floater Button (Guaranteed Tap + Physics Drag)
+                Surface(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(CircleShape)
+                        .pointerInput(Unit) {
+                            coroutineScope {
+                                awaitEachGesture {
+                                    val down = awaitFirstDown(requireUnconsumed = false)
+                                    var totalDist = 0f
+                                    var isMoved = false
+
+                                    while (true) {
+                                        val event = awaitPointerEvent()
+                                        val change = event.changes.firstOrNull() ?: break
+
+                                        if (change.pressed) {
+                                            val dragAmount = change.positionChange()
+                                            if (dragAmount != androidx.compose.ui.geometry.Offset.Zero) {
+                                                val stepDist = kotlin.math.hypot(dragAmount.x, dragAmount.y)
+                                                totalDist += stepDist
+                                                if (totalDist > 6f) {
+                                                    isMoved = true
+                                                    change.consume()
+                                                    launch {
+                                                        animOffsetX.snapTo(animOffsetX.value + dragAmount.x)
+                                                        animOffsetY.snapTo(animOffsetY.value + dragAmount.y)
+                                                    }
+                                                }
+                                            }
+                                        } else {
+                                            // Finger released
+                                            if (!isMoved) {
+                                                isReactionDockExpanded = !isReactionDockExpanded
+                                            } else {
+                                                // Physics Spring rebound
+                                                launch {
+                                                    animOffsetX.animateTo(
+                                                        targetValue = animOffsetX.value,
+                                                        animationSpec = spring(
+                                                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                                                            stiffness = Spring.StiffnessLow
+                                                        )
+                                                    )
+                                                }
+                                            }
+                                            break
+                                        }
+                                    }
+                                }
+                            }
+                        },
+                    shape = CircleShape,
+                    color = if (isReactionDockExpanded) AccentTeal else Color(0xFF1E1E26),
+                    border = BorderStroke(1.5.dp, Color.White.copy(alpha = 0.35f))
+                ) {
+                    Box(
+                        modifier = Modifier.fillMaxSize(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (isReactionDockExpanded) "✖" else "😀",
+                            fontSize = 22.sp,
+                            color = if (isReactionDockExpanded) Color.Black else Color.White
+                        )
+                    }
+                }
             }
         }
-
     }
 }

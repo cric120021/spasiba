@@ -1139,93 +1139,62 @@ object YouTubeMusicApi {
         return false
     }
 
-    suspend fun searchUnified(query: String): UnifiedSearchResult = withContext(Dispatchers.IO) {
+    suspend fun searchUnified(
+        query: String,
+        selectedArtistSuggestion: SuggestionItem.ArtistSuggestion? = null
+    ): UnifiedSearchResult = withContext(Dispatchers.IO) {
         val trimmed = query.trim()
-        if (trimmed.isBlank()) return@withContext UnifiedSearchResult(trimmed, false, null, emptyList())
+        if (trimmed.isBlank()) {
+            return@withContext UnifiedSearchResult(query = "", isArtistSearch = false)
+        }
 
-        // 1. Perform standard song search
         val songs = searchSongs(trimmed)
-        if (songs.isEmpty()) return@withContext UnifiedSearchResult(trimmed, false, null, emptyList())
 
-        val totalSongs = songs.size
-        val candidateCounts = mutableMapOf<String, Int>()
-
-        for (song in songs) {
-            val candidates = extractArtistCandidatesFromSong(song)
-            val matchedInSong = mutableSetOf<String>()
-
-            for (candidate in candidates) {
-                if (isFuzzyArtistMatch(trimmed, candidate)) {
-                    matchedInSong.add(candidate)
-                }
-            }
-
-            for (c in matchedInSong) {
-                candidateCounts[c] = (candidateCounts[c] ?: 0) + 1
-            }
-        }
-
-        val topEntry = candidateCounts.maxByOrNull { it.value }
-        val dominantCandidate = topEntry?.key
-        val dominantCount = topEntry?.value ?: 0
-
-        val matchRatio = if (totalSongs > 0) (dominantCount.toFloat() / totalSongs) else 0f
-
-        // Check if query is an explicit song title match (e.g. user typed "Kesariya")
-        val isExplicitSongTitleQuery = songs.take(3).any { s ->
-            val cleanTitle = s.title.lowercase().replace(Regex("[|\\-(),&]"), " ")
-            val cleanQuery = trimmed.lowercase()
-            cleanTitle.split("\\s+".toRegex()).contains(cleanQuery) &&
-            !cleanTitle.contains("arijit") &&
-            !cleanTitle.contains("artist") &&
-            cleanTitle.startsWith(cleanQuery)
-        }
-
-        var isArtistSearch = false
-        var matchedArtistName = ""
-
-        if ((matchRatio >= 0.25f || dominantCount >= 3) && !isExplicitSongTitleQuery) {
-            // 1. Check if any author field contains a clean match
-            val authorMatch = songs.map { it.author.trim() }
-                .filter { it.isNotBlank() && !it.equals("Artist", ignoreCase = true) && !it.equals("YouTube", ignoreCase = true) && isFuzzyArtistMatch(trimmed, it) }
-                .minByOrNull { it.length }
-
-            // 2. Otherwise pick the shortest clean title candidate matching query (word count <= 3)
-            val titleCandidateMatch = candidateCounts.keys
-                .filter { isFuzzyArtistMatch(trimmed, it) && it.split("\\s+".toRegex()).size <= 3 }
-                .minByOrNull { it.length }
-
-            val rawBest = authorMatch ?: titleCandidateMatch ?: dominantCandidate ?: trimmed
-
-            // Capitalize neatly (e.g. "shawn mendes" -> "Shawn Mendes")
-            val cleanFormattedName = rawBest.split("\\s+".toRegex())
-                .joinToString(" ") { word -> word.lowercase(java.util.Locale.ROOT).replaceFirstChar { if (it.isLowerCase()) it.titlecase(java.util.Locale.ROOT) else it.toString() } }
-
-            isArtistSearch = true
-            matchedArtistName = cleanFormattedName
-        }
-
-        // Tier 1.5: Direct YouTube Music browseId lookup fallback
-        if (!isArtistSearch) {
-            val directBrowseId = fetchArtistBrowseId(trimmed)
-            if (!directBrowseId.isNullOrBlank()) {
-                isArtistSearch = true
-                matchedArtistName = trimmed
-            }
-        }
-
-        if (isArtistSearch && matchedArtistName.isNotBlank()) {
-            val avatarUrl = getArtistAvatarUrl(matchedArtistName)
+        // 1. Direct explicit artist suggestion passed from autocomplete dropdown
+        if (selectedArtistSuggestion != null) {
+            val artistName = selectedArtistSuggestion.artistName
+            val avatarUrl = selectedArtistSuggestion.avatarUrl.takeIf { !it.isNullOrBlank() } ?: getArtistAvatarUrl(artistName)
             val artistTopSongs = songs.filter {
-                it.author.contains(matchedArtistName, ignoreCase = true) ||
-                it.title.contains(matchedArtistName, ignoreCase = true)
+                it.author.contains(artistName, ignoreCase = true) ||
+                it.title.contains(artistName, ignoreCase = true)
             }.ifEmpty { songs.take(10) }
 
             val artistResult = ArtistSearchResult(
-                artistName = matchedArtistName,
+                artistName = artistName,
                 avatarUrl = avatarUrl,
                 topSongs = artistTopSongs,
-                matchPercentage = matchRatio
+                matchPercentage = 1.0f
+            )
+
+            return@withContext UnifiedSearchResult(
+                query = trimmed,
+                isArtistSearch = true,
+                detectedArtist = artistResult,
+                songs = songs
+            )
+        }
+
+        // 2. Check get_search_suggestions API for an exact artist entity match
+        val suggestions = fetchSearchSuggestions(trimmed)
+        val matchedArtist = suggestions.filterIsInstance<SuggestionItem.ArtistSuggestion>().firstOrNull {
+            it.artistName.equals(trimmed, ignoreCase = true) ||
+            it.artistName.contains(trimmed, ignoreCase = true) ||
+            trimmed.contains(it.artistName, ignoreCase = true)
+        }
+
+        if (matchedArtist != null) {
+            val artistName = matchedArtist.artistName
+            val avatarUrl = matchedArtist.avatarUrl.takeIf { !it.isNullOrBlank() } ?: getArtistAvatarUrl(artistName)
+            val artistTopSongs = songs.filter {
+                it.author.contains(artistName, ignoreCase = true) ||
+                it.title.contains(artistName, ignoreCase = true)
+            }.ifEmpty { songs.take(10) }
+
+            val artistResult = ArtistSearchResult(
+                artistName = artistName,
+                avatarUrl = avatarUrl,
+                topSongs = artistTopSongs,
+                matchPercentage = 1.0f
             )
 
             return@withContext UnifiedSearchResult(

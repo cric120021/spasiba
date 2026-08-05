@@ -668,16 +668,16 @@ fun SearchScreen(
                     }
                 }
             } else {
-                // MODE B: EXECUTED SEARCH RESULTS VIEW (FOCUS ON 1ST MATCH + LIST VIEW)
+                // MODE B: EXECUTED SEARCH RESULTS VIEW (FOCUS ON BEST MATCH + LIST VIEW)
                 LazyColumn(
                     modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(start = 16.dp, top = 0.dp, end = 16.dp, bottom = 140.dp)
+                    contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 140.dp)
                 ) {
                     if (isSearching) {
-                        items(6) {
-                            SongTileSkeleton()
-                        }
-                    } else if (processedSearchResults.isEmpty()) {
+                            items(6) {
+                                SongTileSkeleton()
+                            }
+                        } else if (processedSearchResults.isEmpty()) {
                         item {
                             Box(
                                 modifier = Modifier
