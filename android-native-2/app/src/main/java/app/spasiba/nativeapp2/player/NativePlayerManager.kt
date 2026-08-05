@@ -237,15 +237,25 @@ class NativePlayerManager(private val context: Context) {
             val nextTrack = currentQueue[nextIndex]
             if (prefetchedVideoId != nextTrack.id) {
                 prefetchedVideoId = nextTrack.id
-                Log.d(TAG, "PREFETCHING NEXT TRACK IN QUEUE videoId=${nextTrack.id}")
+                Log.d(TAG, "PREFETCHING NEXT TRACK IN QUEUE title='${nextTrack.title}' id=${nextTrack.id}")
 
                 scope.launch(Dispatchers.IO) {
-                    val streamResult = repository.resolveStreamResult(nextTrack.id)
-                        ?: YouTubeMusicApi.resolveStreamResult(context, nextTrack.id)
+                    var targetId = nextTrack.id
+                    if (targetId.length != 11 || targetId.startsWith("track_") || targetId.startsWith("item_") || targetId.startsWith("VL") || targetId.startsWith("MP")) {
+                        runCatching {
+                            val searchResults = YouTubeMusicApi.searchSongs("${nextTrack.title} ${nextTrack.author}")
+                            val validTrack = searchResults.firstOrNull { it.id.length == 11 }
+                            if (validTrack != null) targetId = validTrack.id
+                        }
+                    }
+
+                    val streamResult = repository.resolveStreamResult(targetId)
+                        ?: YouTubeMusicApi.resolveStreamResult(context, targetId)
 
                     if (streamResult != null && streamResult.url.isNotBlank()) {
                         preResolvedStreamMap[nextTrack.id] = streamResult
-                        Log.d(TAG, "PREFETCH SUCCESS for '${nextTrack.title}'")
+                        preResolvedStreamMap[targetId] = streamResult
+                        Log.d(TAG, "PREFETCH SUCCESS for '${nextTrack.title}' (targetId=$targetId)")
                     }
                 }
             }
@@ -604,11 +614,14 @@ class NativePlayerManager(private val context: Context) {
             repository.recordPlayedSong(song)
 
             var targetVideoId = song.id
-            if (targetVideoId.startsWith("track_") || targetVideoId.isBlank()) {
+            if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
                 runCatching {
+                    Log.d(TAG, "Resolving actual 11-char videoId for '${song.title}' by ${song.author} (original id='${song.id}')")
                     val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
-                    if (searchResults.isNotEmpty()) {
-                        targetVideoId = searchResults.first().id
+                    val validTrack = searchResults.firstOrNull { it.id.length == 11 }
+                    if (validTrack != null) {
+                        targetVideoId = validTrack.id
+                        Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
                     }
                 }
             }

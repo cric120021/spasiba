@@ -336,21 +336,8 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                             .fillMaxSize()
                             .padding(paddingValues)
                     ) {
-                        var categorySongs by remember { mutableStateOf<List<Song>>(emptyList()) }
-                        var isCategoryLoading by remember { mutableStateOf(false) }
-
                         val homeListState = androidx.compose.runtime.saveable.rememberSaveable(saver = androidx.compose.foundation.lazy.LazyListState.Saver) {
                             androidx.compose.foundation.lazy.LazyListState()
-                        }
-
-                        androidx.compose.runtime.LaunchedEffect(selectedCategory) {
-                            if (selectedCategory != null) {
-                                isCategoryLoading = true
-                                categorySongs = YouTubeMusicApi.searchSongs(selectedCategory!!.params)
-                                isCategoryLoading = false
-                            } else {
-                                categorySongs = emptyList()
-                            }
                         }
 
                         // Active Screen Content
@@ -651,29 +638,31 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
 
                 // Full Screen Maximized Expanded Player Sheet Overlay (100% Screen Coverage)
                 AnimatedVisibility(
-                    visible = isExpandedPlayerVisible,
+                    visible = isExpandedPlayerVisible && activeSong != null,
                     enter = slideInVertically(initialOffsetY = { it }),
                     exit = slideOutVertically(targetOffsetY = { it }),
                     modifier = Modifier.fillMaxSize()
                 ) {
-                    ExpandedPlayerSheet(
-                        playerManager = playerManager,
-                        song = activeSong,
-                        isPlaying = isPlaying,
-                        positionMs = positionMs,
-                        durationMs = durationMs,
-                        isLiked = likedSongIds.contains(activeSong.id),
-                        onCollapse = { isExpandedPlayerVisible = false },
-                        onPlayPauseClick = { playerManager.togglePlayPause() },
-                        onPreviousClick = { playerManager.playPrevious() },
-                        onNextClick = { playerManager.playNext() },
-                        onSeekTo = { pos -> playerManager.seekTo(pos) },
-                        onLikeClick = { playerManager.toggleLike(activeSong) },
-                        onOptionsClick = { targetSong -> selectedSaveToPlaylistSong = targetSong },
-                        onSongClickInQueue = { qSong -> playerManager.playSingleSongWithRadio(qSong) },
-                        repeatState = repeatState,
-                        onRepeatClick = { playerManager.toggleRepeat() }
-                    )
+                    if (activeSong != null) {
+                        ExpandedPlayerSheet(
+                            playerManager = playerManager,
+                            song = activeSong,
+                            isPlaying = isPlaying,
+                            positionMs = positionMs,
+                            durationMs = durationMs,
+                            isLiked = likedSongIds.contains(activeSong.id),
+                            onCollapse = { isExpandedPlayerVisible = false },
+                            onPlayPauseClick = { playerManager.togglePlayPause() },
+                            onPreviousClick = { playerManager.playPrevious() },
+                            onNextClick = { playerManager.playNext() },
+                            onSeekTo = { pos -> playerManager.seekTo(pos) },
+                            onLikeClick = { playerManager.toggleLike(activeSong) },
+                            onOptionsClick = { targetSong -> selectedSaveToPlaylistSong = targetSong },
+                            onSongClickInQueue = { qSong -> playerManager.playSingleSongWithRadio(qSong) },
+                            repeatState = repeatState,
+                            onRepeatClick = { playerManager.toggleRepeat() }
+                        )
+                    }
                 }
 
                 // Full Screen Blocked Overlay (Overrides interface only if blocked by Admin)

@@ -130,159 +130,47 @@ fun HomeScreen(
     var haryanviSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedHaryanviSongs) }
     var bhojpuriSongsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedBhojpuriSongs) }
 
+    var categoryChipsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.dynamicCategoryChips) }
     var isCategoryLoading by remember { mutableStateOf(false) }
-    androidx.compose.runtime.LaunchedEffect(activeFilterName) {
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        val dynamicChips = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchCategoryChips()
+        if (dynamicChips.isNotEmpty()) {
+            categoryChipsState = dynamicChips
+        }
+    }
+
+    androidx.compose.runtime.LaunchedEffect(selectedCategory, activeFilterName) {
         if (activeFilterName != null) {
             isCategoryLoading = true
             categoryShelvesState = emptyList()
             val catLower = activeFilterName.lowercase()
 
-            val shelvesList = mutableListOf<app.spasiba.nativeapp2.data.api.HomeShelf>()
-
-            val rawYtParam = when (catLower) {
-                "podcasts" -> "ggMPOZ3ZyZXF1ZW5jeT0x"
-                "romance" -> "ggMPOZ3ZyZXF1ZW5jeT0y"
-                "workout" -> "ggMPOZ3ZyZXF1ZW5jeT0z"
-                "energize" -> "ggMPOZ3ZyZXF1ZW5jeT00"
-                "relax" -> "ggMPOZ3ZyZXF1ZW5jeT01"
-                "focus" -> "ggMPOZ3ZyZXF1ZW5jeT02"
-                "commute" -> "ggMPOZ3ZyZXF1ZW5jeT03"
-                "sad" -> "ggMPOZ3ZyZXF1ZW5jeT08"
-                "sleep" -> "ggMPOZ3ZyZXF1ZW5jeT05"
-                else -> null
-            }
+            val matchedChip = categoryChipsState.find { it.label.equals(activeFilterName, ignoreCase = true) || it.id.equals(activeFilterName, ignoreCase = true) }
+            val rawYtParam = selectedCategory?.params?.ifBlank { null }
+                ?: matchedChip?.params?.ifBlank { null }
+                ?: when (catLower) {
+                    "podcasts" -> "ggMPOZ3ZyZXF1ZW5jeT0x"
+                    "romance" -> "ggMPOZ3ZyZXF1ZW5jeT0y"
+                    "workout" -> "ggMPOZ3ZyZXF1ZW5jeT0z"
+                    "energize" -> "ggMPOZ3ZyZXF1ZW5jeT00"
+                    "relax" -> "ggMPOZ3ZyZXF1ZW5jeT01"
+                    "focus" -> "ggMPOZ3ZyZXF1ZW5jeT06"
+                    "commute" -> "ggMPOZ3ZyZXF1ZW5jeT03"
+                    "sad" -> "ggMPOZ3ZyZXF1ZW5jeT04"
+                    "sleep" -> "ggMPOZ3ZyZXF1ZW5jeT05"
+                    else -> null
+                }
 
             val rawYtBrowseId = if (catLower == "podcasts") "FEmusic_podcasts" else "FEmusic_home"
             val directYtShelves = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicBrowseShelves(rawYtBrowseId, rawYtParam)
-            if (directYtShelves.isNotEmpty()) {
-                shelvesList.addAll(directYtShelves)
-            }
-
-            kotlinx.coroutines.coroutineScope {
-                when (catLower) {
-                    "podcasts" -> {
-                        val mainAudioDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps Huberman Lex Fridman podcast audio") }
-                        val mainVideoDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps podcast video episode") }
-                        val storiesDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("The Ranveer Show Raj Shamani BeerBiceps interview podcast") }
-                        val businessDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Finshots Nikhil Kamath Raj Shamani tech business podcast") }
-                        val mindsetDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Andrew Huberman Raj Shamani self improvement health podcast") }
-                        val crimeDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Desi Crime Crime Tak true crime podcast") }
-                        val healthDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Huberman Lab health neuroscience podcast") }
-                        val geoDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Palki Sharma World Is One geopolitics news podcast") }
-                        val comedyDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Tanmay Bhat Zakir Khan comedy interview podcast talk") }
-                        val moneyDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Akshat Shrivastava Rachana Ranade personal finance investing podcast") }
-                        val spiritDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Gaur Gopal Das Jaya Kishori spiritual wisdom podcast") }
-
-                        fun filterPodcasts(list: List<Song>): List<Song> = list.filter { s ->
-                            !s.title.lowercase().contains("latent") && !s.title.lowercase().contains("standup") && !s.title.lowercase().contains("roast")
-                        }
-
-                        val mainAudio = filterPodcasts(mainAudioDef.await())
-                        val mainVideo = filterPodcasts(mainVideoDef.await())
-                        val stories = filterPodcasts(storiesDef.await())
-                        val business = filterPodcasts(businessDef.await())
-                        val mindset = filterPodcasts(mindsetDef.await())
-                        val crime = filterPodcasts(crimeDef.await())
-                        val health = filterPodcasts(healthDef.await())
-                        val geo = filterPodcasts(geoDef.await())
-                        val comedy = filterPodcasts(comedyDef.await())
-                        val money = filterPodcasts(moneyDef.await())
-                        val spirit = filterPodcasts(spiritDef.await())
-
-                        if (mainAudio.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Podcasts Shows & Episodes", songs = mainAudio.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (mainVideo.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Featured Video Podcasts", songs = mainVideo.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (stories.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Stories & Deep Conversations", songs = stories.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (business.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Business, Tech & Entrepreneurship", songs = business.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (mindset.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Self Improvement & Mindset", songs = mindset.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (crime.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "True Crime & Mysteries", songs = crime.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (health.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Health, Wellness & Science", songs = health.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (geo.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Geopolitics & Global Affairs", songs = geo.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (money.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Finance & Money Management", songs = money.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (spirit.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Spirituality & Life Wisdom", songs = spirit.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (comedy.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Humor & Comedy Talks", songs = comedy.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                    }
-                    "romance" -> {
-                        val mainHitsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest romantic love songs 2026 Arijit Singh Pritam") }
-                        val mainVideosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("official music video romantic love songs 2026") }
-                        val hindiLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Arijit Singh Pritam Shreya Ghoshal romantic love songs") }
-                        val punjabiLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("Prabh Gill B Praak Akhil romantic punjabi love songs") }
-                        val acousticLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("acoustic guitar romantic unplugged love songs") }
-                        val englishLoveDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("english romantic pop ballads Ed Sheeran Taylor Swift") }
-                        val rainRomanceDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("monsoon rain romantic bollywood hindi songs") }
-                        val classic90sDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("90s 2000s classic bollywood romantic songs Kumar Sanu Alka Yagnik") }
-
-                        val mainHits = mainHitsDef.await()
-                        val mainVideos = mainVideosDef.await()
-                        val hindiLove = hindiLoveDef.await()
-                        val punjabiLove = punjabiLoveDef.await()
-                        val acousticLove = acousticLoveDef.await()
-                        val englishLove = englishLoveDef.await()
-                        val rainRomance = rainRomanceDef.await()
-                        val classic90s = classic90sDef.await()
-
-                        if (mainHits.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Romantic Hits", songs = mainHits.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (mainVideos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Featured Romantic Music Videos", songs = mainVideos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (hindiLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hindi Romance Essentials", songs = hindiLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (punjabiLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Punjabi Love Songs", songs = punjabiLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (acousticLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Acoustic & Unplugged Romance", songs = acousticLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (englishLove.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "English Love Ballads", songs = englishLove.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (rainRomance.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Rain & Monsoon Romance", songs = rainRomance.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (classic90s.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Classic 90s & 2000s Romance", songs = classic90s.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                    }
-                    "workout" -> {
-                        val mainHitsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("workout gym motivation heavy bass songs 2026") }
-                        val mainVideosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("heavy bass gym workout motivation music video") }
-                        val heavyBassDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("heavy bass gym workout motivation beats 2026") }
-                        val cardioEDMDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("cardio workout edm electro dance music 2026") }
-                        val hiphopHypeDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("hip hop gym workout motivation rap songs") }
-                        val hardstyleDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("hardstyle gym workout pump motivation") }
-
-                        val mainHits = mainHitsDef.await()
-                        val mainVideos = mainVideosDef.await()
-                        val heavyBass = heavyBassDef.await()
-                        val cardioEDM = cardioEDMDef.await()
-                        val hiphopHype = hiphopHypeDef.await()
-                        val hardstyle = hardstyleDef.await()
-
-                        if (mainHits.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top Workout Hits", songs = mainHits.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (mainVideos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Gym Motivation Music Videos", songs = mainVideos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (heavyBass.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Heavy Bass Gym Beats", songs = heavyBass.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (cardioEDM.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Cardio & EDM Workout", songs = cardioEDM.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (hiphopHype.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hip-Hop Gym Hype", songs = hiphopHype.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (hardstyle.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Hardstyle Gym Pump", songs = hardstyle.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                    }
-                    else -> {
-                        val songsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("latest $catLower songs 2026 official") }
-                        val videosDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("official music video $catLower 2026") }
-                        val essentialsDef = async { app.spasiba.nativeapp2.data.api.YouTubeMusicApi.searchSongs("best $catLower hits 2026 collection") }
-
-                        val songs = songsDef.await()
-                        val videos = videosDef.await().ifEmpty { songs }
-                        val essentials = essentialsDef.await().ifEmpty { songs.drop(4) }
-
-                        if (songs.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Top $activeFilterName Hits", songs = songs.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                        if (videos.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "Trending $activeFilterName Videos", songs = videos.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.VIDEO_WIDESCREEN))
-                        if (essentials.isNotEmpty()) shelvesList.add(app.spasiba.nativeapp2.data.api.HomeShelf(title = "$activeFilterName Essentials", songs = essentials.take(8), style = app.spasiba.nativeapp2.data.api.ShelfLayoutStyle.CAROUSEL_SQUARE))
-                    }
-                }
-            }
-
-            if (shelvesList.isNotEmpty()) {
-                categoryShelvesState = shelvesList
-            }
+            
+            categoryShelvesState = directYtShelves
             isCategoryLoading = false
         } else {
             categorySearchSongs = emptyList()
             categoryShelvesState = emptyList()
             isCategoryLoading = false
-        }
-    }
-
-    val displayShelves = remember(liveHomeShelves, categoryShelvesState, activeFilterName) {
-        if (activeFilterName != null) {
-            categoryShelvesState
-        } else {
-            liveHomeShelves
         }
     }
 
@@ -341,9 +229,17 @@ fun HomeScreen(
     }
 
     val featuredHeroSong = remember(filteredSongs) { filteredSongs.firstOrNull() }
-    val quickPicks = remember(recentlyPlayed, likedSongs, filteredSongs) {
-        val likedTrackList = filteredSongs.filter { likedSongs.contains(it.id) }
-        (recentlyPlayed + likedTrackList + filteredSongs).distinctBy { it.id }.take(8)
+    val displayShelves = remember(liveHomeShelves, categoryShelvesState, activeFilterName) {
+        if (activeFilterName != null) {
+            categoryShelvesState
+        } else {
+            liveHomeShelves.filter { !it.title.lowercase().contains("quick") }
+        }
+    }
+
+    val quickPicks = remember(liveHomeShelves) {
+        val apiQuickPicksShelf = liveHomeShelves.find { it.title.lowercase().contains("quick") }
+        apiQuickPicksShelf?.songs ?: emptyList()
     }
     val quickPickColumns = remember(quickPicks) { quickPicks.chunked(4) }
     val mixedTracks = remember(likedSongs, filteredSongs) {
@@ -460,18 +356,19 @@ fun HomeScreen(
                     }
                 }
 
-                // YouTube Music Top Horizontal Filter Pills Bar
-                val filterChips = listOf(
-                    "Podcasts", "Romance", "Energize", "Workout", "Relax", "Commute", "Feel good", "Sad", "Focus", "Sleep",
-                    "Hindi", "Punjabi", "English", "South Hits", "Haryanvi", "Bhojpuri", "Gujarati", "Bengali"
-                )
+                // Dynamic YouTube Music Top Horizontal Filter Pills Bar
+                val filterChips = remember(categoryChipsState) {
+                    if (categoryChipsState.isNotEmpty()) categoryChipsState
+                    else app.spasiba.nativeapp2.data.api.YouTubeMusicApi.defaultCategories
+                }
 
                 LazyRow(
                     contentPadding = PaddingValues(horizontal = 16.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(vertical = 6.dp)
                 ) {
-                    items(filterChips) { filter ->
+                    items(filterChips) { chip ->
+                        val filter = chip.label
                         val isSelected = activeFilterName?.equals(filter, ignoreCase = true) == true
                         val isThisChipLoading = isSelected && isCategoryLoading
 
@@ -491,8 +388,7 @@ fun HomeScreen(
                                         onCategorySelect(null)
                                     } else {
                                         selectedMoodFilter = filter
-                                        val catChip = CategoryChip(filter.lowercase(), filter, "top ${filter.lowercase()} songs")
-                                        onCategorySelect(catChip)
+                                        onCategorySelect(chip)
                                     }
                                 }
                         ) {
@@ -669,106 +565,6 @@ fun HomeScreen(
 
         // 2. Default Home Sections (Only shown when no Category Filter is active)
         if (activeFilterName == null) {
-            // 2A. TOP CHARTS (Most played right now)
-            item {
-                Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                    Text(
-                        text = "TOP CHARTS",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = SpotifyGreen,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 10.sp,
-                            letterSpacing = 1.4.sp
-                        ),
-                        modifier = Modifier.padding(horizontal = 16.dp)
-                    )
-                    Text(
-                        text = "Most played right now",
-                        style = MaterialTheme.typography.titleLarge.copy(
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 20.sp,
-                            color = Color.White
-                        ),
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    if (topChartSongs.isEmpty() || isLoading) {
-                        repeat(5) {
-                            app.spasiba.nativeapp2.ui.components.ChartItemSkeleton()
-                        }
-                    } else {
-                        topChartSongs.forEachIndexed { index, song ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 16.dp, vertical = 5.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .clickable { onSongClick(song, topChartSongs, index) }
-                                .padding(vertical = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${index + 1}",
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (index == 0) SpotifyGreen else Color.White.copy(alpha = 0.7f),
-                                    fontSize = 18.sp
-                                ),
-                                modifier = Modifier.width(28.dp)
-                            )
-
-                            AsyncImage(
-                                model = song.thumbnail,
-                                contentDescription = song.title,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(52.dp)
-                                    .clip(RoundedCornerShape(8.dp))
-                            )
-
-                            Spacer(modifier = Modifier.width(14.dp))
-
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = song.title,
-                                    style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = if (song.id == currentSong?.id) SpotifyGreen else Color.White,
-                                        fontSize = 14.sp
-                                    ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                                Text(
-                                    text = "${song.author} • ${song.durationFormatted}",
-                                    style = MaterialTheme.typography.bodySmall.copy(
-                                        color = TextSecondaryGray,
-                                        fontSize = 12.sp
-                                    ),
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis
-                                )
-                            }
-
-                            IconButton(
-                                onClick = { onOptionsClick(song) },
-                                modifier = Modifier.size(36.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.MoreVert,
-                                    contentDescription = "Options",
-                                    tint = TextSecondaryGray,
-                                    modifier = Modifier.size(18.dp)
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
             // 2B. QUICK PICKS (Placed directly below Most Played right now)
             item {
                 Column(modifier = Modifier.padding(bottom = 24.dp)) {
