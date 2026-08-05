@@ -208,6 +208,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
 
     var searchQuery by remember { mutableStateOf("") }
     var searchResults by remember { mutableStateOf<List<Song>>(emptyList()) }
+    var detectedArtistResult by remember { mutableStateOf<YouTubeMusicApi.ArtistSearchResult?>(null) }
     var isSearching by remember { mutableStateOf(false) }
     var searchHistory by remember { mutableStateOf<List<String>>(emptyList()) }
     var searchJob by remember { mutableStateOf<Job?>(null) }
@@ -381,37 +382,44 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                             searchJob = scope.launch {
                                                 delay(500L)
                                                 isSearching = true
-                                                searchResults = YouTubeMusicApi.searchSongs(q)
+                                                val unified = YouTubeMusicApi.searchUnified(q)
+                                                searchResults = unified.songs
+                                                detectedArtistResult = unified.detectedArtist
                                                 isSearching = false
                                             }
                                         } else {
                                             searchResults = emptyList()
+                                            detectedArtistResult = null
                                             isSearching = false
                                         }
                                     },
                                     onSearch = { q ->
                                         searchJob?.cancel()
                                         if (q.isNotBlank()) {
+                                            app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).addTextQuery(q)
                                             searchJob = scope.launch {
                                                 isSearching = true
-                                                searchResults = YouTubeMusicApi.searchSongs(q)
-                                                if (!searchHistory.contains(q)) {
-                                                    searchHistory = (listOf(q) + searchHistory).take(10)
-                                                }
+                                                val unified = YouTubeMusicApi.searchUnified(q)
+                                                searchResults = unified.songs
+                                                detectedArtistResult = unified.detectedArtist
                                                 isSearching = false
                                             }
                                         }
                                     },
                                     searchResults = searchResults,
+                                    detectedArtist = detectedArtistResult,
                                     currentSong = currentSong,
                                     likedSongs = likedSongIds,
                                     searchHistory = searchHistory,
                                     isSearching = isSearching,
                                     onDeleteHistoryItem = { item ->
-                                        searchHistory = searchHistory.filter { it != item }
+                                        app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).deleteTextQuery(item)
                                     },
-                                    onClearHistory = { searchHistory = emptyList() },
+                                    onClearHistory = {
+                                        app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).clearAllHistory()
+                                    },
                                     onSongClick = { song, _, _ ->
+                                        app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).addPlayedSong(song)
                                         playerManager.playSingleSongWithRadio(song, sourceLabel = "Search Radio")
                                     },
                                     onLikeClick = { songId ->
@@ -421,6 +429,8 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                     onOptionsClick = { song -> selectedOptionsMenuSong = song },
                                     onSwipeToQueue = { song -> playerManager.playNextInQueue(song) },
                                     onArtistClick = { artist ->
+                                        val avatar = detectedArtistResult?.avatarUrl
+                                        app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).addRecentArtist(artist, avatar)
                                         selectedArtistName = artist
                                         navigateTo(9)
                                     },

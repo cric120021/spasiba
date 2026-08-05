@@ -23,10 +23,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.PlayArrow
+import android.content.Intent
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Share
+import java.net.URLEncoder
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -85,18 +90,18 @@ fun ArtistDetailsScreen(
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color.Black)
+            .background(Color(0xFF0D0D0F))
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 140.dp)
         ) {
-            // 1. Artist Header Banner with High-Res Photo & Gradient Blend
+            // 1. YouTube Music Dynamic Immersive Header Banner
             item {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(300.dp)
+                        .height(380.dp)
                 ) {
                     val displayAvatar = avatarUrl ?: top50Songs.firstOrNull()?.thumbnail ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=600"
                     
@@ -107,156 +112,253 @@ fun ArtistDetailsScreen(
                         modifier = Modifier.fillMaxSize()
                     )
 
-                    // Dark Gradient Overlay for readability
+                    // Dark Immersive Vignette Blend
                     Box(
                         modifier = Modifier
                             .fillMaxSize()
                             .background(
                                 Brush.verticalGradient(
                                     colors = listOf(
-                                        Color.Black.copy(alpha = 0.3f),
-                                        Color.Black.copy(alpha = 0.7f),
-                                        Color.Black
+                                        Color.Black.copy(alpha = 0.4f),
+                                        Color.Transparent,
+                                        Color(0xFF0D0D0F).copy(alpha = 0.7f),
+                                        Color(0xFF0D0D0F)
                                     )
                                 )
                             )
                     )
 
-                    // Top Back Button
-                    IconButton(
-                        onClick = onBackClick,
+                    // Top Action Bar Icons (Back, Radio Mix, Share)
+                    Row(
                         modifier = Modifier
-                            .padding(top = 12.dp, start = 12.dp)
-                            .align(Alignment.TopStart)
-                            .background(Color.Black.copy(alpha = 0.5f), CircleShape)
+                            .fillMaxWidth()
+                            .padding(top = 16.dp, start = 12.dp, end = 12.dp)
+                            .align(Alignment.TopCenter),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
-                            tint = Color.White
-                        )
-                    }
-
-                    // Artist Title & Badge over Banner
-                    Column(
-                        modifier = Modifier
-                            .align(Alignment.BottomStart)
-                            .padding(horizontal = 20.dp, vertical = 16.dp)
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(6.dp),
-                            color = AccentTeal.copy(alpha = 0.2f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, AccentTeal)
+                        IconButton(
+                            onClick = onBackClick,
+                            modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
                         ) {
-                            Text(
-                                text = "OFFICIAL ARTIST",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = AccentTeal,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 10.sp,
-                                    letterSpacing = 1.2.sp
-                                ),
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "Back",
+                                tint = Color.White
                             )
                         }
 
-                        Spacer(modifier = Modifier.height(6.dp))
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            val context = LocalContext.current
 
+                            IconButton(
+                                onClick = {
+                                    if (top50Songs.isNotEmpty()) onSongClick(top50Songs.first(), top50Songs, 0)
+                                },
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.PlayArrow,
+                                    contentDescription = "Radio Mix",
+                                    tint = Color.White
+                                )
+                            }
+
+                            IconButton(
+                                onClick = {
+                                    val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "text/plain"
+                                        putExtra(Intent.EXTRA_SUBJECT, artistName)
+                                        putExtra(
+                                            Intent.EXTRA_TEXT,
+                                            "Listen to $artistName on YouTube Music: https://music.youtube.com/search?q=${runCatching { URLEncoder.encode(artistName, "UTF-8") }.getOrDefault(artistName)}"
+                                        )
+                                    }
+                                    context.startActivity(Intent.createChooser(shareIntent, "Share Artist Profile"))
+                                },
+                                modifier = Modifier.background(Color.Black.copy(alpha = 0.4f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Share,
+                                    contentDescription = "Share",
+                                    tint = Color.White
+                                )
+                            }
+                        }
+                    }
+
+                    // Artist Title & Monthly Audience Text
+                    Column(
+                        modifier = Modifier
+                            .align(Alignment.BottomStart)
+                            .padding(horizontal = 20.dp, vertical = 12.dp)
+                    ) {
                         Text(
                             text = artistName,
                             style = MaterialTheme.typography.headlineMedium.copy(
                                 fontWeight = FontWeight.ExtraBold,
                                 color = Color.White,
-                                fontSize = 32.sp
-                            )
+                                fontSize = 36.sp
+                            ),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
 
+                        Spacer(modifier = Modifier.height(2.dp))
+
                         Text(
-                            text = "Top 50 Most Listened Songs • Official Releases",
-                            style = MaterialTheme.typography.bodySmall.copy(
+                            text = "Official Artist Profile • YouTube Music",
+                            style = MaterialTheme.typography.bodyMedium.copy(
                                 color = Color.White.copy(alpha = 0.75f),
-                                fontSize = 13.sp
+                                fontSize = 14.sp
                             )
                         )
                     }
                 }
             }
 
-            // 2. Quick Action Control Bar (PLAY ALL, SHUFFLE)
+            // 2. Action Control Bar (Subscribe Pill, Radio Icon, Circular White Play Button)
             item {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 12.dp),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Play All Button
-                    Surface(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(24.dp))
-                            .clickable {
-                                if (top50Songs.isNotEmpty()) onSongClick(top50Songs.first(), top50Songs, 0)
-                            },
-                        color = Color(0xFF1DB954)
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.Center,
-                            verticalAlignment = Alignment.CenterVertically
+                        // Subscribe Pill Button
+                        var isSubscribed by remember { mutableStateOf(false) }
+                        Surface(
+                            modifier = Modifier
+                                .height(44.dp)
+                                .clickable { isSubscribed = !isSubscribed },
+                            shape = RoundedCornerShape(22.dp),
+                            color = if (isSubscribed) Color.White.copy(alpha = 0.15f) else Color.White
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.PlayArrow,
-                                contentDescription = "Play All",
-                                tint = Color.Black,
-                                modifier = Modifier.size(20.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "PLAY ALL",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.Black,
-                                    letterSpacing = 1.sp
+                            Box(
+                                modifier = Modifier.padding(horizontal = 20.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (isSubscribed) "Subscribed" else "Subscribe",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = if (isSubscribed) Color.White else Color.Black,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp
+                                    )
                                 )
-                            )
+                            }
+                        }
+
+                        // Shuffle Pill Button
+                        Surface(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .clip(CircleShape)
+                                .clickable {
+                                    if (top50Songs.isNotEmpty()) {
+                                        val shuffled = top50Songs.shuffled()
+                                        onSongClick(shuffled.first(), shuffled, 0)
+                                    }
+                                },
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.12f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Default.Shuffle,
+                                    contentDescription = "Shuffle",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
                     }
 
-                    // Shuffle Button
+                    // Main Big Circular Play Button
                     Surface(
                         modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(24.dp))
+                            .size(54.dp)
+                            .clip(CircleShape)
                             .clickable {
-                                if (top50Songs.isNotEmpty()) {
-                                    val shuffled = top50Songs.shuffled()
-                                    onSongClick(shuffled.first(), shuffled, 0)
-                                }
+                                if (top50Songs.isNotEmpty()) onSongClick(top50Songs.first(), top50Songs, 0)
                             },
-                        color = Color.White.copy(alpha = 0.1f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                        shape = CircleShape,
+                        color = Color.White
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = Icons.Default.PlayArrow,
+                                contentDescription = "Play",
+                                tint = Color.Black,
+                                modifier = Modifier.size(32.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // 3. Featured Single / Release Card
+            if (top50Songs.isNotEmpty()) {
+                item {
+                    val latestSingle = top50Songs.first()
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable { onSongClick(latestSingle, top50Songs, 0) },
+                        shape = RoundedCornerShape(16.dp),
+                        color = Color(0xFF1E1E22),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
                     ) {
                         Row(
-                            modifier = Modifier.padding(vertical = 12.dp),
-                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Shuffle,
-                                contentDescription = "Shuffle",
-                                tint = Color.White,
-                                modifier = Modifier.size(18.dp)
+                            AsyncImage(
+                                model = latestSingle.thumbnail,
+                                contentDescription = latestSingle.title,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(RoundedCornerShape(10.dp))
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text(
-                                text = "SHUFFLE",
-                                style = MaterialTheme.typography.labelLarge.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    letterSpacing = 1.sp
+
+                            Spacer(modifier = Modifier.width(14.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Listen to the top single",
+                                    style = MaterialTheme.typography.bodySmall.copy(
+                                        color = Color.White.copy(alpha = 0.7f),
+                                        fontSize = 12.sp
+                                    )
                                 )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = latestSingle.title,
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 15.sp
+                                    ),
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                contentDescription = "Open Single",
+                                tint = Color.White.copy(alpha = 0.6f),
+                                modifier = Modifier.size(24.dp)
                             )
                         }
                     }
