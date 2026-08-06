@@ -297,8 +297,31 @@ class SpasibaMediaService : MediaSessionService() {
         }
     }
 
+    override fun onTaskRemoved(rootIntent: Intent?) {
+        artworkJob?.cancel()
+        runCatching { playerManager.exoPlayer.pause() }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.cancel(NOTIFICATION_ID)
+        notificationManager?.cancelAll()
+        compatSession?.run {
+            isActive = false
+            release()
+        }
+        media3Session?.release()
+        compatSession = null
+        media3Session = null
+        super.onTaskRemoved(rootIntent)
+        stopSelf()
+    }
+
     override fun onDestroy() {
         artworkJob?.cancel()
+        runCatching { playerManager.exoPlayer.pause() }
+        stopForeground(STOP_FOREGROUND_REMOVE)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        notificationManager?.cancel(NOTIFICATION_ID)
+        notificationManager?.cancelAll()
         media3Session?.run {
             release()
             media3Session = null

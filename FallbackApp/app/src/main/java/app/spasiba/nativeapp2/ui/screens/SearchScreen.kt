@@ -1,0 +1,1441 @@
+package app.spasiba.nativeapp2.ui.screens
+
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import app.spasiba.nativeapp2.data.cache.RecentArtistItem
+import app.spasiba.nativeapp2.ui.components.ArtistOptionsMenuSheet
+import app.spasiba.nativeapp2.ui.components.TrackOptionsMenu
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.CallMade
+import kotlinx.coroutines.delay
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.compose.runtime.DisposableEffect
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistAdd
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Shuffle
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.ui.platform.LocalContext
+import app.spasiba.nativeapp2.data.cache.SearchHistoryManager
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import app.spasiba.nativeapp2.data.api.YouTubeMusicApi
+import app.spasiba.nativeapp2.data.model.Song
+import app.spasiba.nativeapp2.ui.components.SongTile
+import app.spasiba.nativeapp2.ui.components.SongTileSkeleton
+import app.spasiba.nativeapp2.ui.theme.AccentTeal
+import app.spasiba.nativeapp2.ui.theme.TextMuted
+import app.spasiba.nativeapp2.ui.theme.TextStrong
+import app.spasiba.nativeapp2.ui.theme.UiSurfaceElevated
+import coil.compose.AsyncImage
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+fun SearchScreen(
+    query: String,
+    onQueryChange: (String) -> Unit,
+    onSearch: (String) -> Unit,
+    searchResults: List<Song>,
+    detectedArtist: YouTubeMusicApi.ArtistSearchResult? = null,
+    currentSong: Song?,
+    likedSongs: Set<String>,
+    searchHistory: List<String>,
+    isSearching: Boolean,
+    onDeleteHistoryItem: (String) -> Unit,
+    onClearHistory: () -> Unit,
+    onSongClick: (Song, List<Song>, Int) -> Unit,
+    onLikeClick: (String) -> Unit,
+    onOptionsClick: (Song) -> Unit = {},
+    onSwipeToQueue: (Song) -> Unit = {},
+    onArtistClick: (String) -> Unit = {},
+    onBackClick: () -> Unit = {}
+) {
+    val focusManager = LocalFocusManager.current
+    var isSearchSubmitted by remember { mutableStateOf(false) }
+    var selectedArtistForOptions by remember { mutableStateOf<RecentArtistItem?>(null) }
+    var selectedSongForOptions by remember { mutableStateOf<Song?>(null) }
+    var queryToDelete by remember { mutableStateOf<String?>(null) }
+    var isVoiceListeningModalOpen by remember { mutableStateOf(false) }
+    var liveSpokenText by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val historyManager = remember { SearchHistoryManager.getInstance(context) }
+
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else null
+    }
+
+    val startVoiceListening = remember(speechRecognizer, context) {
+        {
+            liveSpokenText = ""
+            isVoiceListeningModalOpen = true
+            if (speechRecognizer != null) {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                }
+                speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        liveSpokenText = "Listening..."
+                    }
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) {
+                        if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            Toast.makeText(context, "No speech detected. Try again.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        isVoiceListeningModalOpen = false
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val spokenText = matches?.firstOrNull()
+                        if (!spokenText.isNullOrBlank()) {
+                            liveSpokenText = spokenText
+                            onQueryChange(spokenText)
+                            isSearchSubmitted = true
+                            onSearch(spokenText)
+                            historyManager.addTextQuery(spokenText)
+                        }
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                        if (!partial.isNullOrBlank()) {
+                            liveSpokenText = partial
+                            onQueryChange(partial)
+                        }
+                    }
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+                try {
+                    speechRecognizer.startListening(intent)
+                } catch (e: Exception) {
+                    isVoiceListeningModalOpen = false
+                }
+            } else {
+                Toast.makeText(context, "Voice search unavailable on this device", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startVoiceListening()
+        } else {
+            Toast.makeText(context, "Microphone permission required for voice search", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    DisposableEffect(speechRecognizer) {
+        onDispose {
+            try {
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {}
+        }
+    }
+    var itemToRemoveFromHistory by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var playedSongsHistory by remember { mutableStateOf(historyManager.getPlayedSongs()) }
+    var recentArtistsHistory by remember { mutableStateOf(historyManager.getRecentArtists()) }
+    var textQueriesHistory by remember { mutableStateOf(historyManager.getTextQueries()) }
+
+    LaunchedEffect(Unit) {
+        playedSongsHistory = historyManager.getPlayedSongs()
+        recentArtistsHistory = historyManager.getRecentArtists()
+        textQueriesHistory = historyManager.getTextQueries()
+    }
+
+    val processedSearchResults = remember(searchResults) {
+        searchResults.sortedWith(
+            compareByDescending<Song> { it.views }
+                .thenByDescending { song ->
+                    val t = song.title.lowercase()
+                    if (t.contains("official music video")) 3
+                    else if (t.contains("official video")) 2
+                    else if (t.contains("official audio")) 1
+                    else 0
+                }
+        )
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(top = 18.dp)
+    ) {
+        // 1. YouTube/Spotify style Search Input Bar
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(58.dp),
+                shape = RoundedCornerShape(29.dp),
+                color = UiSurfaceElevated,
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = "Search",
+                        tint = AccentTeal,
+                        modifier = Modifier
+                            .size(24.dp)
+                            .clickable {
+                                if (query.isNotBlank()) {
+                                    focusManager.clearFocus()
+                                    isSearchSubmitted = true
+                                    onSearch(query)
+                                }
+                            }
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight(),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (query.isEmpty()) {
+                            Text(
+                                text = "Search songs, artists...",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted, fontSize = 16.sp)
+                            )
+                        }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = query,
+                            onValueChange = { newQ ->
+                                isSearchSubmitted = false
+                                onQueryChange(newQ)
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            maxLines = 1,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(AccentTeal),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = TextStrong,
+                                fontSize = 16.sp,
+                                lineHeight = 22.sp
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                            keyboardActions = KeyboardActions(onSearch = {
+                                if (query.isNotBlank()) {
+                                    focusManager.clearFocus()
+                                    isSearchSubmitted = true
+                                    onSearch(query)
+                                }
+                            })
+                        )
+                    }
+                    if (query.isNotEmpty()) {
+                        Icon(
+                            imageVector = Icons.Default.Clear,
+                            contentDescription = "Clear",
+	                            tint = TextMuted,
+	                            modifier = Modifier
+	                                .size(22.dp)
+	                                .clickable {
+                                    isSearchSubmitted = false
+                                    onQueryChange("")
+                                }
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Voice Search Mic Button
+            IconButton(
+                onClick = {
+                    val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.RECORD_AUDIO
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                    if (hasPermission) {
+                        startVoiceListening()
+                    } else {
+                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                },
+                modifier = Modifier
+                    .size(58.dp)
+                    .clip(CircleShape)
+                    .background(Color.White.copy(alpha = 0.12f))
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Mic,
+                    contentDescription = "Voice Search",
+                    tint = Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(10.dp))
+
+        // 2. Main Search Area
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (query.isBlank()) {
+                val hasAnyHistory = playedSongsHistory.isNotEmpty() || recentArtistsHistory.isNotEmpty() || textQueriesHistory.isNotEmpty()
+
+                if (hasAnyHistory) {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 120.dp)
+                    ) {
+                        // A. Section Header: "Recent searches"
+                        item {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Recent searches",
+                                    style = MaterialTheme.typography.titleMedium.copy(
+                                        color = Color.White,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 20.sp
+                                    )
+                                )
+
+                                Text(
+                                    text = "Clear All",
+                                    style = MaterialTheme.typography.labelMedium.copy(
+                                        color = AccentTeal,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 13.sp
+                                    ),
+                                    modifier = Modifier.clickable {
+                                        historyManager.clearAllHistory()
+                                        playedSongsHistory = emptyList()
+                                        recentArtistsHistory = emptyList()
+                                        textQueriesHistory = emptyList()
+                                        onClearHistory()
+                                    }
+                                )
+                            }
+                        }
+
+                        // B. Top Played Songs Horizontal Rail Carousel (Only shown if user played songs)
+                        if (playedSongsHistory.isNotEmpty()) {
+                            item {
+                                LazyRow(
+                                    contentPadding = PaddingValues(horizontal = 20.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    items(playedSongsHistory) { track ->
+                                        Column(
+                                            modifier = Modifier
+                                                .width(105.dp)
+                                                .combinedClickable(
+                                                    onClick = { onSongClick(track, playedSongsHistory, 0) },
+                                                    onLongClick = { itemToRemoveFromHistory = Pair(track.title, "song:${track.id}") }
+                                                )
+                                        ) {
+                                            AsyncImage(
+                                                model = track.thumbnail,
+                                                contentDescription = track.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(105.dp)
+                                                    .clip(RoundedCornerShape(12.dp))
+                                            )
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = track.title,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 13.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Text(
+                                                text = track.author,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 11.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                    }
+                                }
+                                Spacer(modifier = Modifier.height(14.dp))
+                            }
+                        }
+
+                        // C. Visited Recent Artists List (Only shown if user visited/played artists)
+                        if (recentArtistsHistory.isNotEmpty()) {
+                            items(recentArtistsHistory) { artistItem ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = { onArtistClick(artistItem.artistName) },
+                                            onLongClick = { itemToRemoveFromHistory = Pair(artistItem.artistName, "artist") }
+                                        )
+                                        .padding(horizontal = 20.dp, vertical = 10.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(50.dp)
+                                            .clip(CircleShape)
+                                            .background(Color.White.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(28.dp)
+                                        )
+                                        if (!artistItem.avatarUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = artistItem.avatarUrl,
+                                                contentDescription = artistItem.artistName,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = artistItem.artistName,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Bold,
+                                                fontSize = 16.sp
+                                            )
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = artistItem.subtitle,
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = Color.White.copy(alpha = 0.6f),
+                                                fontSize = 12.sp
+                                            )
+                                        )
+                                    }
+
+                                    IconButton(
+                                        onClick = {
+                                            itemToRemoveFromHistory = Pair(artistItem.artistName, "artist")
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.MoreVert,
+                                            contentDescription = "Options",
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // D. Text-Only Query History List (Queries typed & searched without direct play)
+                        if (textQueriesHistory.isNotEmpty()) {
+                            items(textQueriesHistory) { historyQuery ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .combinedClickable(
+                                            onClick = {
+                                                focusManager.clearFocus()
+                                                onQueryChange(historyQuery)
+                                                isSearchSubmitted = true
+                                                onSearch(historyQuery)
+                                            },
+                                            onLongClick = {
+                                                itemToRemoveFromHistory = Pair(historyQuery, "query")
+                                            }
+                                        )
+                                        .padding(horizontal = 20.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.History,
+                                        contentDescription = null,
+                                        tint = TextMuted,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+
+                                    Spacer(modifier = Modifier.width(16.dp))
+
+                                    Text(
+                                        text = historyQuery,
+                                        style = MaterialTheme.typography.bodyLarge.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Normal,
+                                            fontSize = 16.sp
+                                        ),
+                                        modifier = Modifier.weight(1f)
+                                    )
+
+                                    IconButton(
+                                        onClick = {
+                                            onQueryChange(historyQuery)
+                                        },
+                                        modifier = Modifier.size(32.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CallMade,
+                                            contentDescription = "Populate",
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = 120.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = null,
+                                tint = TextMuted.copy(alpha = 0.4f),
+                                modifier = Modifier.size(64.dp)
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Text(
+                                text = "Search Spasiba Music",
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "Search for songs, artists, or albums",
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    color = TextMuted,
+                                    fontSize = 14.sp
+                                )
+                            )
+                        }
+                    }
+                }
+            } else if (!isSearchSubmitted) {
+                // REAL-TIME AUTOCOMPLETE DROPDOWN MODE (YouTube Music get_search_suggestions)
+                var suggestionsList by remember { mutableStateOf<List<YouTubeMusicApi.SuggestionItem>>(emptyList()) }
+                var isSuggestionsLoading by remember { mutableStateOf(false) }
+
+                LaunchedEffect(query) {
+                    if (query.isNotBlank()) {
+                        isSuggestionsLoading = true
+                        delay(250L) // Debounce typing
+                        suggestionsList = YouTubeMusicApi.fetchSearchSuggestions(query)
+                        isSuggestionsLoading = false
+                    } else {
+                        suggestionsList = emptyList()
+                    }
+                }
+
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(bottom = 140.dp)
+                ) {
+                    if (isSuggestionsLoading && suggestionsList.isEmpty()) {
+                        items(5) {
+                            SongTileSkeleton()
+                        }
+                    } else {
+                        items(suggestionsList) { suggestion ->
+                            when (suggestion) {
+                                is YouTubeMusicApi.SuggestionItem.QuerySuggestion -> {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                focusManager.clearFocus()
+                                                onQueryChange(suggestion.query)
+                                                isSearchSubmitted = true
+                                                onSearch(suggestion.query)
+                                            }
+                                            .padding(horizontal = 20.dp, vertical = 12.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = if (suggestion.isHistory) Icons.Default.History else Icons.Default.Search,
+                                            contentDescription = null,
+                                            tint = TextMuted,
+                                            modifier = Modifier.size(22.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Text(
+                                            text = suggestion.query,
+                                            style = MaterialTheme.typography.bodyLarge.copy(
+                                                color = Color.White,
+                                                fontWeight = FontWeight.Medium,
+                                                fontSize = 16.sp
+                                            ),
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                        IconButton(
+                                            onClick = { onQueryChange(suggestion.query) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CallMade,
+                                                contentDescription = "Populate",
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                is YouTubeMusicApi.SuggestionItem.SongSuggestion -> {
+                                    val song = suggestion.song
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                onSongClick(song, listOf(song), 0)
+                                            }
+                                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        AsyncImage(
+                                            model = song.thumbnail,
+                                            contentDescription = song.title,
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = song.title,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 15.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = song.author,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 12.sp
+                                                ),
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onOptionsClick(song) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Options",
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+
+                                is YouTubeMusicApi.SuggestionItem.ArtistSuggestion -> {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                historyManager.addRecentArtist(suggestion.artistName, suggestion.avatarUrl, suggestion.subtitle)
+                                                onArtistClick(suggestion.artistName)
+                                            }
+                                            .padding(horizontal = 20.dp, vertical = 10.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(48.dp)
+                                                .clip(CircleShape)
+                                                .background(Color.White.copy(alpha = 0.08f))
+                                        ) {
+                                            AsyncImage(
+                                                model = suggestion.avatarUrl.takeIf { !it.isNullOrBlank() }
+                                                    ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300",
+                                                contentDescription = suggestion.artistName,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.width(16.dp))
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = suggestion.artistName,
+                                                style = MaterialTheme.typography.bodyLarge.copy(
+                                                    color = Color.White,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 16.sp
+                                                )
+                                            )
+                                            Spacer(modifier = Modifier.height(2.dp))
+                                            Text(
+                                                text = suggestion.subtitle,
+                                                style = MaterialTheme.typography.bodySmall.copy(
+                                                    color = Color.White.copy(alpha = 0.6f),
+                                                    fontSize = 12.sp
+                                                )
+                                            )
+                                        }
+                                        IconButton(
+                                            onClick = { onArtistClick(suggestion.artistName) },
+                                            modifier = Modifier.size(32.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.MoreVert,
+                                                contentDescription = "Options",
+                                                tint = TextMuted,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                // MODE B: EXECUTED SEARCH RESULTS VIEW (FOCUS ON BEST MATCH + LIST VIEW)
+                LazyColumn(
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(start = 16.dp, top = 4.dp, end = 16.dp, bottom = 140.dp)
+                ) {
+                    if (isSearching) {
+                            items(6) {
+                                SongTileSkeleton()
+                            }
+                        } else if (processedSearchResults.isEmpty()) {
+                        item {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 40.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "No songs found for \"$query\"",
+                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                        color = TextMuted,
+                                        fontSize = 14.sp
+                                    )
+                                )
+                            }
+                        }
+                      } else {
+                        // 1. TOP RESULT / FEATURED ARTIST MATCH HERO CARD (Matching YouTube Music Native Layout)
+                        if (detectedArtist != null) {
+                            val artistName = detectedArtist.artistName
+                            val avatarImage = detectedArtist.avatarUrl.takeIf { !it.isNullOrBlank() }
+                                ?: processedSearchResults.firstOrNull()?.thumbnail.orEmpty()
+                            val top3EmbeddedSongs = detectedArtist.topSongs.take(3).ifEmpty { processedSearchResults.take(3) }
+
+                            item {
+                                Column(modifier = Modifier.padding(bottom = 20.dp)) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(20.dp)),
+                                        shape = RoundedCornerShape(20.dp),
+                                        color = Color(0xFF1E1E22),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(vertical = 14.dp)) {
+                                            // A. Top Header Row (Avatar, Name, Subtitle, Chevron Arrow)
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable {
+                                                        historyManager.addRecentArtist(artistName, avatarImage, "Official Artist")
+                                                        onArtistClick(artistName)
+                                                    }
+                                                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(64.dp)
+                                                        .clip(CircleShape)
+                                                        .background(Color.White.copy(alpha = 0.08f))
+                                                ) {
+                                                    AsyncImage(
+                                                        model = avatarImage,
+                                                        contentDescription = artistName,
+                                                        contentScale = ContentScale.Crop,
+                                                        modifier = Modifier
+                                                            .fillMaxSize()
+                                                            .clip(CircleShape)
+                                                    )
+                                                }
+
+                                                Spacer(modifier = Modifier.width(14.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = artistName,
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = TextStrong,
+                                                            fontSize = 18.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+
+                                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                                    Text(
+                                                        text = "Official Artist Profile • Tap to view all",
+                                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                                            color = TextMuted,
+                                                            fontSize = 12.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+
+                                                Icon(
+                                                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                                    contentDescription = "Open Artist",
+                                                    tint = TextMuted,
+                                                    modifier = Modifier.size(26.dp)
+                                                )
+                                            }
+
+                                            Spacer(modifier = Modifier.height(10.dp))
+
+                                            // B. Action Buttons Row ([ 🔀 Shuffle ] and [ ((►)) Mix Radio ])
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 16.dp),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                // Solid Shuffle Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable {
+                                                            if (top3EmbeddedSongs.isNotEmpty()) {
+                                                                onSongClick(top3EmbeddedSongs.shuffled().first(), top3EmbeddedSongs, 0)
+                                                            }
+                                                        },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Shuffle,
+                                                            contentDescription = "Shuffle",
+                                                            tint = Color.Black,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(8.dp))
+                                                        Text(
+                                                            text = "Shuffle",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.Black,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                // Outlined Mix / Radio Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable {
+                                                            if (top3EmbeddedSongs.isNotEmpty()) {
+                                                                onSongClick(top3EmbeddedSongs.first(), top3EmbeddedSongs, 0)
+                                                            }
+                                                        },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White.copy(alpha = 0.08f),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PlayArrow,
+                                                            contentDescription = "Mix",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Mix Radio",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            }
+
+                                            // C. Embedded Top 3 Popular Songs Inside the Card
+                                            if (top3EmbeddedSongs.isNotEmpty()) {
+                                                Spacer(modifier = Modifier.height(14.dp))
+                                                androidx.compose.material3.HorizontalDivider(
+                                                    color = Color.White.copy(alpha = 0.08f),
+                                                    thickness = 1.dp
+                                                )
+
+                                                Column(modifier = Modifier.padding(top = 4.dp)) {
+                                                    top3EmbeddedSongs.forEachIndexed { idx, song ->
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clickable { onSongClick(song, top3EmbeddedSongs, idx) }
+                                                                .padding(horizontal = 14.dp, vertical = 8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            AsyncImage(
+                                                                model = song.thumbnail,
+                                                                contentDescription = song.title,
+                                                                contentScale = ContentScale.Crop,
+                                                                modifier = Modifier
+                                                                    .size(46.dp)
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                            )
+
+                                                            Spacer(modifier = Modifier.width(12.dp))
+
+                                                            Column(modifier = Modifier.weight(1f)) {
+                                                                Text(
+                                                                    text = song.title,
+                                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                                        color = TextStrong,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        fontSize = 14.sp
+                                                                    ),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                                Text(
+                                                                    text = song.author.ifBlank { "Spasiba Music" },
+                                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                                        color = TextMuted,
+                                                                        fontSize = 12.sp
+                                                                    ),
+                                                                    maxLines = 1,
+                                                                    overflow = TextOverflow.Ellipsis
+                                                                )
+                                                            }
+
+                                                            IconButton(
+                                                                onClick = { onOptionsClick(song) },
+                                                                modifier = Modifier.size(32.dp)
+                                                            ) {
+                                                                Icon(
+                                                                    imageVector = Icons.Default.MoreVert,
+                                                                    contentDescription = "Options",
+                                                                    tint = TextMuted,
+                                                                    modifier = Modifier.size(18.dp)
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+
+                        else if (processedSearchResults.isNotEmpty()) {
+                            // NORMAL SONG SEARCH TOP RESULT CARD (Matching search_executed_1.jpg)
+                            item {
+                                val topResultSong = processedSearchResults.first()
+                                Column(modifier = Modifier.padding(bottom = 16.dp)) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(18.dp)),
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = Color(0xFF1E1E22),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { onSongClick(topResultSong, processedSearchResults, 0) },
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                AsyncImage(
+                                                    model = topResultSong.thumbnail,
+                                                    contentDescription = topResultSong.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(56.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                )
+
+                                                Spacer(modifier = Modifier.width(14.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = topResultSong.title,
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White,
+                                                            fontSize = 17.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+
+                                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                                    val durFormatted = "${topResultSong.durationSeconds / 60}:${String.format("%02d", topResultSong.durationSeconds % 60)}"
+                                                    Text(
+                                                        text = "${if (topResultSong.author.isNotBlank() && topResultSong.author != "Artist") topResultSong.author else "Spasiba Music"}${if (topResultSong.durationSeconds > 0) " • $durFormatted" else ""}",
+                                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                                            color = Color.White.copy(alpha = 0.6f),
+                                                            fontSize = 13.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { onOptionsClick(topResultSong) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = "Options",
+                                                        tint = Color.White.copy(alpha = 0.7f),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(14.dp))
+
+                                            // Action Buttons Row inside Top Result Card: [ ▶ Play ] and [ ≡+ Save ]
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                // Solid White Play Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable { onSongClick(topResultSong, processedSearchResults, 0) },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PlayArrow,
+                                                            contentDescription = "Play",
+                                                            tint = Color.Black,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Play",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.Black,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                // Dark Translucent Save Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable { onOptionsClick(topResultSong) },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White.copy(alpha = 0.08f),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PlaylistAdd,
+                                                            contentDescription = "Save",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Save",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. REMAINING SEARCH RESULTS LIST VIEW
+                            val remainingSearchResults = processedSearchResults.drop(1)
+                            if (remainingSearchResults.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = "MORE RESULTS",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = TextMuted,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            letterSpacing = 1.4.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                                    )
+                                }
+
+                                itemsIndexed(remainingSearchResults) { index, song ->
+                                    SongTile(
+                                        song = song,
+                                        isPlaying = song.id == currentSong?.id,
+                                        isLiked = likedSongs.contains(song.id),
+                                        onSongClick = { onSongClick(song, processedSearchResults, index + 1) },
+                                        onLikeClick = { onLikeClick(song.id) },
+                                        onOptionsClick = { onOptionsClick(song) },
+                                        onSwipeToQueue = { onSwipeToQueue(song) }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+    itemToRemoveFromHistory?.let { (itemName, itemType) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { itemToRemoveFromHistory = null },
+            containerColor = Color(0xFF262628),
+            title = {
+                Text(
+                    text = itemName,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 20.sp
+                    )
+                )
+            },
+            text = {
+                Text(
+                    text = "Remove from search history?",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 15.sp
+                    )
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        when {
+                            itemType == "artist" -> {
+                                historyManager.deleteRecentArtist(itemName)
+                                recentArtistsHistory = historyManager.getRecentArtists()
+                            }
+                            itemType.startsWith("song:") -> {
+                                val songId = itemType.removePrefix("song:")
+                                historyManager.deletePlayedSong(songId)
+                                playedSongsHistory = historyManager.getPlayedSongs()
+                            }
+                            itemType == "query" -> {
+                                historyManager.deleteTextQuery(itemName)
+                                textQueriesHistory = historyManager.getTextQueries()
+                            }
+                        }
+                        itemToRemoveFromHistory = null
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("Remove", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { itemToRemoveFromHistory = null },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.8f))
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Medium)
+                }
+            }
+        )
+    }
+
+    // Voice Search Listening Overlay (YouTube Music Grade Animated Pulsing Mic)
+    if (isVoiceListeningModalOpen) {
+        val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
+        val pulseScale by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.22f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "PulseScale"
+        )
+        val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.75f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "PulseAlpha"
+        )
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { isVoiceListeningModalOpen = false }
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(28.dp),
+                color = Color(0xFF16161A),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282830))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Top Close Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(
+                            onClick = { isVoiceListeningModalOpen = false },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Hero Animated Pulsing Mic Circle
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(140.dp)
+                    ) {
+                        // Outer Pulsing Glow Ring
+                        Box(
+                            modifier = Modifier
+                                .size(120.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444).copy(alpha = 0.2f * pulseAlpha))
+                        )
+                        // Inner Pulsing Glow Ring
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444).copy(alpha = 0.4f * pulseAlpha))
+                        )
+                        // Core Mic Button
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(Color(0xFFEF4444), Color(0xFFDC2626))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Listening",
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Listening Headline Text / Real-Time Spoken Words
+                    Text(
+                        text = if (liveSpokenText.isNotBlank()) liveSpokenText else "Listening...",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Subtitle / Prompt
+                    Text(
+                        text = if (liveSpokenText.isNotBlank() && liveSpokenText != "Listening...") "Reciting live..." else "Recite a song name, artist, or lyric to search",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = AccentTeal,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
+        }
+    }
+}
+}
+}

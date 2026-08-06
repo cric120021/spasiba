@@ -16,12 +16,23 @@ import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.unit.IntOffset
 import kotlin.math.roundToInt
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.foundation.Image
+import androidx.compose.ui.res.painterResource
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -36,12 +47,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.isImeVisible
 import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -51,6 +65,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.VpnKey
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
@@ -227,6 +242,7 @@ fun FlyingReactionParticle(reaction: FlyingReaction, onFinished: (String) -> Uni
     }
 }
 
+@OptIn(androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
 fun EunoiaScreen(
     playerManager: NativePlayerManager,
@@ -256,12 +272,16 @@ fun EunoiaScreen(
     val durationMs by playerManager.durationMs.collectAsState()
 
     val prefs = remember { context.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
+    val myPhotoUri = remember(prefs) { prefs.getString("profile_photo_uri", null) }
     var isEunoiaEnabled by remember { mutableStateOf(prefs.getBoolean("eunoia_enabled", true)) }
     var isInviteDialogOpen by remember { mutableStateOf(false) }
     var inviteInputId by remember { mutableStateOf("") }
     var inviteInputName by remember { mutableStateOf("") }
     var chatInputValue by remember { mutableStateOf("") }
     var liveStatusText by remember { mutableStateOf("Synced • Idle") }
+    var isEunoiaVideoActive by remember { mutableStateOf(false) }
+    var seekFeedbackText by remember { mutableStateOf<String?>(null) }
+    var seekFeedbackSideIsRight by remember { mutableStateOf(false) }
 
     if (!isEunoiaEnabled) {
         Box(
@@ -370,6 +390,13 @@ fun EunoiaScreen(
         }
     }
 
+    // Cloud Glass Edit Box Keyboard & Visibility State
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val focusRequester = remember { FocusRequester() }
+    val isImeVisible = WindowInsets.isImeVisible
+    var isInputActive by remember { mutableStateOf(false) }
+    val showEditBox = isImeVisible || isInputActive || chatInputValue.isNotEmpty()
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = Color.Black
@@ -409,244 +436,404 @@ fun EunoiaScreen(
                     .statusBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 6.dp)
             ) {
-            // TOP AREA: Header & Partner Display Name
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp, bottom = 4.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(38.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF1E1E26)),
-                    contentAlignment = Alignment.Center
-                ) {
-                    val activePhotoUri = partnerFriend?.photoUri ?: partnerPhotoUri
-                    if (!activePhotoUri.isNullOrBlank()) {
-                        AsyncImage(
-                            model = activePhotoUri,
-                            contentDescription = "Partner Avatar",
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.fillMaxSize()
-                        )
-                    } else {
-                        Icon(
-                            imageVector = Icons.Default.Person,
-                            contentDescription = "Partner Avatar",
-                            tint = if (sessionStatus == EunoiaSessionStatus.CONNECTED) Color.White else TextMuted,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                }
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "Listening with $formattedPartner",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = TextStrong,
-                            fontSize = 14.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    Text(
-                        text = liveStatusText,
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = when (sessionStatus) {
-                                EunoiaSessionStatus.CONNECTED -> Color(0xFF34D399)
-                                EunoiaSessionStatus.REJECTED_BUSY -> Color(0xFFEF4444)
-                                else -> TextMuted
-                            },
-                            fontSize = 10.sp
-                        ),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                // End Session Button (Disconnects session & clears chat box)
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFFEF4444).copy(alpha = 0.2f), CircleShape)
-                        .clickable {
-                            sessionManager.endSession()
-                            Toast.makeText(context, "Session ended & chat cleared", Toast.LENGTH_SHORT).show()
-                        },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PowerSettingsNew,
-                        contentDescription = "End Session",
-                        tint = Color(0xFFEF4444),
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                Box(
-                    modifier = Modifier
-                        .size(36.dp)
-                        .clip(CircleShape)
-                        .background(Color.White.copy(alpha = 0.12f), CircleShape)
-                        .clickable { isInviteDialogOpen = true },
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PersonAdd,
-                        contentDescription = "Invite Partner",
-                        tint = Color.White,
-                        modifier = Modifier.size(18.dp)
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Player Hero (Card-Less Floating Layout)
-            Column(
-                modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                // Centered Full-Bleed Rounded Album Artwork (YouTube Music 1:1 Aspect Ratio)
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(0.55f)
-                        .aspectRatio(1f)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(Color.White.copy(alpha = 0.08f))
-                ) {
-                    AsyncImage(
-                        model = activeSong.thumbnail,
-                        contentDescription = activeSong.title,
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = activeSong.title,
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 18.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-                Spacer(modifier = Modifier.height(2.dp))
-                Text(
-                    text = activeSong.author,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = TextMuted,
-                        fontSize = 13.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-
-                Spacer(modifier = Modifier.height(6.dp))
-
-                // YouTube Music Native Dynamic Seeker Bar
-                app.spasiba.nativeapp2.ui.components.YouTubeMusicSeekerBar(
-                    progressFraction = sliderProgress,
-                    positionFormatted = posFormatted,
-                    durationFormatted = durFormatted,
-                    onSeek = { targetFraction ->
-                        val targetPosMs = (targetFraction * durSec * 1000L).toLong()
-                        playerManager.seekTo(targetPosMs)
-                    },
-                    onSeekFinished = {
-                        val currentPosMs = playerManager.positionMs.value
-                        sessionManager.emitPlaybackAction("seek", org.json.JSONObject().apply {
-                            put("positionMs", currentPosMs)
-                        })
-                    },
-                    modifier = Modifier.padding(horizontal = 4.dp)
-                )
-
-                Spacer(modifier = Modifier.height(4.dp))
-
-                // Media Playback Controls Row
+                // Header Bar (Dual Overlapping YouTube Collab Avatars + Connection Status)
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
                 ) {
-                    IconButton(
-                        onClick = {
-                            playerManager.playPrevious()
-                            sessionManager.emitPlaybackAction("previous")
-                        },
-                        modifier = Modifier.size(44.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.SkipPrevious,
-                            contentDescription = "Previous",
-                            tint = Color.White,
-                            modifier = Modifier.size(26.dp)
-                        )
+                    val isConnectionActive = sessionStatus == EunoiaSessionStatus.CONNECTED
+                    val partnerFriend = remember(partnerDeviceId) {
+                        partnerDeviceId?.let { id ->
+                            EunoiaFriendManager.getInstance(context).getFriends().find { it.friendId.equals(id, ignoreCase = true) }
+                        }
                     }
 
-                    Spacer(modifier = Modifier.width(20.dp))
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clickable { isInviteDialogOpen = true }
+                    ) {
+                        // YouTube Collab Style Overlapping Avatars Stack
+                        Box(
+                            modifier = Modifier
+                                .width(if (isConnectionActive) 56.dp else 38.dp)
+                                .height(38.dp),
+                            contentAlignment = Alignment.CenterStart
+                        ) {
+                            // First Avatar (My Profile Image)
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF1E1E26)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                if (!myPhotoUri.isNullOrBlank()) {
+                                    AsyncImage(
+                                        model = myPhotoUri,
+                                        contentDescription = "My Avatar",
+                                        contentScale = ContentScale.Crop,
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "My Avatar",
+                                        tint = Color.White,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
 
+                            // Second Avatar (Partner Profile Image - Overlapping YouTube Collab Style, visible ONLY when connected)
+                            if (isConnectionActive) {
+                                Box(
+                                    modifier = Modifier
+                                        .offset(x = 18.dp)
+                                        .size(36.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFF0284C7)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    val activePhotoUri = partnerFriend?.photoUri ?: partnerPhotoUri
+                                    if (!activePhotoUri.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = activePhotoUri,
+                                            contentDescription = "Partner Avatar",
+                                            contentScale = ContentScale.Crop,
+                                            modifier = Modifier.fillMaxSize()
+                                        )
+                                    } else {
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = "Partner Avatar",
+                                            tint = Color.White,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
+
+                        Column {
+                            val activePartnerName = partnerFriend?.name ?: partnerName
+                            val headerTitle = when {
+                                sessionStatus == EunoiaSessionStatus.CONNECTED -> "Listening with ${activePartnerName ?: "Partner"}"
+                                sessionStatus == EunoiaSessionStatus.INVITE_SENT -> "Sending invite..."
+                                else -> "Listening with Partner"
+                            }
+                            Text(
+                                text = headerTitle,
+                                style = MaterialTheme.typography.titleMedium.copy(
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    fontSize = 17.sp
+                                ),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+
+                            val statusSubtitle = when (sessionStatus) {
+                                EunoiaSessionStatus.CONNECTED -> if (isLeader) "Room Host • Sync Active" else "Connected • Sync Active"
+                                EunoiaSessionStatus.INVITE_SENT -> "Waiting for partner to accept..."
+                                EunoiaSessionStatus.REJECTED_BUSY -> "Partner Busy • Tap + to retry"
+                                else -> "Ready • Tap + to pair"
+                            }
+                            Text(
+                                text = statusSubtitle,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (sessionStatus == EunoiaSessionStatus.CONNECTED) Color(0xFF10B981) else TextMuted,
+                                    fontSize = 12.sp
+                                )
+                            )
+                        }
+                    }
+
+                    // Session End / Connection Off Button (Red Power Button - Always visible in Eunoia Header)
                     Box(
                         modifier = Modifier
-                            .size(52.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
-                            .background(Color.White)
+                            .background(Color.White.copy(alpha = 0.12f))
                             .clickable {
-                                if (isPlaying) {
-                                    playerManager.exoPlayer.pause()
-                                    sessionManager.emitPlaybackAction("pause")
-                                } else {
-                                    playerManager.exoPlayer.play()
-                                    sessionManager.emitPlaybackAction("play")
-                                }
+                                sessionManager.endSession()
+                                Toast.makeText(context, "Session disconnected", Toast.LENGTH_SHORT).show()
                             },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                            contentDescription = if (isPlaying) "Pause" else "Play",
-                            tint = Color.Black,
-                            modifier = Modifier.size(28.dp)
+                            imageVector = Icons.Default.PowerSettingsNew,
+                            contentDescription = "Session End / Disconnect",
+                            tint = Color(0xFFEF4444),
+                            modifier = Modifier.size(18.dp)
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(20.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
 
-                    IconButton(
-                        onClick = {
-                            playerManager.playNext()
-                            sessionManager.emitPlaybackAction("next")
-                        },
-                        modifier = Modifier.size(44.dp)
+                    Box(
+                        modifier = Modifier
+                            .size(36.dp)
+                            .clip(CircleShape)
+                            .background(Color.White.copy(alpha = 0.12f), CircleShape)
+                            .clickable { isInviteDialogOpen = true },
+                        contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.SkipNext,
-                            contentDescription = "Next",
+                            imageVector = Icons.Default.PersonAdd,
+                            contentDescription = "Invite Partner",
                             tint = Color.White,
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(4.dp))
+
+                // Player Hero (Card-Less Floating Layout)
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Centered Album Artwork / 720p Video Player Mode with Double Tap Seek Gestures
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        if (isEunoiaVideoActive) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.92f)
+                                    .aspectRatio(16f / 9f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.Black)
+                                    .pointerInput(Unit) {
+                                        detectTapGestures(
+                                            onDoubleTap = { offset ->
+                                                val containerWidth = size.width
+                                                val isRightSide = offset.x > (containerWidth / 2f)
+                                                val currentPos = playerManager.positionMs.value
+                                                val targetPos = if (isRightSide) {
+                                                    (currentPos + 10000L).coerceAtMost(durationMs)
+                                                } else {
+                                                    (currentPos - 10000L).coerceAtLeast(0L)
+                                                }
+                                                playerManager.seekTo(targetPos)
+                                                sessionManager.emitPlaybackAction("seek", org.json.JSONObject().apply {
+                                                    put("positionMs", targetPos)
+                                                })
+                                                seekFeedbackSideIsRight = isRightSide
+                                                seekFeedbackText = if (isRightSide) "+10s ▶▶" else "◀◀ -10s"
+                                            }
+                                        )
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                androidx.compose.runtime.key(activeSong.id) {
+                                    AndroidView(
+                                        factory = { ctx ->
+                                            androidx.media3.ui.PlayerView(ctx).apply {
+                                                player = playerManager.exoPlayer
+                                                useController = false
+                                                resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                                setBackgroundColor(android.graphics.Color.BLACK)
+                                                setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
+                                            }
+                                        },
+                                        update = { playerView ->
+                                            playerView.player = playerManager.exoPlayer
+                                            playerView.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
+                                        },
+                                        modifier = Modifier.fillMaxSize()
+                                    )
+                                }
+
+                                // Quick Seek Visual Ripple Overlay (+10s / -10s)
+                                seekFeedbackText?.let { text ->
+                                    LaunchedEffect(text) {
+                                        delay(700L)
+                                        seekFeedbackText = null
+                                    }
+                                    Box(
+                                        modifier = Modifier
+                                            .align(if (seekFeedbackSideIsRight) Alignment.CenterEnd else Alignment.CenterStart)
+                                            .padding(horizontal = 24.dp)
+                                            .background(Color.Black.copy(alpha = 0.70f), shape = CircleShape)
+                                            .padding(horizontal = 16.dp, vertical = 10.dp)
+                                    ) {
+                                        Text(
+                                            text = text,
+                                            color = Color.White,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        } else {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth(0.55f)
+                                    .aspectRatio(1f)
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .background(Color.White.copy(alpha = 0.08f))
+                            ) {
+                                AsyncImage(
+                                    model = activeSong.thumbnail,
+                                    contentDescription = activeSong.title,
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    Text(
+                        text = activeSong.title,
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 18.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = activeSong.author,
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = TextMuted,
+                            fontSize = 13.sp
+                        ),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    // YouTube Music Native Dynamic Seeker Bar
+                    app.spasiba.nativeapp2.ui.components.YouTubeMusicSeekerBar(
+                        progressFraction = sliderProgress,
+                        positionFormatted = posFormatted,
+                        durationFormatted = durFormatted,
+                        onSeek = { targetFraction ->
+                            val targetPosMs = (targetFraction * durSec * 1000L).toLong()
+                            playerManager.seekTo(targetPosMs)
+                        },
+                        onSeekFinished = {
+                            val currentPosMs = playerManager.positionMs.value
+                            sessionManager.emitPlaybackAction("seek", org.json.JSONObject().apply {
+                                put("positionMs", currentPosMs)
+                            })
+                        },
+                        modifier = Modifier.padding(horizontal = 4.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(4.dp))
+
+                    // Media Playback Controls Row (Core Controls Centered + Video Toggle at Far Right)
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        // Perfectly Centered Core Controls [Previous] [Play/Pause] [Next]
+                        Row(
+                            horizontalArrangement = Arrangement.Center,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            IconButton(
+                                onClick = {
+                                    playerManager.playPrevious()
+                                    sessionManager.emitPlaybackAction("previous")
+                                },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SkipPrevious,
+                                    contentDescription = "Previous",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(24.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(CircleShape)
+                                    .background(Color.White)
+                                    .clickable {
+                                        if (isPlaying) {
+                                            playerManager.exoPlayer.pause()
+                                            sessionManager.emitPlaybackAction("pause")
+                                        } else {
+                                            playerManager.exoPlayer.play()
+                                            sessionManager.emitPlaybackAction("play")
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = if (isPlaying) "Pause" else "Play",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(24.dp))
+
+                            IconButton(
+                                onClick = {
+                                    playerManager.playNext()
+                                    sessionManager.emitPlaybackAction("next")
+                                },
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.SkipNext,
+                                    contentDescription = "Next",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(26.dp)
+                                )
+                            }
+                        }
+
+                        // Video / Audio Toggle Button (Positioned at Far Right End)
+                        IconButton(
+                            onClick = {
+                                isEunoiaVideoActive = !isEunoiaVideoActive
+                                if (isEunoiaVideoActive) {
+                                    playerManager.setVideoQuality("720p")
+                                } else {
+                                    playerManager.disableVideoMode()
+                                }
+                            },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(end = 8.dp)
+                                .size(44.dp)
+                        ) {
+                            Icon(
+                                imageVector = if (isEunoiaVideoActive) Icons.Default.Headphones else Icons.Default.OndemandVideo,
+                                contentDescription = if (isEunoiaVideoActive) "Switch to Audio" else "Switch to Video",
+                                tint = if (isEunoiaVideoActive) Color(0xFF38BDF8) else Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+                    }
+                }
+
+
 
             // MUSIC CHAT STREAM (Card-Less Floating Canvas)
             Column(
@@ -657,7 +844,7 @@ fun EunoiaScreen(
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
+                    horizontalArrangement = Arrangement.Start,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
@@ -665,13 +852,6 @@ fun EunoiaScreen(
                         style = MaterialTheme.typography.labelSmall.copy(
                             color = TextMuted,
                             letterSpacing = 1.sp,
-                            fontSize = 11.sp
-                        )
-                    )
-                    Text(
-                        text = "ID: $myDeviceId",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = AccentTeal,
                             fontSize = 11.sp
                         )
                     )
@@ -693,10 +873,11 @@ fun EunoiaScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Premium Pill Text Input Bar (Exact Spasiba Design System like Search Screen)
+                // Premium Pill Text Input Bar (Rides Dynamically Right On Top of Keyboard)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .imePadding()
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -737,8 +918,13 @@ fun EunoiaScreen(
                                 }
                                 androidx.compose.foundation.text.BasicTextField(
                                     value = chatInputValue,
-                                    onValueChange = { chatInputValue = it },
-                                    modifier = Modifier.fillMaxWidth(),
+                                    onValueChange = {
+                                        chatInputValue = it
+                                        isInputActive = true
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .focusRequester(focusRequester),
                                     singleLine = true,
                                     maxLines = 1,
                                     cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
@@ -975,22 +1161,39 @@ fun EunoiaScreen(
         val animOffsetY = remember { Animatable(0f) }
         val quickReactions = listOf("❤️", "🔥", "✨", "🎵", "💓", "🥺", "🎧", "👏", "😭")
 
+        // Fullscreen touch interceptor to collapse emoji dock when tapping anywhere outside
+        if (isReactionDockExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clickable(
+                        interactionSource = remember { androidx.compose.foundation.interaction.MutableInteractionSource() },
+                        indication = null
+                    ) {
+                        isReactionDockExpanded = false
+                    }
+            )
+        }
+
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(bottom = 130.dp, end = 16.dp),
+                .padding(bottom = 130.dp, start = 16.dp, end = 16.dp),
             contentAlignment = Alignment.BottomEnd
         ) {
             Row(
                 modifier = Modifier.offset {
                     IntOffset(animOffsetX.value.roundToInt(), animOffsetY.value.roundToInt())
                 },
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.End
             ) {
-                // Expandable Horizontal Emoji Pack (Appears to the left of the circular button)
+                // Expandable Horizontal Emoji Pack (Appears to the left of the circular button, bounded so button never goes offscreen)
                 AnimatedVisibility(visible = isReactionDockExpanded) {
                     Surface(
-                        modifier = Modifier.padding(end = 8.dp),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .widthIn(max = 220.dp),
                         shape = CircleShape,
                         color = Color(0xFF1E1E26),
                         border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f))
@@ -1007,7 +1210,6 @@ fun EunoiaScreen(
                                         .clip(CircleShape)
                                         .clickable {
                                             sessionManager.triggerFlyingReaction(reactionEmoji)
-                                            isReactionDockExpanded = false
                                         },
                                     contentAlignment = Alignment.Center
                                 ) {
@@ -1024,7 +1226,7 @@ fun EunoiaScreen(
                 // Elastic Physics Circular Floater Button (Guaranteed Tap + Physics Drag)
                 Surface(
                     modifier = Modifier
-                        .size(56.dp)
+                        .size(52.dp)
                         .clip(CircleShape)
                         .pointerInput(Unit) {
                             coroutineScope {
@@ -1083,7 +1285,7 @@ fun EunoiaScreen(
                     ) {
                         Text(
                             text = if (isReactionDockExpanded) "✖" else "😀",
-                            fontSize = 22.sp,
+                            fontSize = 20.sp,
                             color = if (isReactionDockExpanded) Color.Black else Color.White
                         )
                     }

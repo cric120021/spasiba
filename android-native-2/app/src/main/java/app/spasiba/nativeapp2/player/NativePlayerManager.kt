@@ -108,8 +108,6 @@ class NativePlayerManager(private val context: Context) {
     private val _likedSongIds = MutableStateFlow<Set<String>>(emptySet())
     val likedSongIds: StateFlow<Set<String>> = _likedSongIds.asStateFlow()
 
-    val videoQuality: StateFlow<String> get() = currentVideoQuality
-
     private val _currentLyrics = MutableStateFlow<String?>(null)
     val currentLyrics: StateFlow<String?> = _currentLyrics.asStateFlow()
 
@@ -446,14 +444,23 @@ class NativePlayerManager(private val context: Context) {
     }
 
     private val _currentVideoQuality = MutableStateFlow("720p")
-    val currentVideoQuality: StateFlow<String> = _currentVideoQuality.asStateFlow()
+    val videoQuality: StateFlow<String> = _currentVideoQuality.asStateFlow()
 
     private val _availableVideoQualities = MutableStateFlow<List<String>>(listOf("Auto", "1080p", "720p", "480p", "360p"))
     val availableVideoQualities: StateFlow<List<String>> = _availableVideoQualities.asStateFlow()
 
     private var lastPlayedSongId: String? = null
 
+    var isVideoModeActive: Boolean = false
+
+    fun disableVideoMode() {
+        isVideoModeActive = false
+        val song = _currentSong.value ?: return
+        playSong(song)
+    }
+
     fun setVideoQuality(quality: String) {
+        isVideoModeActive = true
         _currentVideoQuality.value = quality
         val song = _currentSong.value ?: return
         startProgressiveVideoDownloadAndPlay(song)
@@ -604,11 +611,16 @@ class NativePlayerManager(private val context: Context) {
         upsertCurrentTrack(song)
         fetchLyricsForCurrentSong()
         app.spasiba.nativeapp2.data.analytics.SessionBrainManager.recordPlayStart(song)
-        _isLoading.value = true
         _positionMs.value = 0L
 
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
+
+        if (isVideoModeActive) {
+            Log.d(TAG, "playSong called in VIDEO MODE -> Loading 720p video stream for '${song.title}'")
+            startProgressiveVideoDownloadAndPlay(song)
+            return
+        }
 
         scope.launch(Dispatchers.IO) {
             repository.recordPlayedSong(song)

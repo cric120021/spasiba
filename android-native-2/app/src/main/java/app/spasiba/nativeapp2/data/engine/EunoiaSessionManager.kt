@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -278,30 +279,61 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                         val sessId = payload.optString("sessionId")
                                                         val inviterName = payload.optString("inviterName").takeIf { it.isNotBlank() }
                                                             ?: payload.optString("senderName").takeIf { it.isNotBlank() }
-                                                        if (inviterName != null) {
-                                                            _partnerName.value = inviterName
-                                                            EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, inviterName, isOutgoing = false)
-                                                        }
-                                                        receiveSimulatedInvite(from, sessId)
-                                                    }
-                                                    "ACCEPT" -> {
-                                                        val sessId = payload.optString("sessionId")
-                                                        dismissInviteNotification()
-                                                        _pendingInviteSender.value = null
-                                                        _partnerDeviceId.value = from
-                                                        val senderName = payload.optString("senderName").takeIf { it.isNotBlank() }
-                                                            ?: payload.optString("inviterName").takeIf { it.isNotBlank() }
+                                                        val photoB64 = payload.optString("photoBase64").takeIf { it.isNotBlank() }
+                                                         if (photoB64 != null) {
+                                                             _partnerPhotoUri.value = "data:image/jpeg;base64,$photoB64"
+                                                         } else {
+                                                             val cachedPhoto = EunoiaFriendManager.getInstance(context).getFriends().find { it.friendId.equals(from, ignoreCase = true) }?.photoUri
+                                                             if (cachedPhoto != null) _partnerPhotoUri.value = cachedPhoto
+                                                         }
+                                                         if (inviterName != null) {
+                                                             _partnerName.value = inviterName
+                                                         }
+                                                         scope.launch(Dispatchers.IO) {
+                                                             val localPhotoUri = photoB64?.let { saveBase64ToFileUri(it, "partner_$from") }
+                                                             withContext(Dispatchers.Main) {
+                                                                 if (localPhotoUri != null) _partnerPhotoUri.value = localPhotoUri
+                                                                 if (inviterName != null) {
+                                                                     EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, inviterName, isOutgoing = false, photoUri = localPhotoUri ?: _partnerPhotoUri.value)
+                                                                 }
+                                                             }
+                                                         }
+                                                         fetchAndResolvePartnerProfile(from)
+                                                         receiveSimulatedInvite(from, sessId)
+                                                     }
+                                                     "ACCEPT" -> {
+                                                         val sessId = payload.optString("sessionId")
+                                                         dismissInviteNotification()
+                                                         _pendingInviteSender.value = null
+                                                         _partnerDeviceId.value = from
+                                                         val senderName = payload.optString("senderName").takeIf { it.isNotBlank() }
+                                                             ?: payload.optString("inviterName").takeIf { it.isNotBlank() }
+                                                         val photoB64 = payload.optString("photoBase64").takeIf { it.isNotBlank() }
+                                                         if (photoB64 != null) {
+                                                             _partnerPhotoUri.value = "data:image/jpeg;base64,$photoB64"
+                                                         } else {
+                                                             val cachedPhoto = EunoiaFriendManager.getInstance(context).getFriends().find { it.friendId.equals(from, ignoreCase = true) }?.photoUri
+                                                             if (cachedPhoto != null) _partnerPhotoUri.value = cachedPhoto
+                                                         }
                                                         if (senderName != null) {
                                                             _partnerName.value = senderName
-                                                            EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, senderName, isOutgoing = false)
-                                                        } else {
-                                                            fetchAndResolvePartnerProfile(from)
                                                         }
+                                                        scope.launch(Dispatchers.IO) {
+                                                            val localPhotoUri = photoB64?.let { saveBase64ToFileUri(it, "partner_$from") }
+                                                            withContext(Dispatchers.Main) {
+                                                                if (localPhotoUri != null) _partnerPhotoUri.value = localPhotoUri
+                                                                if (senderName != null) {
+                                                                    EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, senderName, isOutgoing = false, photoUri = localPhotoUri ?: _partnerPhotoUri.value)
+                                                                }
+                                                            }
+                                                        }
+                                                        fetchAndResolvePartnerProfile(from)
                                                         _sessionStatus.value = EunoiaSessionStatus.CONNECTED
                                                         if (sessId.isNotBlank()) {
                                                             _sessionId.value = sessId
                                                         }
                                                         initiateWebRtcHandshake(from)
+                                                        broadcastProfileUpdateSignal()
                                                     }
                                                     "REJECT" -> {
                                                         dismissInviteNotification()
@@ -607,9 +639,14 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         val myPhotoUri = newPhotoUri ?: context.getSharedPreferences("spasiba_user_prefs", Context.MODE_PRIVATE).getString("profile_photo_uri", null)
         val myB64 = myPhotoUri?.let { uriToBase64(it) }
 
-        val friends = EunoiaFriendManager.getInstance(context).getFriends()
+        val targets = EunoiaFriendManager.getInstance(context).getFriends().map { it.friendId }.toMutableSet()
+        val currentPartner = _partnerDeviceId.value
+        if (!currentPartner.isNullOrBlank()) {
+            targets.add(currentPartner)
+        }
+
         scope.launch(Dispatchers.IO) {
-            for (friend in friends) {
+            for (targetId in targets) {
                 try {
                     val payload = JSONObject().apply {
                         put("type", "PROFILE_UPDATE")
@@ -619,7 +656,7 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                             put("photoBase64", myB64)
                         }
                     }
-                    sendHttpSignal(friend.friendId, "PROFILE_UPDATE", payload)
+                    sendHttpSignal(targetId, "PROFILE_UPDATE", payload)
                 } catch (e: Exception) {
                     // Ignore single signal errors
                 }

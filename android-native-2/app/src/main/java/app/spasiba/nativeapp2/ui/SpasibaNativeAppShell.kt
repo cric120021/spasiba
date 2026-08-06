@@ -358,6 +358,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                     selectedCategory = cat
                                 },
                                 onSearchClick = { navigateTo(1) },
+                                onNotificationsClick = { navigateTo(10) },
                                 onLibraryClick = { navigateTo(3) },
                                 onProfileClick = { navigateTo(4) },
                                 onSongClick = { song, queueList, idx ->
@@ -573,6 +574,12 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                     )
                                 }
                             }
+
+                            10 -> app.spasiba.nativeapp2.ui.screens.NotificationsScreen(
+                                onBackClick = { navigateBack() },
+                                onNavigateToEunoia = { navigateTo(2) },
+                                onProfileClick = { navigateTo(4) }
+                            )
                         }
 
                         // Context Option Sheets & Modals
