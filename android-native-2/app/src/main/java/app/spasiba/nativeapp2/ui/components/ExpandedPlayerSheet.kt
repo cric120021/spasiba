@@ -1,5 +1,13 @@
 package app.spasiba.nativeapp2.ui.components
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.ui.platform.LocalDensity
+import kotlin.math.roundToInt
+
 import android.content.Context
 import android.util.Log
 import android.widget.Toast
@@ -13,11 +21,6 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.ui.draw.clip
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,9 +34,6 @@ import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.ui.platform.LocalDensity
-import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -64,20 +64,18 @@ import androidx.compose.material.icons.outlined.Download
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.Fullscreen
 import androidx.compose.material.icons.filled.FullscreenExit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.MusicNote
 import androidx.compose.material.icons.filled.VideoLibrary
 import androidx.compose.material.icons.filled.Pause
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PlaylistAdd
-import androidx.compose.material.icons.filled.DragHandle
-import androidx.compose.material.icons.filled.QueueMusic
 import androidx.compose.material.icons.filled.Repeat
 import androidx.compose.material.icons.filled.RepeatOne
 import androidx.compose.material.icons.filled.Share
@@ -133,12 +131,6 @@ import kotlin.math.roundToInt
 
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.DownloadDone
-
-enum class UpNextExpandState {
-    COLLAPSED,
-    HALF,
-    FULL
-}
 
 @Composable
 fun ExpandedPlayerSheet(
@@ -225,7 +217,6 @@ fun ExpandedPlayerSheet(
 
     var sheetDragOffset by remember { mutableStateOf(0f) }
     var artDragOffset by remember { mutableStateOf(0f) }
-    var upNextState by remember { mutableStateOf(UpNextExpandState.COLLAPSED) }
 
     val durSec = if (durationMs > 0) durationMs / 1000L else song.durationSeconds.toLong()
     val posSec = positionMs / 1000L
@@ -268,26 +259,21 @@ fun ExpandedPlayerSheet(
             }
     ) {
         if (!isVideoModeActive) {
-            AsyncImage(
-                model = song.thumbnail,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .blur(90.dp)
-                    .scale(1.25f)
-                    .background(Color.Black.copy(alpha = 0.72f))
+            val (dominantColor, darkMutedColor) = rememberPaletteColors(
+                imageUrl = song.thumbnail,
+                defaultDominant = Color(0xFF1E1C1A),
+                defaultDark = Color(0xFF0F0E0C)
             )
+
             Box(
                 modifier = Modifier
                     .fillMaxSize()
                     .background(
                         Brush.verticalGradient(
-                            colors = listOf(
-                                Color.Black.copy(alpha = 0.85f),
-                                Color(0xFF0F0F16).copy(alpha = 0.92f),
-                                Color(0xFF07070B)
-                            )
+                            0.0f to dominantColor,
+                            0.45f to dominantColor.copy(alpha = 0.90f),
+                            0.80f to darkMutedColor,
+                            1.0f to Color.Black
                         )
                     )
             )
@@ -409,14 +395,29 @@ fun ExpandedPlayerSheet(
                         )
 
                         // 2. Download Track (Icon First)
-                        DropdownMenuItem(
-                            text = { Text("Download Track", color = Color.White) },
-                            onClick = {
-                                isOptionsMenuExpanded = false
-                                isDownloadDialogOpen = true
-                            },
-                            leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = "Download Track", tint = AccentTeal) }
-                        )
+                        val isDownloaded = remember(downloadsState, song.id) {
+                            downloadsState[song.id]?.status == app.spasiba.nativeapp2.data.download.DownloadStatus.COMPLETED || downloadManager.getDownloadedFile(song.id) != null
+                        }
+
+                        if (isDownloaded) {
+                            DropdownMenuItem(
+                                text = { Text("Remove download", color = Color.White) },
+                                onClick = {
+                                    isOptionsMenuExpanded = false
+                                    downloadManager.deleteDownload(song.id)
+                                },
+                                leadingIcon = { Icon(Icons.Default.Delete, contentDescription = "Remove download", tint = Color.White) }
+                            )
+                        } else {
+                            DropdownMenuItem(
+                                text = { Text("Download Track", color = Color.White) },
+                                onClick = {
+                                    isOptionsMenuExpanded = false
+                                    isDownloadDialogOpen = true
+                                },
+                                leadingIcon = { Icon(Icons.Outlined.Download, contentDescription = "Download Track", tint = AccentTeal) }
+                            )
+                        }
 
                         // 3. Add to Playlist (Icon First)
                         DropdownMenuItem(
@@ -620,7 +621,7 @@ fun ExpandedPlayerSheet(
                                     contentDescription = song.title,
                                     contentScale = ContentScale.Crop,
                                     modifier = Modifier
-                                        .fillMaxWidth(0.88f)
+                                        .fillMaxWidth(0.82f)
                                         .aspectRatio(1f)
                                         .offset { IntOffset(artDragOffset.roundToInt(), 0) }
                                         .pointerInput(song.id) {
@@ -638,7 +639,7 @@ fun ExpandedPlayerSheet(
                                                 }
                                             )
                                         }
-                                        .clip(RoundedCornerShape(16.dp))
+                                        .clip(RoundedCornerShape(24.dp))
                                 )
                             }
                         }
@@ -697,7 +698,6 @@ fun ExpandedPlayerSheet(
 
                         Spacer(modifier = Modifier.height(6.dp))
 
-                        // YouTube Music Native Dynamic Seeker Bar (Expanding Track + Glowing Pin on Seek)
                         YouTubeMusicSeekerBar(
                             progressFraction = sliderProgress,
                             positionFormatted = posFormatted,
@@ -770,180 +770,65 @@ fun ExpandedPlayerSheet(
                     }
                 }
             }
-        }
-        }
 
-        // ---------------------------------------------------
-        // FLOATING UP NEXT BOTTOM SHEET (YouTube Music 3-Stage Overlay)
-        // ---------------------------------------------------
-val upNextSheetHeight by animateDpAsState(
-    targetValue = when (upNextState) {
-        UpNextExpandState.COLLAPSED -> 62.dp
-        UpNextExpandState.HALF -> 420.dp
-        UpNextExpandState.FULL -> 720.dp
-    },
-    animationSpec = tween(durationMillis = 280, easing = FastOutSlowInEasing),
-    label = "upNextSheetHeight"
-)
-
-Surface(
-    modifier = Modifier
-        .align(Alignment.BottomCenter)
-        .fillMaxWidth()
-        .height(upNextSheetHeight)
-        .pointerInput(Unit) {
-            detectVerticalDragGestures(
-                onVerticalDrag = { change, dragAmount ->
-                    change.consume()
-                    if (dragAmount < -10f) {
-                        // Swipe UP
-                        upNextState = when (upNextState) {
-                            UpNextExpandState.COLLAPSED -> UpNextExpandState.HALF
-                            UpNextExpandState.HALF -> UpNextExpandState.FULL
-                            UpNextExpandState.FULL -> UpNextExpandState.FULL
-                        }
-                    } else if (dragAmount > 10f) {
-                        // Swipe DOWN
-                        upNextState = when (upNextState) {
-                            UpNextExpandState.FULL -> UpNextExpandState.HALF
-                            UpNextExpandState.HALF -> UpNextExpandState.COLLAPSED
-                            UpNextExpandState.COLLAPSED -> UpNextExpandState.COLLAPSED
-                        }
-                    }
-                }
-            )
-        },
-    shape = RoundedCornerShape(topStart = 24.dp, topEnd = 24.dp),
-    color = Color(0xFF14141D),
-    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f)),
-    shadowElevation = 16.dp
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 6.dp)
-    ) {
-        // Centered Pull Drag Bar Handle (—) & Arrow Icon matching ss1.jpg & ss2.jpg
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(12.dp))
-                .clickable {
-                    upNextState = when (upNextState) {
-                        UpNextExpandState.COLLAPSED -> UpNextExpandState.HALF
-                        UpNextExpandState.HALF -> UpNextExpandState.FULL
-                        UpNextExpandState.FULL -> UpNextExpandState.COLLAPSED
-                    }
-                }
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .width(40.dp)
-                    .height(4.dp)
-                    .clip(RoundedCornerShape(2.dp))
-                    .background(Color.White.copy(alpha = 0.4f))
-            )
-            Spacer(modifier = Modifier.width(8.dp))
-            Icon(
-                imageVector = if (upNextState == UpNextExpandState.FULL) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                contentDescription = "Expand Queue",
-                tint = Color.White.copy(alpha = 0.85f),
-                modifier = Modifier.size(20.dp)
-            )
-        }
-
-        Spacer(modifier = Modifier.height(4.dp))
-
-        // Header Row: "Playing from Radio Mix" + [ UP NEXT / LYRICS ] Switcher
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .clickable {
-                        upNextState = when (upNextState) {
-                            UpNextExpandState.COLLAPSED -> UpNextExpandState.HALF
-                            UpNextExpandState.HALF -> UpNextExpandState.FULL
-                            UpNextExpandState.FULL -> UpNextExpandState.COLLAPSED
-                        }
-                    }
-            ) {
-                Text(
-                    text = "Playing from",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = TextMuted,
-                        fontSize = 11.sp
-                    )
-                )
-                Text(
-                    text = "${song.author} mix",
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White,
-                        fontSize = 15.sp
-                    ),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
-
-            // UP NEXT / LYRICS Tab Switcher
-            Row(
-                modifier = Modifier
-                    .clip(CircleShape)
-                    .background(Color.White.copy(alpha = 0.08f))
-                    .padding(2.dp)
-            ) {
-                listOf("UP NEXT", "LYRICS").forEach { tab ->
-                    val isSelected = activeTab == tab
-                    Box(
+                item {
+                    Column(
                         modifier = Modifier
-                            .clip(CircleShape)
-                            .background(if (isSelected) Color.White else Color.Transparent)
-                            .clickable {
-                                activeTab = tab
-                                if (upNextState == UpNextExpandState.COLLAPSED) {
-                                    upNextState = UpNextExpandState.HALF
+                            .fillMaxWidth()
+                            .padding(horizontal = 20.dp, vertical = 4.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = CircleShape,
+                            color = Color.White.copy(alpha = 0.08f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.12f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(3.dp),
+                                horizontalArrangement = Arrangement.SpaceEvenly,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                listOf("UP NEXT", "LYRICS").forEach { tab ->
+                                    val isSelected = activeTab == tab
+                                    Surface(
+                                        shape = CircleShape,
+                                        color = if (isSelected) Color.White else Color.Transparent,
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(CircleShape)
+                                            .clickable { activeTab = tab }
+                                    ) {
+                                        Box(
+                                            modifier = Modifier.padding(vertical = 6.dp),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = tab,
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.7f),
+                                                    fontSize = 11.sp
+                                                )
+                                            )
+                                        }
+                                    }
                                 }
                             }
-                            .padding(horizontal = 12.dp, vertical = 5.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = tab,
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                fontWeight = FontWeight.Bold,
-                                color = if (isSelected) Color.Black else Color.White.copy(alpha = 0.7f),
-                                fontSize = 11.sp
-                            )
-                        )
+                        }
+
+                        Spacer(modifier = Modifier.height(6.dp))
                     }
                 }
-            }
-        }
 
-        Spacer(modifier = Modifier.height(8.dp))
-
-        // Queue Content Scroll Area
-        if (upNextState != UpNextExpandState.COLLAPSED) {
-            if (activeTab == "UP NEXT") {
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
+                if (activeTab == "UP NEXT") {
                     itemsIndexed(upcomingQueue) { idx, qSong ->
                         val isCurrent = qSong.id == song.id
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 6.dp)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(if (isCurrent) Color.White.copy(alpha = 0.12f) else Color.Transparent)
                                 .clickable { onSongClickInQueue(qSong) }
@@ -955,7 +840,7 @@ Surface(
                                 contentDescription = qSong.title,
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
-                                    .size(44.dp)
+                                    .size(42.dp)
                                     .clip(RoundedCornerShape(8.dp))
                             )
                             Spacer(modifier = Modifier.width(12.dp))
@@ -963,36 +848,23 @@ Surface(
                                 Text(
                                     text = qSong.title,
                                     style = MaterialTheme.typography.bodyMedium.copy(
-                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Medium,
-                                        color = if (isCurrent) AccentTeal else Color.White,
-                                        fontSize = 14.sp
+                                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
+                                        color = if (isCurrent) AccentTeal else Color.White
                                     ),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                                 Text(
-                                    text = "${qSong.author} • ${qSong.durationSeconds / 60}:${String.format("%02d", qSong.durationSeconds % 60)}",
-                                    style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp),
+                                    text = qSong.author,
+                                    style = MaterialTheme.typography.bodySmall.copy(color = TextMuted),
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
-                            Icon(
-                                imageVector = Icons.Default.DragHandle,
-                                contentDescription = "Reorder",
-                                tint = Color.White.copy(alpha = 0.4f),
-                                modifier = Modifier.size(20.dp)
-                            )
                         }
                     }
-                }
-            } else {
-                    // LYRICS Tab View
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f)
-                    ) {
+                } else if (activeTab == "LYRICS") {
+                    item {
                         KaraokeLyricsView(
                             syncedLines = syncedLines,
                             positionMs = positionMs,
@@ -1316,7 +1188,6 @@ Surface(
                                 .clip(RoundedCornerShape(12.dp))
                                 .clickable {
                                     isDownloadDialogOpen = false
-                                    Toast.makeText(context, "Downloading audio for ${song.title}...", Toast.LENGTH_SHORT).show()
                                     downloadManager.startDownload(song, app.spasiba.nativeapp2.data.download.DownloadType.AUDIO_ONLY, "320k")
                                 },
                             color = AccentTeal.copy(alpha = 0.15f),
@@ -1405,7 +1276,6 @@ Surface(
                                     .clip(RoundedCornerShape(10.dp))
                                     .clickable {
                                         isDownloadQualityPickerOpen = false
-                                        Toast.makeText(context, "Downloading video ($q) for ${song.title}...", Toast.LENGTH_SHORT).show()
                                         downloadManager.startDownload(song, app.spasiba.nativeapp2.data.download.DownloadType.VIDEO_AND_AUDIO, q)
                                     },
                                 color = Color.White.copy(alpha = 0.08f)
@@ -1430,7 +1300,6 @@ Surface(
             )
         }
     }
-}
 }
 
 @Composable
@@ -1636,4 +1505,3 @@ fun YouTubeMusicSeekerBar(
         }
     }
 }
-

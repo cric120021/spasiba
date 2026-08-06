@@ -2,6 +2,11 @@ package app.spasiba.nativeapp2.ui.screens
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import app.spasiba.nativeapp2.data.cache.RecentArtistItem
+import app.spasiba.nativeapp2.ui.components.ArtistOptionsMenuSheet
+import app.spasiba.nativeapp2.ui.components.TrackOptionsMenu
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,13 +32,31 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.CallMade
 import kotlinx.coroutines.delay
+import android.content.Intent
+import android.os.Bundle
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
+import android.widget.Toast
+import androidx.compose.runtime.DisposableEffect
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.filled.Clear
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PlaylistAdd
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Shuffle
 import androidx.compose.material3.Icon
@@ -74,6 +97,7 @@ import app.spasiba.nativeapp2.ui.theme.TextStrong
 import app.spasiba.nativeapp2.ui.theme.UiSurfaceElevated
 import coil.compose.AsyncImage
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SearchScreen(
     query: String,
@@ -96,6 +120,101 @@ fun SearchScreen(
 ) {
     val focusManager = LocalFocusManager.current
     var isSearchSubmitted by remember { mutableStateOf(false) }
+    var selectedArtistForOptions by remember { mutableStateOf<RecentArtistItem?>(null) }
+    var selectedSongForOptions by remember { mutableStateOf<Song?>(null) }
+    var queryToDelete by remember { mutableStateOf<String?>(null) }
+    var isVoiceListeningModalOpen by remember { mutableStateOf(false) }
+    var liveSpokenText by remember { mutableStateOf("") }
+    val context = LocalContext.current
+    val historyManager = remember { SearchHistoryManager.getInstance(context) }
+
+    val speechRecognizer = remember {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else null
+    }
+
+    val startVoiceListening = remember(speechRecognizer, context) {
+        {
+            liveSpokenText = ""
+            isVoiceListeningModalOpen = true
+            if (speechRecognizer != null) {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                }
+                speechRecognizer.setRecognitionListener(object : RecognitionListener {
+                    override fun onReadyForSpeech(params: Bundle?) {
+                        liveSpokenText = "Listening..."
+                    }
+                    override fun onBeginningOfSpeech() {}
+                    override fun onRmsChanged(rmsdB: Float) {}
+                    override fun onBufferReceived(buffer: ByteArray?) {}
+                    override fun onEndOfSpeech() {}
+                    override fun onError(error: Int) {
+                        if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) {
+                            Toast.makeText(context, "No speech detected. Try again.", Toast.LENGTH_SHORT).show()
+                        }
+                    }
+                    override fun onResults(results: Bundle?) {
+                        isVoiceListeningModalOpen = false
+                        val matches = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                        val spokenText = matches?.firstOrNull()
+                        if (!spokenText.isNullOrBlank()) {
+                            liveSpokenText = spokenText
+                            onQueryChange(spokenText)
+                            isSearchSubmitted = true
+                            onSearch(spokenText)
+                            historyManager.addTextQuery(spokenText)
+                        }
+                    }
+                    override fun onPartialResults(partialResults: Bundle?) {
+                        val partial = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
+                        if (!partial.isNullOrBlank()) {
+                            liveSpokenText = partial
+                            onQueryChange(partial)
+                        }
+                    }
+                    override fun onEvent(eventType: Int, params: Bundle?) {}
+                })
+                try {
+                    speechRecognizer.startListening(intent)
+                } catch (e: Exception) {
+                    isVoiceListeningModalOpen = false
+                }
+            } else {
+                Toast.makeText(context, "Voice search unavailable on this device", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
+
+    val permissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { isGranted ->
+        if (isGranted) {
+            startVoiceListening()
+        } else {
+            Toast.makeText(context, "Microphone permission required for voice search", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    DisposableEffect(speechRecognizer) {
+        onDispose {
+            try {
+                speechRecognizer?.destroy()
+            } catch (e: Exception) {}
+        }
+    }
+    var itemToRemoveFromHistory by remember { mutableStateOf<Pair<String, String>?>(null) }
+    var playedSongsHistory by remember { mutableStateOf(historyManager.getPlayedSongs()) }
+    var recentArtistsHistory by remember { mutableStateOf(historyManager.getRecentArtists()) }
+    var textQueriesHistory by remember { mutableStateOf(historyManager.getTextQueries()) }
+
+    LaunchedEffect(Unit) {
+        playedSongsHistory = historyManager.getPlayedSongs()
+        recentArtistsHistory = historyManager.getRecentArtists()
+        textQueriesHistory = historyManager.getTextQueries()
+    }
 
     val processedSearchResults = remember(searchResults) {
         searchResults.sortedWith(
@@ -209,7 +328,18 @@ fun SearchScreen(
 
             // Voice Search Mic Button
             IconButton(
-                onClick = { /* Voice search action */ },
+                onClick = {
+                    val hasPermission = androidx.core.content.ContextCompat.checkSelfPermission(
+                        context,
+                        android.Manifest.permission.RECORD_AUDIO
+                    ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                    if (hasPermission) {
+                        startVoiceListening()
+                    } else {
+                        permissionLauncher.launch(android.Manifest.permission.RECORD_AUDIO)
+                    }
+                },
                 modifier = Modifier
                     .size(58.dp)
                     .clip(CircleShape)
@@ -229,18 +359,6 @@ fun SearchScreen(
         // 2. Main Search Area
         Box(modifier = Modifier.fillMaxSize()) {
             if (query.isBlank()) {
-                val context = LocalContext.current
-                val historyManager = remember { SearchHistoryManager.getInstance(context) }
-                var playedSongsHistory by remember { mutableStateOf(historyManager.getPlayedSongs()) }
-                var recentArtistsHistory by remember { mutableStateOf(historyManager.getRecentArtists()) }
-                var textQueriesHistory by remember { mutableStateOf(historyManager.getTextQueries()) }
-
-                LaunchedEffect(Unit) {
-                    playedSongsHistory = historyManager.getPlayedSongs()
-                    recentArtistsHistory = historyManager.getRecentArtists()
-                    textQueriesHistory = historyManager.getTextQueries()
-                }
-
                 val hasAnyHistory = playedSongsHistory.isNotEmpty() || recentArtistsHistory.isNotEmpty() || textQueriesHistory.isNotEmpty()
 
                 if (hasAnyHistory) {
@@ -295,9 +413,10 @@ fun SearchScreen(
                                         Column(
                                             modifier = Modifier
                                                 .width(105.dp)
-                                                .clickable {
-                                                    onSongClick(track, playedSongsHistory, 0)
-                                                }
+                                                .combinedClickable(
+                                                    onClick = { onSongClick(track, playedSongsHistory, 0) },
+                                                    onLongClick = { itemToRemoveFromHistory = Pair(track.title, "song:${track.id}") }
+                                                )
                                         ) {
                                             AsyncImage(
                                                 model = track.thumbnail,
@@ -340,7 +459,10 @@ fun SearchScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable { onArtistClick(artistItem.artistName) }
+                                        .combinedClickable(
+                                            onClick = { onArtistClick(artistItem.artistName) },
+                                            onLongClick = { itemToRemoveFromHistory = Pair(artistItem.artistName, "artist") }
+                                        )
                                         .padding(horizontal = 20.dp, vertical = 10.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -348,15 +470,23 @@ fun SearchScreen(
                                         modifier = Modifier
                                             .size(50.dp)
                                             .clip(CircleShape)
-                                            .background(Color.White.copy(alpha = 0.08f))
+                                            .background(Color.White.copy(alpha = 0.12f)),
+                                        contentAlignment = Alignment.Center
                                     ) {
-                                        AsyncImage(
-                                            model = artistItem.avatarUrl.takeIf { !it.isNullOrBlank() }
-                                                ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300",
-                                            contentDescription = artistItem.artistName,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
+                                        Icon(
+                                            imageVector = Icons.Default.Person,
+                                            contentDescription = null,
+                                            tint = Color.White.copy(alpha = 0.6f),
+                                            modifier = Modifier.size(28.dp)
                                         )
+                                        if (!artistItem.avatarUrl.isNullOrBlank()) {
+                                            AsyncImage(
+                                                model = artistItem.avatarUrl,
+                                                contentDescription = artistItem.artistName,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
                                     }
 
                                     Spacer(modifier = Modifier.width(16.dp))
@@ -382,8 +512,7 @@ fun SearchScreen(
 
                                     IconButton(
                                         onClick = {
-                                            historyManager.deleteRecentArtist(artistItem.artistName)
-                                            recentArtistsHistory = historyManager.getRecentArtists()
+                                            itemToRemoveFromHistory = Pair(artistItem.artistName, "artist")
                                         },
                                         modifier = Modifier.size(32.dp)
                                     ) {
@@ -404,12 +533,17 @@ fun SearchScreen(
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable {
-                                            focusManager.clearFocus()
-                                            onQueryChange(historyQuery)
-                                            isSearchSubmitted = true
-                                            onSearch(historyQuery)
-                                        }
+                                        .combinedClickable(
+                                            onClick = {
+                                                focusManager.clearFocus()
+                                                onQueryChange(historyQuery)
+                                                isSearchSubmitted = true
+                                                onSearch(historyQuery)
+                                            },
+                                            onLongClick = {
+                                                itemToRemoveFromHistory = Pair(historyQuery, "query")
+                                            }
+                                        )
                                         .padding(horizontal = 20.dp, vertical = 12.dp),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -613,7 +747,10 @@ fun SearchScreen(
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .clickable { onArtistClick(suggestion.artistName) }
+                                            .clickable {
+                                                historyManager.addRecentArtist(suggestion.artistName, suggestion.avatarUrl, suggestion.subtitle)
+                                                onArtistClick(suggestion.artistName)
+                                            }
                                             .padding(horizontal = 20.dp, vertical = 10.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
@@ -717,7 +854,10 @@ fun SearchScreen(
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .clickable { onArtistClick(artistName) }
+                                                    .clickable {
+                                                        historyManager.addRecentArtist(artistName, avatarImage, "Official Artist")
+                                                        onArtistClick(artistName)
+                                                    }
                                                     .padding(horizontal = 16.dp, vertical = 6.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
@@ -895,7 +1035,7 @@ fun SearchScreen(
                                                                     overflow = TextOverflow.Ellipsis
                                                                 )
                                                                 Text(
-                                                                    text = "Song • ${song.author}",
+                                                                    text = song.author.ifBlank { "Spasiba Music" },
                                                                     style = MaterialTheme.typography.bodySmall.copy(
                                                                         color = TextMuted,
                                                                         fontSize = 12.sp
@@ -926,34 +1066,376 @@ fun SearchScreen(
                             }
                         }
 
-                        // 2. REMAINING RESULTS LIST VIEW
-                        item {
-                            Text(
-                                text = "SONGS & MUSIC VIDEOS (${processedSearchResults.size})",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = TextMuted,
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    letterSpacing = 1.4.sp
-                                ),
-                                modifier = Modifier.padding(bottom = 8.dp)
-                            )
-                        }
+                        else if (processedSearchResults.isNotEmpty()) {
+                            // NORMAL SONG SEARCH TOP RESULT CARD (Matching search_executed_1.jpg)
+                            item {
+                                val topResultSong = processedSearchResults.first()
+                                Column(modifier = Modifier.padding(bottom = 16.dp)) {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(18.dp)),
+                                        shape = RoundedCornerShape(18.dp),
+                                        color = Color(0xFF1E1E22),
+                                        border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                                    ) {
+                                        Column(modifier = Modifier.padding(14.dp)) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable { onSongClick(topResultSong, processedSearchResults, 0) },
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                AsyncImage(
+                                                    model = topResultSong.thumbnail,
+                                                    contentDescription = topResultSong.title,
+                                                    contentScale = ContentScale.Crop,
+                                                    modifier = Modifier
+                                                        .size(56.dp)
+                                                        .clip(RoundedCornerShape(8.dp))
+                                                )
 
-                        itemsIndexed(processedSearchResults) { index, song ->
-                            SongTile(
-                                song = song,
-                                isPlaying = song.id == currentSong?.id,
-                                isLiked = likedSongs.contains(song.id),
-                                onSongClick = { onSongClick(song, processedSearchResults, index) },
-                                onLikeClick = { onLikeClick(song.id) },
-                                onOptionsClick = { onOptionsClick(song) },
-                                onSwipeToQueue = { onSwipeToQueue(song) }
-                            )
+                                                Spacer(modifier = Modifier.width(14.dp))
+
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    Text(
+                                                        text = topResultSong.title,
+                                                        style = MaterialTheme.typography.titleMedium.copy(
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = Color.White,
+                                                            fontSize = 17.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+
+                                                    Spacer(modifier = Modifier.height(2.dp))
+
+                                                    val durFormatted = "${topResultSong.durationSeconds / 60}:${String.format("%02d", topResultSong.durationSeconds % 60)}"
+                                                    Text(
+                                                        text = "${if (topResultSong.author.isNotBlank() && topResultSong.author != "Artist") topResultSong.author else "Spasiba Music"}${if (topResultSong.durationSeconds > 0) " • $durFormatted" else ""}",
+                                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                                            color = Color.White.copy(alpha = 0.6f),
+                                                            fontSize = 13.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
+                                                    )
+                                                }
+
+                                                IconButton(
+                                                    onClick = { onOptionsClick(topResultSong) },
+                                                    modifier = Modifier.size(32.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Default.MoreVert,
+                                                        contentDescription = "Options",
+                                                        tint = Color.White.copy(alpha = 0.7f),
+                                                        modifier = Modifier.size(20.dp)
+                                                    )
+                                                }
+                                            }
+
+                                            Spacer(modifier = Modifier.height(14.dp))
+
+                                            // Action Buttons Row inside Top Result Card: [ ▶ Play ] and [ ≡+ Save ]
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                // Solid White Play Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable { onSongClick(topResultSong, processedSearchResults, 0) },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PlayArrow,
+                                                            contentDescription = "Play",
+                                                            tint = Color.Black,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Play",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.Black,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+
+                                                // Dark Translucent Save Pill Button
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(42.dp)
+                                                        .clickable { onOptionsClick(topResultSong) },
+                                                    shape = RoundedCornerShape(21.dp),
+                                                    color = Color.White.copy(alpha = 0.08f),
+                                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.2f))
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.fillMaxSize(),
+                                                        horizontalArrangement = Arrangement.Center,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.PlaylistAdd,
+                                                            contentDescription = "Save",
+                                                            tint = Color.White,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                        Spacer(modifier = Modifier.width(6.dp))
+                                                        Text(
+                                                            text = "Save",
+                                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                                color = Color.White,
+                                                                fontWeight = FontWeight.Bold,
+                                                                fontSize = 14.sp
+                                                            )
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            // 2. REMAINING SEARCH RESULTS LIST VIEW
+                            val remainingSearchResults = processedSearchResults.drop(1)
+                            if (remainingSearchResults.isNotEmpty()) {
+                                item {
+                                    Text(
+                                        text = "MORE RESULTS",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = TextMuted,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 11.sp,
+                                            letterSpacing = 1.4.sp
+                                        ),
+                                        modifier = Modifier.padding(top = 4.dp, bottom = 8.dp)
+                                    )
+                                }
+
+                                itemsIndexed(remainingSearchResults) { index, song ->
+                                    SongTile(
+                                        song = song,
+                                        isPlaying = song.id == currentSong?.id,
+                                        isLiked = likedSongs.contains(song.id),
+                                        onSongClick = { onSongClick(song, processedSearchResults, index + 1) },
+                                        onLikeClick = { onLikeClick(song.id) },
+                                        onOptionsClick = { onOptionsClick(song) },
+                                        onSwipeToQueue = { onSwipeToQueue(song) }
+                                    )
+                                }
+                            }
                         }
                     }
                 }
             }
+    itemToRemoveFromHistory?.let { (itemName, itemType) ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { itemToRemoveFromHistory = null },
+            containerColor = Color(0xFF262628),
+            title = {
+                Text(
+                    text = itemName,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        fontSize = 20.sp
+                    )
+                )
+            },
+            text = {
+                Text(
+                    text = "Remove from search history?",
+                    style = MaterialTheme.typography.bodyMedium.copy(
+                        color = Color.White.copy(alpha = 0.7f),
+                        fontSize = 15.sp
+                    )
+                )
+            },
+            confirmButton = {
+                androidx.compose.material3.Button(
+                    onClick = {
+                        when {
+                            itemType == "artist" -> {
+                                historyManager.deleteRecentArtist(itemName)
+                                recentArtistsHistory = historyManager.getRecentArtists()
+                            }
+                            itemType.startsWith("song:") -> {
+                                val songId = itemType.removePrefix("song:")
+                                historyManager.deletePlayedSong(songId)
+                                playedSongsHistory = historyManager.getPlayedSongs()
+                            }
+                            itemType == "query" -> {
+                                historyManager.deleteTextQuery(itemName)
+                                textQueriesHistory = historyManager.getTextQueries()
+                            }
+                        }
+                        itemToRemoveFromHistory = null
+                    },
+                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(containerColor = Color.White),
+                    shape = RoundedCornerShape(20.dp)
+                ) {
+                    Text("Remove", color = Color.Black, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                androidx.compose.material3.TextButton(
+                    onClick = { itemToRemoveFromHistory = null },
+                    colors = androidx.compose.material3.ButtonDefaults.textButtonColors(contentColor = Color.White.copy(alpha = 0.8f))
+                ) {
+                    Text("Cancel", fontWeight = FontWeight.Medium)
+                }
+            }
+        )
+    }
+
+    // Voice Search Listening Overlay (YouTube Music Grade Animated Pulsing Mic)
+    if (isVoiceListeningModalOpen) {
+        val infiniteTransition = rememberInfiniteTransition(label = "PulseTransition")
+        val pulseScale by infiniteTransition.animateFloat(
+            initialValue = 1f,
+            targetValue = 1.22f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "PulseScale"
+        )
+        val pulseAlpha by infiniteTransition.animateFloat(
+            initialValue = 0.35f,
+            targetValue = 0.75f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "PulseAlpha"
+        )
+
+        androidx.compose.ui.window.Dialog(
+            onDismissRequest = { isVoiceListeningModalOpen = false }
+        ) {
+            androidx.compose.material3.Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp),
+                shape = RoundedCornerShape(28.dp),
+                color = Color(0xFF16161A),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF282830))
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Top Close Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        IconButton(
+                            onClick = { isVoiceListeningModalOpen = false },
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.08f))
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "Close",
+                                tint = Color.White,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    // Hero Animated Pulsing Mic Circle
+                    Box(
+                        contentAlignment = Alignment.Center,
+                        modifier = Modifier.size(140.dp)
+                    ) {
+                        // Outer Pulsing Glow Ring
+                        Box(
+                            modifier = Modifier
+                                .size(120.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444).copy(alpha = 0.2f * pulseAlpha))
+                        )
+                        // Inner Pulsing Glow Ring
+                        Box(
+                            modifier = Modifier
+                                .size(90.dp * pulseScale)
+                                .clip(CircleShape)
+                                .background(Color(0xFFEF4444).copy(alpha = 0.4f * pulseAlpha))
+                        )
+                        // Core Mic Button
+                        Box(
+                            modifier = Modifier
+                                .size(76.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    androidx.compose.ui.graphics.Brush.linearGradient(
+                                        listOf(Color(0xFFEF4444), Color(0xFFDC2626))
+                                    )
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Mic,
+                                contentDescription = "Listening",
+                                tint = Color.White,
+                                modifier = Modifier.size(36.dp)
+                            )
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(20.dp))
+
+                    // Listening Headline Text / Real-Time Spoken Words
+                    Text(
+                        text = if (liveSpokenText.isNotBlank()) liveSpokenText else "Listening...",
+                        style = MaterialTheme.typography.titleLarge.copy(
+                            fontWeight = FontWeight.Bold,
+                            color = Color.White,
+                            fontSize = 22.sp,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Subtitle / Prompt
+                    Text(
+                        text = if (liveSpokenText.isNotBlank() && liveSpokenText != "Listening...") "Reciting live..." else "Recite a song name, artist, or lyric to search",
+                        style = MaterialTheme.typography.bodyMedium.copy(
+                            color = AccentTeal,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Medium,
+                            textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                        )
+                    )
+
+                    Spacer(modifier = Modifier.height(20.dp))
+                }
+            }
         }
     }
+}
+}
 }

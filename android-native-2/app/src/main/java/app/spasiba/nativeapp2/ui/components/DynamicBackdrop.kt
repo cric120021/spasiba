@@ -24,7 +24,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 @Composable
-fun rememberPaletteColors(imageUrl: String?, defaultDominant: Color = Color(0xFF28183D), defaultDark: Color = Color(0xFF150C24)): Pair<Color, Color> {
+fun rememberPaletteColors(
+    imageUrl: String?,
+    defaultDominant: Color = Color(0xFF1E1C1A),
+    defaultDark: Color = Color(0xFF0F0E0C)
+): Pair<Color, Color> {
     val context = LocalContext.current
     var dominantColor by remember(imageUrl) { mutableStateOf(defaultDominant) }
     var darkMutedColor by remember(imageUrl) { mutableStateOf(defaultDark) }
@@ -43,14 +47,34 @@ fun rememberPaletteColors(imageUrl: String?, defaultDominant: Color = Color(0xFF
                         val bitmap = (result.drawable as? BitmapDrawable)?.bitmap
                         if (bitmap != null) {
                             val palette = Palette.from(bitmap).generate()
-                            val domInt = palette.getVibrantColor(
-                                palette.getDominantColor(defaultDominant.hashCode())
-                            )
-                            val darkInt = palette.getDarkMutedColor(
-                                palette.getDarkVibrantColor(defaultDark.hashCode())
-                            )
-                            dominantColor = Color(domInt)
-                            darkMutedColor = Color(darkInt)
+
+                            // Get the most populated swatch (dominant color by pixel count in artwork)
+                            val dominantSwatch = palette.dominantSwatch
+                                ?: palette.swatches.maxByOrNull { it.population }
+                                ?: palette.vibrantSwatch
+
+                            val rawColorInt = dominantSwatch?.rgb ?: palette.getDominantColor(defaultDominant.hashCode())
+
+                            // Extract Hue and Saturation from dominant artwork area
+                            val hsv = FloatArray(3)
+                            android.graphics.Color.colorToHSV(rawColorInt, hsv)
+
+                            // YouTube Music Ambient Player Brightness Normalization:
+                            // 1. Preserve original Hue (hsv[0])
+                            // 2. Normalize Saturation to 0.30f - 0.50f for smooth ambient tone
+                            hsv[1] = hsv[1].coerceIn(0.25f, 0.50f)
+                            // 3. Set Brightness to 0.16f for top gradient (perfect dark ambient mode)
+                            hsv[2] = 0.16f
+
+                            val topColorInt = android.graphics.Color.HSVToColor(hsv)
+
+                            // Bottom shadow color (same hue, deeper dark brightness 0.05f)
+                            val darkHsv = hsv.clone()
+                            darkHsv[2] = 0.05f
+                            val bottomColorInt = android.graphics.Color.HSVToColor(darkHsv)
+
+                            dominantColor = Color(topColorInt)
+                            darkMutedColor = Color(bottomColorInt)
                         }
                     }
                 }
@@ -86,10 +110,10 @@ fun DynamicBackdrop(
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    0.0f to dominantColor.copy(alpha = 0.95f),
-                    0.35f to dominantColor.copy(alpha = 0.85f),
-                    0.70f to darkMutedColor.copy(alpha = 0.90f),
-                    1.0f to darkMutedColor.copy(alpha = 0.95f)
+                    0.0f to dominantColor,
+                    0.45f to dominantColor.copy(alpha = 0.90f),
+                    0.80f to darkMutedColor,
+                    1.0f to Color.Black
                 )
             )
     ) {

@@ -32,6 +32,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -65,6 +66,7 @@ fun TrackOptionsMenu(
     onPlayNext: () -> Unit = {},
     onAddToQueue: () -> Unit = {},
     onRemoveFromQueue: (() -> Unit)? = null,
+    onRemoveFromHistory: (() -> Unit)? = null,
     onViewArtist: (String) -> Unit = {},
     onDownloadTrack: (Song, app.spasiba.nativeapp2.data.download.DownloadType, String) -> Unit = { _, _, _ -> }
 ) {
@@ -122,12 +124,30 @@ fun TrackOptionsMenu(
                 }
             }
 
-            TrackOptionRow(
-                icon = androidx.compose.material.icons.Icons.Outlined.Download,
-                title = "Download Track",
-                tint = app.spasiba.nativeapp2.ui.theme.AccentTeal,
-                onClick = { isDownloadDialogOpen = true }
-            )
+            val downloadManager = remember(context) { app.spasiba.nativeapp2.data.download.SpasibaDownloadManager.getInstance(context) }
+            val downloadsState by downloadManager.downloads.collectAsState()
+            val isDownloaded = remember(downloadsState, song.id) {
+                downloadsState[song.id]?.status == app.spasiba.nativeapp2.data.download.DownloadStatus.COMPLETED || downloadManager.getDownloadedFile(song.id) != null
+            }
+
+            if (isDownloaded) {
+                TrackOptionRow(
+                    icon = Icons.Default.Delete,
+                    title = "Remove download",
+                    tint = Color.White,
+                    onClick = {
+                        downloadManager.deleteDownload(song.id)
+                        onDismiss()
+                    }
+                )
+            } else {
+                TrackOptionRow(
+                    icon = androidx.compose.material.icons.Icons.Outlined.Download,
+                    title = "Download Track",
+                    tint = app.spasiba.nativeapp2.ui.theme.AccentTeal,
+                    onClick = { isDownloadDialogOpen = true }
+                )
+            }
 
             TrackOptionRow(
                 icon = if (isLiked) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
@@ -161,6 +181,18 @@ fun TrackOptionsMenu(
                     tint = Color(0xFFFB7185),
                     onClick = {
                         onRemoveFromQueue()
+                        onDismiss()
+                    }
+                )
+            }
+
+            if (onRemoveFromHistory != null) {
+                TrackOptionRow(
+                    icon = Icons.Default.Delete,
+                    title = "Remove from history",
+                    tint = Color.White,
+                    onClick = {
+                        onRemoveFromHistory()
                         onDismiss()
                     }
                 )
@@ -315,7 +347,8 @@ fun TrackOptionsMenu(
                     Text("Cancel", color = TextMuted)
                 }
             },
-            containerColor = Color(0xFF141416)
+            containerColor = Color(0xFF262628),
+            shape = RoundedCornerShape(20.dp)
         )
     }
 

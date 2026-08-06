@@ -124,7 +124,7 @@ fun FriendChatScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF0D0D14))
+            .background(Color.Black)
     ) {
         // WhatsApp-style Top Header Bar (Clicking avatar/name opens Contact Details page)
         Surface(

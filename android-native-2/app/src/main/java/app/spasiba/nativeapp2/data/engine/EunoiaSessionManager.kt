@@ -354,7 +354,7 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                         Log.d("EunoiaSessionManager", "FRIEND_REQUEST signal received from $from ($senderName)!")
                                                         EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, senderName, isOutgoing = false, photoUri = localPhotoUri)
                                                         EunoiaNotificationHelper.showFriendRequestNotification(context, from, senderName)
-                                                        Toast.makeText(context, "Friend request received from $senderName!", Toast.LENGTH_LONG).show()
+                                                        app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(context)
                                                         friendEventFlow.value = System.currentTimeMillis()
                                                     }
                                                     "FRIEND_ACCEPT" -> {
@@ -815,6 +815,13 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         }
         _sessionStatus.value = EunoiaSessionStatus.INVITE_RECEIVED
         fetchAndResolvePartnerProfile(fromDeviceId)
+
+        friendEventFlow.value = System.currentTimeMillis()
+        try {
+            app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     fun acceptInvite(senderId: String, playerManager: NativePlayerManager, explicitSessionId: String? = null, customName: String? = null) {
@@ -888,6 +895,14 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
             } catch (e: Exception) {
                 Log.e("EunoiaSessionManager", "Failed sending API accept invite: ${e.message}")
             }
+        }
+    }
+
+    fun dismissInviteLocally() {
+        dismissInviteNotification()
+        _pendingInviteSender.value = null
+        if (_sessionStatus.value == EunoiaSessionStatus.INVITE_RECEIVED) {
+            _sessionStatus.value = EunoiaSessionStatus.IDLE
         }
     }
 

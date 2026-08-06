@@ -185,261 +185,220 @@ fun ProfileScreen(
             .fillMaxSize()
             .padding(horizontal = 16.dp),
         contentPadding = PaddingValues(top = 2.dp, bottom = 140.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         // Silver Metallic Brand Header
         item {
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(bottom = 10.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(top = 2.dp, bottom = 4.dp)
             ) {
-                SilverBrandHeader(subtitle = "User Profile & Preferences")
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    SilverBrandHeader(subtitle = "Account & Settings")
+                }
             }
         }
 
-        // 1. Profile Hero Card
+        // 1. Spotify-Style Account Header Tile
         item {
             Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp))
+                    .clickable { isEditNameDialogOpen = true },
                 color = Color.White.copy(alpha = 0.04f),
                 border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "PROFILE & ACCOUNT",
-                            style = MaterialTheme.typography.labelSmall.copy(
-                                color = AccentTeal,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                letterSpacing = 1.6.sp
-                            )
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        // Interactive Profile Photo Avatar with Edit Badge & DB persistence
-                        Box(contentAlignment = Alignment.BottomEnd) {
-                            Surface(
-                                modifier = Modifier
-                                    .size(72.dp)
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        galleryLauncher.launch("image/*")
-                                    },
-                                shape = CircleShape,
-                                color = AccentTeal.copy(alpha = 0.2f)
-                            ) {
-                                if (!profilePhotoUri.isNullOrBlank()) {
-                                    AsyncImage(
-                                        model = profilePhotoUri,
-                                        contentDescription = "User Avatar",
-                                        contentScale = ContentScale.Crop,
-                                        modifier = Modifier.fillMaxSize()
-                                    )
-                                } else {
-                                    Box(contentAlignment = Alignment.Center) {
-                                        Icon(
-                                            imageVector = Icons.Default.Person,
-                                            contentDescription = "Profile Photo",
-                                            tint = AccentTeal,
-                                            modifier = Modifier.size(36.dp)
-                                        )
-                                    }
-                                }
-                            }
-
-                            // Camera / Edit Photo Badge
-                            Surface(
-                                modifier = Modifier
-                                    .size(24.dp)
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        galleryLauncher.launch("image/*")
-                                    },
-                                shape = CircleShape,
-                                color = AccentTeal,
-                                border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black)
-                            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Profile Photo Avatar
+                    Box(contentAlignment = Alignment.BottomEnd) {
+                        Surface(
+                            modifier = Modifier
+                                .size(64.dp)
+                                .clip(CircleShape)
+                                .clickable { galleryLauncher.launch("image/*") },
+                            shape = CircleShape,
+                            color = AccentTeal.copy(alpha = 0.2f)
+                        ) {
+                            if (!profilePhotoUri.isNullOrBlank()) {
+                                AsyncImage(
+                                    model = profilePhotoUri,
+                                    contentDescription = "User Avatar",
+                                    contentScale = ContentScale.Crop,
+                                    modifier = Modifier.fillMaxSize()
+                                )
+                            } else {
                                 Box(contentAlignment = Alignment.Center) {
                                     Icon(
-                                        imageVector = Icons.Default.AddPhotoAlternate,
-                                        contentDescription = "Update Photo",
-                                        tint = Color.Black,
-                                        modifier = Modifier.size(14.dp)
+                                        imageVector = Icons.Default.Person,
+                                        contentDescription = "Profile Photo",
+                                        tint = AccentTeal,
+                                        modifier = Modifier.size(32.dp)
                                     )
                                 }
                             }
                         }
 
-                        Spacer(modifier = Modifier.width(16.dp))
-
-                        Column(modifier = Modifier.weight(1f)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = username,
-                                    style = MaterialTheme.typography.headlineSmall.copy(
-                                        fontWeight = FontWeight.Bold,
-                                        color = TextStrong,
-                                        fontSize = 20.sp
-                                    )
-                                )
-                                IconButton(
-                                    onClick = {
-                                        editNameInput = username
-                                        isEditNameDialogOpen = true
-                                    },
-                                    modifier = Modifier.size(28.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Edit,
-                                        contentDescription = "Edit Name",
-                                        tint = TextMuted,
-                                        modifier = Modifier.size(16.dp)
-                                    )
-                                }
-                            }
-
-                            Spacer(modifier = Modifier.height(2.dp))
-
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(Color.White.copy(alpha = 0.06f))
-                                    .clickable {
-                                        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-                                        val clip = android.content.ClipData.newPlainText("visitor_id", visitorId)
-                                        clipboard.setPrimaryClip(clip)
-                                        Toast.makeText(context, "Copied @$visitorId", Toast.LENGTH_SHORT).show()
-                                    }
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            ) {
-                                Text(
-                                    text = "@$visitorId",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = TextMuted,
-                                        fontSize = 11.sp
-                                    )
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
+                        // Edit Badge
+                        Surface(
+                            modifier = Modifier
+                                .size(22.dp)
+                                .clip(CircleShape)
+                                .clickable { galleryLauncher.launch("image/*") },
+                            shape = CircleShape,
+                            color = AccentTeal,
+                            border = androidx.compose.foundation.BorderStroke(1.dp, Color.Black)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
                                 Icon(
-                                    imageVector = Icons.Default.ContentCopy,
-                                    contentDescription = "Copy",
-                                    tint = TextMuted,
+                                    imageVector = Icons.Default.AddPhotoAlternate,
+                                    contentDescription = "Update Photo",
+                                    tint = Color.Black,
                                     modifier = Modifier.size(12.dp)
                                 )
                             }
                         }
                     }
+
+                    Spacer(modifier = Modifier.width(16.dp))
+
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = username,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = TextStrong,
+                                fontSize = 19.sp
+                            )
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                                    val clip = android.content.ClipData.newPlainText("visitor_id", visitorId)
+                                    clipboard.setPrimaryClip(clip)
+                                    Toast.makeText(context, "Copied ID: @$visitorId", Toast.LENGTH_SHORT).show()
+                                }
+                        ) {
+                            Text(
+                                text = "@$visitorId",
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = TextMuted,
+                                    fontSize = 12.sp
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Icon(
+                                imageVector = Icons.Default.ContentCopy,
+                                contentDescription = "Copy",
+                                tint = TextMuted,
+                                modifier = Modifier.size(12.dp)
+                            )
+                        }
+                    }
+
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = "Edit Name",
+                        tint = TextMuted,
+                        modifier = Modifier.size(18.dp)
+                    )
                 }
             }
         }
 
-        // Eunoia Friends & 1-Click Invites Card (Prominently Placed near Top)
+        // Section: Friends & Listen Together
+        item {
+            Text(
+                text = "LISTEN TOGETHER & FRIENDS",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = Color(0xFF10B981),
+                    fontSize = 11.sp,
+                    letterSpacing = 1.4.sp
+                ),
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp, start = 4.dp)
+            )
+        }
+
+        // Friends & Add Friend Row
         item {
             val pendingCount = friendsList.count { it.status != app.spasiba.nativeapp2.data.engine.EunoiaFriendStatus.ACCEPTED }
             val acceptedList = friendsList.filter { it.status == app.spasiba.nativeapp2.data.engine.EunoiaFriendStatus.ACCEPTED }
 
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                shape = RoundedCornerShape(20.dp),
+                color = Color.White.copy(alpha = 0.03f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.06f))
             ) {
-                Column(modifier = Modifier.padding(20.dp)) {
+                Column(modifier = Modifier.padding(16.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "FRIENDS & LISTEN TOGETHER",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = Color(0xFF10B981),
-                                    fontWeight = FontWeight.Bold,
-                                    fontSize = 11.sp,
-                                    letterSpacing = 1.4.sp
-                                )
+                        Text(
+                            text = "My Friends (${acceptedList.size})",
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Bold,
+                                color = TextStrong,
+                                fontSize = 16.sp
                             )
-                            Spacer(modifier = Modifier.height(2.dp))
-                            Text(
-                                text = "My Friends (${acceptedList.size})",
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextStrong,
-                                    fontSize = 17.sp
-                                )
-                            )
-                        }
+                        )
 
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Button(
-                                onClick = { isAddFriendDialogOpen = true },
-                                colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                shape = RoundedCornerShape(16.dp),
-                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp),
-                                modifier = Modifier.height(34.dp)
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Default.PersonAdd,
-                                    contentDescription = "Add Friend",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(15.dp)
-                                )
-                                Spacer(modifier = Modifier.width(4.dp))
-                                Text("Add", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                            }
+                        Button(
+                            onClick = { isAddFriendDialogOpen = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
+                            shape = RoundedCornerShape(14.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 4.dp),
+                            modifier = Modifier.height(32.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PersonAdd,
+                                contentDescription = "Add Friend",
+                                tint = Color.Black,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Add", color = Color.Black, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    // Up to MAX 2 Friend Contact Cards FIRST
-                    if (acceptedList.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .background(Color.White.copy(alpha = 0.03f), RoundedCornerShape(16.dp))
-                                .padding(16.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "No friends added yet. Tap '+ Add' to save a friend's code or tap 'View All' below!",
-                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp),
-                                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-                            )
-                        }
-                    } else {
+                    if (acceptedList.isNotEmpty()) {
+                        Spacer(modifier = Modifier.height(10.dp))
                         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             acceptedList.take(2).forEach { friend ->
                                 Surface(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable { onOpenFriendChat(friend) },
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = Color(0xFF14141F),
-                                    border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
+                                    shape = RoundedCornerShape(14.dp),
+                                    color = Color(0xFF14141F)
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                            .padding(horizontal = 12.dp, vertical = 8.dp),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
                                         Box(
                                             modifier = Modifier
-                                                .size(38.dp)
+                                                .size(36.dp)
                                                 .clip(CircleShape)
                                                 .background(Color(0xFF262636)),
                                             contentAlignment = Alignment.Center
@@ -456,13 +415,14 @@ fun ProfileScreen(
                                                     text = friend.displayName.take(1).uppercase(),
                                                     style = MaterialTheme.typography.titleMedium.copy(
                                                         color = Color.White,
-                                                        fontWeight = FontWeight.Bold
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
                                                     )
                                                 )
                                             }
                                         }
 
-                                        Spacer(modifier = Modifier.width(12.dp))
+                                        Spacer(modifier = Modifier.width(10.dp))
 
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
@@ -482,43 +442,39 @@ fun ProfileScreen(
                                             )
                                         }
 
-                                        // 💬 1st Option: Chat Button
                                         IconButton(
                                             onClick = { onOpenFriendChat(friend) },
-                                            modifier = Modifier.size(34.dp)
+                                            modifier = Modifier.size(32.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Default.ChatBubbleOutline,
                                                 contentDescription = "Chat",
                                                 tint = Color(0xFF10B981),
-                                                modifier = Modifier.size(18.dp)
+                                                modifier = Modifier.size(16.dp)
                                             )
                                         }
 
-                                        Spacer(modifier = Modifier.width(4.dp))
-
-                                        // ⚡ 2nd Option: Quick Invite Button
                                         Button(
                                             onClick = {
                                                 if (!isEunoiaEnabled) {
-                                                    Toast.makeText(context, "Please enable Eunoia in Profile Settings to send invites.", Toast.LENGTH_SHORT).show()
+                                                    Toast.makeText(context, "Please enable Eunoia to send invites.", Toast.LENGTH_SHORT).show()
                                                 } else {
                                                     onQuickInviteFriend(friend)
                                                 }
                                             },
                                             colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981)),
-                                            shape = RoundedCornerShape(12.dp),
-                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(34.dp)
+                                            shape = RoundedCornerShape(10.dp),
+                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 2.dp),
+                                            modifier = Modifier.height(30.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Rounded.Bolt,
-                                                contentDescription = "Quick Invite",
+                                                contentDescription = "Invite",
                                                 tint = Color.Black,
-                                                modifier = Modifier.size(14.dp)
+                                                modifier = Modifier.size(12.dp)
                                             )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text("Invite", color = Color.Black, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                            Spacer(modifier = Modifier.width(2.dp))
+                                            Text("Invite", color = Color.Black, fontSize = 10.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
                                 }
@@ -526,117 +482,71 @@ fun ProfileScreen(
                         }
                     }
 
-                    Spacer(modifier = Modifier.height(12.dp))
+                    Spacer(modifier = Modifier.height(10.dp))
 
-                    // "View All" Button (BELOW the max 2 contact cards)
-                    Button(
+                    TextButton(
                         onClick = onOpenAllFriends,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(48.dp),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF10B981).copy(alpha = 0.15f)),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
-                        contentPadding = PaddingValues(horizontal = 16.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = if (pendingCount > 0) "View All ($pendingCount Pending Request)" else "View All Friends",
-                                color = Color.White,
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(
-                                    text = "View All",
-                                    color = Color(0xFF10B981),
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                                    contentDescription = "View All",
-                                    tint = Color(0xFF10B981),
-                                    modifier = Modifier.size(16.dp)
-                                )
-                            }
-                        }
+                        Text(
+                            text = if (pendingCount > 0) "View All Friends ($pendingCount Pending)" else "View All Friends",
+                            color = Color(0xFF10B981),
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
         }
 
-        // Language Preferences Section (Hindi, Punjabi, English, South, Haryanvi, Bhojpuri, Gujarati, Bengali)
+        // Section: Language Preferences
         item {
             val allLangs = listOf("Hindi", "Punjabi", "English", "South Hits", "Haryanvi", "Bhojpuri", "Gujarati", "Bengali")
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(vertical = 6.dp),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-            ) {
-                Column(modifier = Modifier.padding(18.dp)) {
-                    Text(
-                        text = "MUSIC LANGUAGE PREFERENCES",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = Color.White,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            letterSpacing = 1.4.sp
-                        )
-                    )
-                    Text(
-                        text = "Select languages to show on Home Rails",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        ),
-                        modifier = Modifier.padding(top = 2.dp, bottom = 12.dp)
-                    )
+            Text(
+                text = "MUSIC LANGUAGES",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.4.sp
+                ),
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp, start = 4.dp)
+            )
 
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(allLangs) { lang ->
+                    val isSel = selectedLanguages.contains(lang)
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSel) Color.White else Color.White.copy(alpha = 0.08f),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable { onToggleLanguage(lang) }
                     ) {
-                        items(allLangs) { lang ->
-                            val isSel = selectedLanguages.contains(lang)
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isSel) Color.White else Color.White.copy(alpha = 0.08f),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { onToggleLanguage(lang) }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = lang,
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = if (isSel) Color.Black else Color.White,
-                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
-                                            fontSize = 12.sp
-                                        ),
-                                        maxLines = 1
-                                    )
-                                    if (isSel) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Remove",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                    }
-                                }
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = lang,
+                                style = MaterialTheme.typography.bodySmall.copy(
+                                    color = if (isSel) Color.Black else Color.White,
+                                    fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1
+                            )
+                            if (isSel) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Remove",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(13.dp)
+                                )
                             }
                         }
                     }
@@ -644,254 +554,130 @@ fun ProfileScreen(
             }
         }
 
-        if (userPlaylists.isEmpty()) {
-            item {
+        // Section: Video Download Quality
+        item {
+            Text(
+                text = "DOWNLOAD PREFERENCE",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.4.sp
+                ),
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp, start = 4.dp)
+            )
+
+            val qualityOptions = listOf("Ask each time", "1080p", "720p", "480p", "360p")
+            LazyRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                items(qualityOptions) { q ->
+                    val isSelected = downloadQualityPref == q
+                    Surface(
+                        shape = CircleShape,
+                        color = if (isSelected) Color.White else Color.White.copy(alpha = 0.08f),
+                        modifier = Modifier
+                            .clip(CircleShape)
+                            .clickable {
+                                downloadQualityPref = q
+                                prefs.edit().putString("video_download_quality", q).apply()
+                                Toast.makeText(context, "Download quality set to '$q'", Toast.LENGTH_SHORT).show()
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = q,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.Black else TextStrong,
+                                    fontSize = 12.sp
+                                ),
+                                maxLines = 1
+                            )
+                            if (isSelected) {
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Selected",
+                                    tint = Color.Black,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Section: Storage & Cache Control
+        item {
+            Text(
+                text = "DATA & CACHE CONTROL",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    fontWeight = FontWeight.Bold,
+                    color = TextMuted,
+                    fontSize = 11.sp,
+                    letterSpacing = 1.4.sp
+                ),
+                modifier = Modifier.padding(top = 18.dp, bottom = 6.dp, start = 4.dp)
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    color = Color.White.copy(alpha = 0.03f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            scope.launch {
+                                playerManager.repository.clearListeningHistory()
+                                Toast.makeText(context, "Listening history cleared", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                    color = Color.White.copy(alpha = 0.08f)
                 ) {
                     Box(
-                        modifier = Modifier.padding(vertical = 24.dp, horizontal = 16.dp),
+                        modifier = Modifier.padding(vertical = 12.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "Create custom playlists in your Library and they will appear right here.",
-                            style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted, fontSize = 13.sp)
+                            text = "Clear History",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = TextStrong,
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
+                            )
                         )
                     }
                 }
-            }
-        } else {
-            items(userPlaylists) { playlist ->
-                Card(
+
+                Surface(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(16.dp)),
-                    colors = CardDefaults.cardColors(containerColor = UiSurfaceElevated)
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable {
+                            Toast.makeText(context, "Suggestions data reset", Toast.LENGTH_SHORT).show()
+                        },
+                    color = Color(0x22F43F5E)
                 ) {
-                    Row(
-                        modifier = Modifier.padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                    Box(
+                        modifier = Modifier.padding(vertical = 12.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(48.dp)
-                                .clip(RoundedCornerShape(12.dp))
-                                .background(Color(0xFF6366F1)),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.PlaylistPlay,
-                                contentDescription = null,
-                                tint = Color.White,
-                                modifier = Modifier.size(26.dp)
+                        Text(
+                            text = "Reset Suggestions",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color(0xFFFCA5A5),
+                                fontWeight = FontWeight.SemiBold,
+                                fontSize = 12.sp
                             )
-                        }
-                        Spacer(modifier = Modifier.width(14.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = playlist.name,
-                                style = MaterialTheme.typography.titleMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = TextStrong,
-                                    fontSize = 15.sp
-                                )
-                            )
-                            Text(
-                                text = if (playlist.isShared) "Shared Playlist" else "Custom Playlist",
-                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp)
-                            )
-                        }
-                        IconButton(onClick = {
-                            scope.launch {
-                                val songs = playerManager.repository.getSongsForPlaylistSync(playlist.id)
-                                ShareUtils.sharePlaylist(context, playlist.name, songs, playlist.shareCode)
-                            }
-                        }) {
-                            Icon(
-                                imageVector = Icons.Default.Share,
-                                contentDescription = "Share",
-                                tint = TextMuted,
-                                modifier = Modifier.size(20.dp)
-                            )
-                        }
-                    }
-                }
-            }
-        }
-
-        // 3. Clear Data & Preferences Card
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "DATA & CACHE CONTROL",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = TextMuted,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            letterSpacing = 1.4.sp
                         )
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
-                    Text(
-                        text = "Manage storage & recommendations",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = TextStrong,
-                            fontSize = 17.sp
-                        )
-                    )
-                    Text(
-                        text = "Clear your listening history or reset your audio recommendation graph.",
-                        style = MaterialTheme.typography.bodySmall.copy(
-                            color = TextMuted,
-                            fontSize = 12.sp
-                        )
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable {
-                                    scope.launch {
-                                        playerManager.repository.clearListeningHistory()
-                                        Toast.makeText(context, "Listening history cleared", Toast.LENGTH_SHORT).show()
-                                    }
-                                },
-                            color = Color.White.copy(alpha = 0.08f)
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Clear history",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = TextStrong,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                )
-                            }
-                        }
-
-                        Surface(
-                            modifier = Modifier
-                                .weight(1f)
-                                .clip(RoundedCornerShape(16.dp))
-                                .clickable {
-                                    Toast.makeText(context, "Suggestions data reset", Toast.LENGTH_SHORT).show()
-                                },
-                            color = Color(0x22F43F5E)
-                        ) {
-                            Box(
-                                modifier = Modifier.padding(vertical = 12.dp),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Text(
-                                    text = "Clear suggestions",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = Color(0xFFFCA5A5),
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // 4. Video Download Quality Preference Card
-        item {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = Color.White.copy(alpha = 0.04f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
-            ) {
-                Column(modifier = Modifier.padding(20.dp)) {
-                    Text(
-                        text = "DOWNLOAD PREFERENCE",
-                        style = MaterialTheme.typography.labelSmall.copy(
-                            color = TextMuted,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
-                            letterSpacing = 1.4.sp
-                        )
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Video Download Quality",
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Bold,
-                            color = TextStrong,
-                            fontSize = 17.sp
-                        )
-                    )
-                    Text(
-                        text = "Preferred video resolution when downloading tracks with video.",
-                        style = MaterialTheme.typography.bodySmall.copy(color = TextMuted, fontSize = 12.sp)
-                    )
-
-                    Spacer(modifier = Modifier.height(14.dp))
-
-                    val qualityOptions = listOf("Ask each time", "1080p", "720p", "480p", "360p")
-                    LazyRow(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(qualityOptions) { q ->
-                            val isSelected = downloadQualityPref == q
-                            Surface(
-                                shape = CircleShape,
-                                color = if (isSelected) Color.White else Color.White.copy(alpha = 0.08f),
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable {
-                                        downloadQualityPref = q
-                                        prefs.edit().putString("video_download_quality", q).apply()
-                                        Toast.makeText(context, "Download quality set to '$q'", Toast.LENGTH_SHORT).show()
-                                    }
-                            ) {
-                                Row(
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Text(
-                                        text = q,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                            color = if (isSelected) Color.Black else TextStrong,
-                                            fontSize = 12.sp
-                                        ),
-                                        maxLines = 1
-                                    )
-                                    if (isSelected) {
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Icon(
-                                            imageVector = Icons.Default.Close,
-                                            contentDescription = "Selected",
-                                            tint = Color.Black,
-                                            modifier = Modifier.size(13.dp)
-                                        )
-                                    }
-                                }
-                            }
-                        }
                     }
                 }
             }

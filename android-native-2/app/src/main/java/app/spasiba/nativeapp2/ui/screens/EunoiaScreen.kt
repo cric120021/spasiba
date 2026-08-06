@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -47,7 +48,9 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.VpnKey
 import androidx.compose.material.icons.filled.OndemandVideo
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Lock
@@ -111,6 +114,7 @@ import app.spasiba.nativeapp2.player.NativePlayerManager
 import app.spasiba.nativeapp2.ui.theme.AccentTeal
 import app.spasiba.nativeapp2.ui.theme.TextMuted
 import app.spasiba.nativeapp2.ui.theme.TextStrong
+import app.spasiba.nativeapp2.ui.theme.UiSurfaceElevated
 import coil.compose.AsyncImage
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
@@ -366,40 +370,45 @@ fun EunoiaScreen(
         }
     }
 
-    Box(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(Color(0xFF030303))
+    Surface(
+        modifier = Modifier.fillMaxSize(),
+        color = Color.Black
     ) {
-        AsyncImage(
-            model = activeSong.thumbnail,
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier
-                .fillMaxSize()
-                .blur(100.dp)
-                .scale(1.3f)
-                .background(Color.Black.copy(alpha = 0.88f))
-        )
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            Color(0xFF030303).copy(alpha = 0.82f),
-                            Color(0xFF030303).copy(alpha = 0.94f),
-                            Color(0xFF030303)
+                .background(Color.Black)
+        ) {
+            AsyncImage(
+                model = activeSong.thumbnail,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .blur(100.dp)
+                    .scale(1.3f)
+                    .background(Color.Black.copy(alpha = 0.88f))
+            )
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.Black.copy(alpha = 0.82f),
+                                Color.Black.copy(alpha = 0.94f),
+                                Color.Black
+                            )
                         )
                     )
-                )
-        )
+            )
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 16.dp, vertical = 6.dp)
-        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .padding(horizontal = 16.dp, vertical = 6.dp)
+            ) {
             // TOP AREA: Header & Partner Display Name
             Row(
                 modifier = Modifier
@@ -684,48 +693,95 @@ fun EunoiaScreen(
 
                 Spacer(modifier = Modifier.height(6.dp))
 
-                // Integrated Text Input Bar
-                Surface(
+                // Premium Pill Text Input Bar (Exact Spasiba Design System like Search Screen)
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(46.dp),
-                    color = Color(0xFF181822),
-                    shape = CircleShape,
-                    border = BorderStroke(1.dp, Color.White.copy(alpha = 0.15f))
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Row(
+                    Surface(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .padding(horizontal = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .weight(1f)
+                            .height(54.dp),
+                        shape = RoundedCornerShape(27.dp),
+                        color = UiSurfaceElevated,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
                     ) {
-                        OutlinedTextField(
-                            value = chatInputValue,
-                            onValueChange = { chatInputValue = it },
-                            placeholder = { Text("Write a message...", color = TextMuted, fontSize = 13.sp) },
-                            modifier = Modifier.weight(1f),
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White,
-                                focusedBorderColor = Color.Transparent,
-                                unfocusedBorderColor = Color.Transparent,
-                                focusedContainerColor = Color.Transparent,
-                                unfocusedContainerColor = Color.Transparent
-                            ),
-                            keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
-                                imeAction = androidx.compose.ui.text.input.ImeAction.Send
-                            ),
-                            keyboardActions = androidx.compose.foundation.text.KeyboardActions(
-                                onSend = {
-                                    if (chatInputValue.isNotBlank()) {
-                                        sessionManager.sendMessage(chatInputValue)
-                                        chatInputValue = ""
-                                    }
-                                }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Tune,
+                                contentDescription = null,
+                                tint = if (chatInputValue.isNotBlank()) Color.White else TextMuted,
+                                modifier = Modifier.size(22.dp)
                             )
-                        )
 
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(),
+                                contentAlignment = Alignment.CenterStart
+                            ) {
+                                if (chatInputValue.isEmpty()) {
+                                    Text(
+                                        text = "Write a message in room...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted, fontSize = 15.sp)
+                                    )
+                                }
+                                androidx.compose.foundation.text.BasicTextField(
+                                    value = chatInputValue,
+                                    onValueChange = { chatInputValue = it },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    singleLine = true,
+                                    maxLines = 1,
+                                    cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                                    textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                        color = TextStrong,
+                                        fontSize = 15.sp,
+                                        lineHeight = 20.sp
+                                    ),
+                                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                        imeAction = androidx.compose.ui.text.input.ImeAction.Send
+                                    ),
+                                    keyboardActions = androidx.compose.foundation.text.KeyboardActions(
+                                        onSend = {
+                                            if (chatInputValue.isNotBlank()) {
+                                                sessionManager.sendMessage(chatInputValue)
+                                                chatInputValue = ""
+                                            }
+                                        }
+                                    )
+                                )
+                            }
+                            if (chatInputValue.isNotEmpty()) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = TextMuted,
+                                    modifier = Modifier
+                                        .size(20.dp)
+                                        .clickable { chatInputValue = "" }
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(10.dp))
+
+                    val isSendActive = chatInputValue.isNotBlank()
+                    Surface(
+                        modifier = Modifier.size(52.dp),
+                        shape = CircleShape,
+                        color = UiSurfaceElevated,
+                        border = BorderStroke(1.dp, if (isSendActive) Color.White.copy(alpha = 0.4f) else Color.White.copy(alpha = 0.14f))
+                    ) {
                         IconButton(
                             onClick = {
                                 if (chatInputValue.isNotBlank()) {
@@ -733,16 +789,14 @@ fun EunoiaScreen(
                                     chatInputValue = ""
                                 }
                             },
-                            modifier = Modifier
-                                .size(34.dp)
-                                .clip(CircleShape)
-                                .background(Color.White)
+                            enabled = isSendActive,
+                            modifier = Modifier.fillMaxSize()
                         ) {
                             Icon(
                                 imageVector = Icons.AutoMirrored.Filled.Send,
                                 contentDescription = "Send",
-                                tint = Color.Black,
-                                modifier = Modifier.size(16.dp)
+                                tint = if (isSendActive) Color.White else TextMuted.copy(alpha = 0.5f),
+                                modifier = Modifier.size(20.dp)
                             )
                         }
                     }
@@ -766,18 +820,30 @@ fun EunoiaScreen(
 
             AlertDialog(
                 onDismissRequest = { isInviteDialogOpen = false },
-                title = { Text("Pair with Friend", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold) },
+                shape = RoundedCornerShape(24.dp),
+                title = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.PersonAdd,
+                            contentDescription = null,
+                            tint = Color.White,
+                            modifier = Modifier.size(22.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Pair with Friend", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                    }
+                },
                 text = {
                     Column {
                         if (savedFriends.isNotEmpty()) {
-                            Text("Quick Select Saved Friend:", color = Color(0xFF10B981), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                            Text("Quick Select Saved Friend:", color = TextMuted, fontSize = 12.sp, fontWeight = FontWeight.Bold)
                             Spacer(modifier = Modifier.height(6.dp))
                             LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                                 items(savedFriends) { friend ->
                                     Surface(
                                         shape = RoundedCornerShape(16.dp),
-                                        color = Color(0xFF242436),
-                                        border = BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
+                                        color = UiSurfaceElevated,
+                                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
                                         modifier = Modifier.clickable {
                                             inviteInputId = friend.friendId
                                             inviteInputName = friend.name
@@ -792,52 +858,104 @@ fun EunoiaScreen(
                                     }
                                 }
                             }
-                            Spacer(modifier = Modifier.height(10.dp))
+                            Spacer(modifier = Modifier.height(12.dp))
                         }
 
                         Text("Enter partner's Device ID (e.g. SPASIBA-XXXXXX):", color = TextMuted, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = inviteInputId,
-                            onValueChange = { inviteInputId = it },
-                            placeholder = { Text("SPASIBA-12D584", color = TextMuted) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
-                        Spacer(modifier = Modifier.height(10.dp))
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = UiSurfaceElevated,
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (inviteInputId.isEmpty()) {
+                                        Text("SPASIBA-12D584", style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted.copy(alpha = 0.6f), fontSize = 15.sp))
+                                    }
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = inviteInputId,
+                                        onValueChange = { inviteInputId = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextStrong, fontSize = 15.sp)
+                                    )
+                                }
+                                if (inviteInputId.isNotEmpty()) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextMuted, modifier = Modifier.size(18.dp).clickable { inviteInputId = "" })
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(12.dp))
                         Text("Friend Display Name (Optional):", color = TextMuted, fontSize = 13.sp)
                         Spacer(modifier = Modifier.height(6.dp))
-                        OutlinedTextField(
-                            value = inviteInputName,
-                            onValueChange = { inviteInputName = it },
-                            placeholder = { Text("e.g. Jigar", color = TextMuted) },
-                            singleLine = true,
-                            colors = OutlinedTextFieldDefaults.colors(
-                                focusedBorderColor = Color.White,
-                                unfocusedBorderColor = Color.White.copy(alpha = 0.2f),
-                                focusedTextColor = Color.White,
-                                unfocusedTextColor = Color.White
-                            ),
-                            modifier = Modifier.fillMaxWidth()
-                        )
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(52.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            color = UiSurfaceElevated,
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.14f))
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .padding(horizontal = 14.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .fillMaxHeight(),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (inviteInputName.isEmpty()) {
+                                        Text("e.g. Jigar", style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted.copy(alpha = 0.6f), fontSize = 15.sp))
+                                    }
+                                    androidx.compose.foundation.text.BasicTextField(
+                                        value = inviteInputName,
+                                        onValueChange = { inviteInputName = it },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        singleLine = true,
+                                        cursorBrush = androidx.compose.ui.graphics.SolidColor(Color.White),
+                                        textStyle = MaterialTheme.typography.bodyMedium.copy(color = TextStrong, fontSize = 15.sp)
+                                    )
+                                }
+                                if (inviteInputName.isNotEmpty()) {
+                                    Icon(Icons.Default.Close, contentDescription = "Clear", tint = TextMuted, modifier = Modifier.size(18.dp).clickable { inviteInputName = "" })
+                                }
+                            }
+                        }
                     }
                 },
                 confirmButton = {
-                    TextButton(
-                        onClick = {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = UiSurfaceElevated,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.2f)),
+                        modifier = Modifier.clickable {
                             if (inviteInputId.isNotBlank()) {
                                 sessionManager.sendInvite(inviteInputId, inviteInputName, playerManager)
                                 isInviteDialogOpen = false
                             }
                         }
                     ) {
-                        Text("Send Invite", color = Color.White, fontWeight = FontWeight.Bold)
+                        Text("Send Invite", color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp))
                     }
                 },
                 dismissButton = {
@@ -845,7 +963,7 @@ fun EunoiaScreen(
                         Text("Cancel", color = TextMuted)
                     }
                 },
-                containerColor = Color(0xFF14141E)
+                containerColor = UiSurfaceElevated
             )
         }
 
@@ -973,4 +1091,5 @@ fun EunoiaScreen(
             }
         }
     }
+}
 }

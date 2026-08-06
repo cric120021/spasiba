@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bookmark
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.runtime.collectAsState
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.MoreVert
@@ -99,6 +101,7 @@ fun HomeScreen(
     onSearchClick: () -> Unit = {},
     onLibraryClick: () -> Unit = {},
     onProfileClick: () -> Unit = {},
+    onNotificationsClick: () -> Unit = {},
     onSongClick: (Song, List<Song>, Int) -> Unit,
     onLikeClick: (String) -> Unit,
     onOptionsClick: (Song) -> Unit = {},
@@ -321,11 +324,61 @@ fun HomeScreen(
                     val userPrefs = remember { currentContext.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
                     val userPhotoUri = remember { userPrefs.getString("profile_photo_uri", null) }
 
+                    // Notification Bell Button with Red Unread Badge
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clickable(onClick = onNotificationsClick),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .clip(CircleShape)
+                                .background(Color.White.copy(alpha = 0.08f)),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = androidx.compose.material.icons.Icons.Default.Notifications,
+                                contentDescription = "Notifications",
+                                tint = Color.White,
+                                modifier = Modifier.size(24.dp)
+                            )
+                        }
+
+                        val friendEventTimestamp by app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(currentContext).friendEventFlow.collectAsState()
+                        androidx.compose.runtime.LaunchedEffect(friendEventTimestamp) {
+                            app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(currentContext)
+                        }
+                        val unreadCount = app.spasiba.nativeapp2.ui.screens.NotificationState.unreadCount.intValue
+                        if (unreadCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(x = 2.dp, y = (-2).dp)
+                                    .background(Color(0xFFEF4444), shape = CircleShape)
+                                    .padding(horizontal = 5.dp, vertical = 2.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "$unreadCount",
+                                    style = androidx.compose.ui.text.TextStyle(
+                                        color = Color.White,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
                     // Top Header Action: Pure Borderless Profile Avatar Button
                     Box(
                         contentAlignment = Alignment.Center,
                         modifier = Modifier
-                            .size(46.dp)
+                            .size(44.dp)
                             .clip(CircleShape)
                             .clickable(onClick = onProfileClick)
                     ) {
@@ -349,7 +402,7 @@ fun HomeScreen(
                                     imageVector = Icons.Default.Person,
                                     contentDescription = "Profile",
                                     tint = Color.White,
-                                    modifier = Modifier.size(28.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
                         }

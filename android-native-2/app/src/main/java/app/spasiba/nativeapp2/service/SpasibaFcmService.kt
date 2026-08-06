@@ -42,15 +42,41 @@ class SpasibaFcmService : FirebaseMessagingService() {
 
             // Notify in-app session manager with real sessionId
             EunoiaSessionManager.getInstance(this).receiveSimulatedInvite(inviterDeviceId, sessionId)
+            app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(this)
 
             // Display high priority notification with Accept / Reject buttons
             showInviteNotification(sessionId, inviterDeviceId, inviterName, songTitle)
+        } else if (messageType == "FRIEND_REQUEST") {
+            val senderId = data["senderId"] ?: data["fromId"] ?: data["inviterDeviceId"] ?: ""
+            val senderName = data["senderName"] ?: data["inviterName"] ?: "Friend (${senderId.takeLast(6)})"
+            val photoUri = data["photoUri"] ?: data["avatarUrl"]
+            if (senderId.isNotBlank()) {
+                Log.d("SpasibaFcmService", "FCM FRIEND_REQUEST received from senderId=$senderId ($senderName)")
+                app.spasiba.nativeapp2.data.engine.EunoiaFriendManager.getInstance(this).addOrSendFriendRequest(
+                    friendId = senderId,
+                    name = senderName,
+                    isOutgoing = false,
+                    photoUri = photoUri
+                )
+                EunoiaSessionManager.getInstance(this).friendEventFlow.value = System.currentTimeMillis()
+                app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(this)
+            }
+        } else if (messageType == "FRIEND_ACCEPT") {
+            val senderId = data["senderId"] ?: data["fromId"] ?: ""
+            val senderName = data["senderName"] ?: data["inviterName"]
+            if (senderId.isNotBlank()) {
+                Log.d("SpasibaFcmService", "FCM FRIEND_ACCEPT received from senderId=$senderId")
+                app.spasiba.nativeapp2.data.engine.EunoiaFriendManager.getInstance(this).acceptFriendRequest(senderId, newName = senderName)
+                EunoiaSessionManager.getInstance(this).friendEventFlow.value = System.currentTimeMillis()
+                app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(this)
+            }
         } else if (messageType == "FRIEND_REMOVE") {
             val senderId = data["senderId"] ?: data["fromId"] ?: ""
             if (senderId.isNotBlank()) {
                 Log.d("SpasibaFcmService", "Silent FCM FRIEND_REMOVE received for senderId=$senderId")
                 app.spasiba.nativeapp2.data.engine.EunoiaFriendManager.getInstance(this).removeFriend(senderId)
                 EunoiaSessionManager.getInstance(this).friendEventFlow.value = System.currentTimeMillis()
+                app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(this)
             }
         }
     }

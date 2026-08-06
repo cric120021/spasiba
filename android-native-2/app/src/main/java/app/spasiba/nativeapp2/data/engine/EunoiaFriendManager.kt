@@ -111,6 +111,18 @@ class EunoiaFriendManager private constructor(private val context: Context) {
         current.removeAll { it.friendId.equals(displayId, ignoreCase = true) }
         current.add(0, EunoiaFriend(friendId = displayId, name = trimmedName, status = status, photoUri = finalPhoto))
 
+        if (!isOutgoing) {
+            try {
+                val userPrefs = context.getSharedPreferences("spasiba_user_prefs", Context.MODE_PRIVATE)
+                val currentDismissed = userPrefs.getStringSet("dismissed_notification_ids", emptySet())?.toMutableSet() ?: mutableSetOf()
+                if (currentDismissed.remove(displayId)) {
+                    userPrefs.edit().putStringSet("dismissed_notification_ids", currentDismissed).apply()
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
+        }
+
         saveFriends(current)
         return true
     }
@@ -181,6 +193,12 @@ class EunoiaFriendManager private constructor(private val context: Context) {
             array.put(obj)
         }
         prefs.edit().putString("friends_list_v2", array.toString()).apply()
+        try {
+            EunoiaSessionManager.getInstance(context).friendEventFlow.value = System.currentTimeMillis()
+            app.spasiba.nativeapp2.ui.screens.NotificationState.updateCount(context)
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     // --- 7-Day Chat History Persistence ---

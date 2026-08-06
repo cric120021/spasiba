@@ -1,15 +1,11 @@
 package app.spasiba.nativeapp2.ui.components
 
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.InfiniteRepeatableSpec
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
-import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -25,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.FavoriteBorder
 import androidx.compose.material.icons.filled.MoreVert
@@ -34,7 +31,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
@@ -56,16 +52,18 @@ import coil.compose.AsyncImage
 import kotlinx.coroutines.launch
 import kotlin.math.roundToInt
 
-
-
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 fun SongTile(
     song: Song,
     isPlaying: Boolean = false,
     isLiked: Boolean = false,
+    isDownloaded: Boolean = false,
+    enableSwipe: Boolean = false,
     onSongClick: () -> Unit,
     onLikeClick: () -> Unit = {},
     onOptionsClick: () -> Unit = {},
+    onLongClick: (() -> Unit)? = null,
     onSwipeToQueue: () -> Unit = {}
 ) {
     val offsetX = remember { Animatable(0f) }
@@ -74,71 +72,83 @@ fun SongTile(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 2.dp)
+            .padding(horizontal = 0.dp, vertical = 4.dp)
             .clip(RoundedCornerShape(14.dp))
     ) {
-        // Swipe Background Action Indicators
-        Row(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(
-                    if (offsetX.value > 0) AccentTeal.copy(alpha = 0.25f)
-                    else Color(0xFF10B981).copy(alpha = 0.25f)
-                )
-                .padding(horizontal = 20.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            if (offsetX.value > 0) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
-                    contentDescription = "Like Track",
-                    tint = AccentTeal,
-                    modifier = Modifier.size(24.dp)
-                )
-                Spacer(modifier = Modifier.weight(1f))
-            } else if (offsetX.value < 0) {
-                Spacer(modifier = Modifier.weight(1f))
-                Icon(
-                    imageVector = Icons.Default.QueuePlayNext,
-                    contentDescription = "Queue Next",
-                    tint = Color(0xFF10B981),
-                    modifier = Modifier.size(24.dp)
-                )
+        // Swipe Background Action Indicators (Only when enableSwipe is true)
+        if (enableSwipe) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        if (offsetX.value > 0) AccentTeal.copy(alpha = 0.25f)
+                        else Color(0xFF10B981).copy(alpha = 0.25f)
+                    )
+                    .padding(horizontal = 20.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                if (offsetX.value > 0) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "Like Track",
+                        tint = AccentTeal,
+                        modifier = Modifier.size(24.dp)
+                    )
+                    Spacer(modifier = Modifier.weight(1f))
+                } else if (offsetX.value < 0) {
+                    Spacer(modifier = Modifier.weight(1f))
+                    Icon(
+                        imageVector = Icons.Default.QueuePlayNext,
+                        contentDescription = "Queue Next",
+                        tint = Color(0xFF10B981),
+                        modifier = Modifier.size(24.dp)
+                    )
+                }
             }
         }
 
         // Foreground Song Content Tile
         Row(
             modifier = Modifier
-                .offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                .then(
+                    if (enableSwipe) Modifier.offset { IntOffset(offsetX.value.roundToInt(), 0) }
+                    else Modifier
+                )
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(14.dp))
                 .background(
                     if (isPlaying) Color.White.copy(alpha = 0.12f)
                     else Color.Transparent
                 )
-                .clickable { onSongClick() }
-                .pointerInput(Unit) {
-                    detectHorizontalDragGestures(
-                        onDragEnd = {
-                            scope.launch {
-                                if (offsetX.value > 120f) {
-                                    onLikeClick()
-                                } else if (offsetX.value < -120f) {
-                                    onSwipeToQueue()
+                .combinedClickable(
+                    onClick = { onSongClick() },
+                    onLongClick = { onLongClick?.invoke() }
+                )
+                .then(
+                    if (enableSwipe) {
+                        Modifier.pointerInput(Unit) {
+                            detectHorizontalDragGestures(
+                                onDragEnd = {
+                                    scope.launch {
+                                        if (offsetX.value > 120f) {
+                                            onLikeClick()
+                                        } else if (offsetX.value < -120f) {
+                                            onSwipeToQueue()
+                                        }
+                                        offsetX.animateTo(0f, animationSpec = tween(250))
+                                    }
+                                },
+                                onHorizontalDrag = { _, dragAmount ->
+                                    scope.launch {
+                                        val newOffset = (offsetX.value + dragAmount).coerceIn(-180f, 180f)
+                                        offsetX.snapTo(newOffset)
+                                    }
                                 }
-                                offsetX.animateTo(0f, animationSpec = tween(250))
-                            }
-                        },
-                        onHorizontalDrag = { _, dragAmount ->
-                            scope.launch {
-                                val newOffset = (offsetX.value + dragAmount).coerceIn(-180f, 180f)
-                                offsetX.snapTo(newOffset)
-                            }
+                            )
                         }
-                    )
-                }
-                .padding(horizontal = 8.dp, vertical = 6.dp),
+                    } else Modifier
+                )
+                .padding(horizontal = 6.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             AsyncImage(
@@ -146,11 +156,11 @@ fun SongTile(
                 contentDescription = song.title,
                 contentScale = ContentScale.Crop,
                 modifier = Modifier
-                    .size(48.dp)
-                    .clip(RoundedCornerShape(10.dp))
+                    .size(54.dp)
+                    .clip(RoundedCornerShape(8.dp))
             )
 
-            Spacer(modifier = Modifier.width(12.dp))
+            Spacer(modifier = Modifier.width(16.dp))
 
             Column(modifier = Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
@@ -161,8 +171,8 @@ fun SongTile(
                     Text(
                         text = song.title,
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontWeight = FontWeight.SemiBold,
-                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 15.sp,
                             color = if (isPlaying) AccentTeal else TextStrong
                         ),
                         maxLines = 1,
@@ -173,14 +183,24 @@ fun SongTile(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
+                    if (isDownloaded) {
+                        Icon(
+                            imageVector = Icons.Default.CheckCircle,
+                            contentDescription = "Downloaded",
+                            tint = Color.White.copy(alpha = 0.85f),
+                            modifier = Modifier.size(13.dp)
+                        )
+                    }
                     if (song.title.contains("explicit", ignoreCase = true)) {
                         SongBadge(text = "E", color = Color(0x33FF0055), textColor = Color(0xFFFF2A6D))
                     }
                     if (song.title.contains("official", ignoreCase = true) || song.views > 1_000_000L) {
                         SongBadge(text = "HD", color = Color(0x3310B981), textColor = Color(0xFF10B981))
                     }
+                    val displayAuthor = if (song.author.isNotBlank() && !song.author.equals("Artist", ignoreCase = true) && !song.author.equals("YouTube Music", ignoreCase = true)) song.author else "Spasiba Music"
+                    val durationInfo = if (song.durationSeconds > 0) " • ${song.durationFormatted}" else ""
                     Text(
-                        text = "${song.author} • ${song.durationFormatted}",
+                        text = "$displayAuthor$durationInfo",
                         style = MaterialTheme.typography.bodySmall.copy(
                             color = TextMuted,
                             fontSize = 12.sp

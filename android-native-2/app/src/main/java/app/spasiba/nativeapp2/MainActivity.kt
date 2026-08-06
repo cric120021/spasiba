@@ -39,13 +39,13 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
-            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.BLACK),
-            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.BLACK)
+            statusBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = androidx.activity.SystemBarStyle.dark(android.graphics.Color.TRANSPARENT)
         )
         @Suppress("DEPRECATION")
-        window.statusBarColor = android.graphics.Color.BLACK
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
         @Suppress("DEPRECATION")
-        window.navigationBarColor = android.graphics.Color.BLACK
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
         val app = application as SpasibaApplication
         val playerManager = app.playerManager

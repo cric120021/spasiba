@@ -63,6 +63,12 @@ class SearchHistoryManager private constructor(context: Context) {
         prefs.edit().putString("text_queries", gson.toJson(queries)).apply()
     }
 
+    fun deletePlayedSong(songId: String) {
+        val current = getPlayedSongs().toMutableList()
+        current.removeAll { it.id == songId }
+        prefs.edit().putString("played_songs", gson.toJson(current)).apply()
+    }
+
     fun clearPlayedSongs() {
         prefs.edit().remove("played_songs").apply()
     }
@@ -80,8 +86,10 @@ class SearchHistoryManager private constructor(context: Context) {
         val cleanName = artistName.trim()
         if (cleanName.isBlank()) return
         val current = getRecentArtists().toMutableList()
+        val existing = current.find { it.artistName.equals(cleanName, ignoreCase = true) }
+        val finalAvatar = avatarUrl.takeIf { !it.isNullOrBlank() } ?: existing?.avatarUrl
         current.removeAll { it.artistName.equals(cleanName, ignoreCase = true) }
-        current.add(0, RecentArtistItem(cleanName, avatarUrl, subtitle))
+        current.add(0, RecentArtistItem(cleanName, finalAvatar, subtitle))
         val updated = current.take(10)
         prefs.edit().putString("recent_artists", gson.toJson(updated)).apply()
 
