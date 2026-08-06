@@ -15,6 +15,7 @@ import app.spasiba.nativeapp2.data.engine.FcmTokenManager
 import app.spasiba.nativeapp2.service.SpasibaMediaService
 import app.spasiba.nativeapp2.ui.SpasibaNativeAppShell
 import app.spasiba.nativeapp2.ui.theme.SpasibaNative2Theme
+import app.spasiba.nativeapp2.utils.NavigationUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 
 import android.net.Uri
@@ -52,6 +53,9 @@ class MainActivity : ComponentActivity() {
 
         // Initialize FCM token registration
         FcmTokenManager.getInstance(this).fetchAndRegisterFcmToken()
+
+        val navType = NavigationUtils.getSystemNavigationType(this)
+        Log.d("MainActivity", "System Navigation Type detected on app opening: $navType")
 
         // Check mandatory permission on start
         checkMandatoryPermission()

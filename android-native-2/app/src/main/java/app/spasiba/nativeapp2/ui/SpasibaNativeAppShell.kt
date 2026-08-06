@@ -52,6 +52,8 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.navigationBarsPadding
+import app.spasiba.nativeapp2.utils.getCustomBottomNavigationPadding
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -258,6 +260,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(Color.Black)
+                            .padding(bottom = getCustomBottomNavigationPadding())
                     ) {
                         // 1. Mini Player attached directly above Bottom Navigation (only when a song is active)
                         if (activeSong != null) {
