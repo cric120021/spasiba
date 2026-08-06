@@ -54,6 +54,8 @@ import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.navigationBarsPadding
 import app.spasiba.nativeapp2.utils.getCustomBottomNavigationPadding
+import app.spasiba.nativeapp2.utils.rememberNavigationType
+import app.spasiba.nativeapp2.utils.AppNavigationType
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
@@ -279,13 +281,16 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                             )
                         }
 
+                            val navType = rememberNavigationType()
+                            val isGestureNav = navType == AppNavigationType.GESTURE_NAVIGATION
+
                             // 2. YT Music Official Compact Bottom Navigation Bar (Elevated Text & Icons)
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .height(58.dp)
+                                    .height(if (isGestureNav) 58.dp else 48.dp)
                                     .background(Color.Black)
-                                    .padding(top = 4.dp, bottom = 4.dp),
+                                    .padding(top = if (isGestureNav) 4.dp else 2.dp, bottom = if (isGestureNav) 4.dp else 2.dp),
                                 horizontalArrangement = Arrangement.SpaceAround,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
@@ -312,7 +317,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                                 }
                                                 navigateTo(screenId)
                                             }
-                                            .offset(y = (-6).dp),
+                                            .then(if (isGestureNav) Modifier.offset(y = (-6).dp) else Modifier),
                                         horizontalAlignment = Alignment.CenterHorizontally,
                                         verticalArrangement = Arrangement.Center
                                     ) {
@@ -320,7 +325,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                             imageVector = activeIcon,
                                             contentDescription = label,
                                             tint = if (isSelected) Color.White else Color(0xFFAAAAAA),
-                                            modifier = Modifier.size(28.dp)
+                                            modifier = Modifier.size(if (isGestureNav) 28.dp else 24.dp)
                                         )
                                         Spacer(modifier = Modifier.height(1.dp))
                                         Text(
@@ -328,9 +333,9 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                             style = MaterialTheme.typography.labelSmall.copy(
                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                                 color = if (isSelected) Color.White else Color(0xFFAAAAAA),
-                                                fontSize = 11.sp
+                                                fontSize = if (isGestureNav) 11.sp else 10.5.sp
                                             ),
-                                            modifier = Modifier.offset(y = (-1).dp)
+                                            modifier = if (isGestureNav) Modifier.offset(y = (-1).dp) else Modifier
                                         )
                                     }
                                 }

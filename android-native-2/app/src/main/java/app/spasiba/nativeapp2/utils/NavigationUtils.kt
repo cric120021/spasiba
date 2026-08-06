@@ -56,11 +56,6 @@ fun rememberNavigationType(): AppNavigationType {
     }
 }
 
-/**
- * Custom Bottom Navigation Padding Rule:
- * - If Gesture/Swipe navigation: exactly 3.dp
- * - Else (3-Button/2-Button navigation): exact system 3-button panel height
- */
 @Composable
 fun getCustomBottomNavigationPadding(): Dp {
     val context = LocalContext.current
