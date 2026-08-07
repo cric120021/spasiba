@@ -596,6 +596,7 @@ class NativePlayerManager(private val context: Context) {
     }
 
     var eunoiaTrackChangeListener: ((Song) -> Unit)? = null
+    var eunoiaPlaybackActionListener: ((action: String, extraPayload: org.json.JSONObject) -> Unit)? = null
 
     fun playSong(song: Song) {
         Log.d(TAG, "playSong requested for title='${song.title}' id='${song.id}'")
@@ -747,6 +748,10 @@ class NativePlayerManager(private val context: Context) {
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
             _isPlaying.value = false
+            eunoiaPlaybackActionListener?.invoke("pause", org.json.JSONObject().apply {
+                put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
+                put("isPlaying", false)
+            })
         } else {
             val song = _currentSong.value
             if (song != null) {
@@ -764,6 +769,10 @@ class NativePlayerManager(private val context: Context) {
                     playQueue(fallbacks, 0)
                 }
             }
+            eunoiaPlaybackActionListener?.invoke("play", org.json.JSONObject().apply {
+                put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
+                put("isPlaying", true)
+            })
         }
     }
 
@@ -783,6 +792,10 @@ class NativePlayerManager(private val context: Context) {
         val safePos = positionMs.coerceAtLeast(0L)
         exoPlayer.seekTo(safePos)
         _positionMs.value = safePos
+        eunoiaPlaybackActionListener?.invoke("seek", org.json.JSONObject().apply {
+            put("positionMs", safePos)
+            put("isPlaying", _isPlaying.value)
+        })
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -857,7 +870,11 @@ class NativePlayerManager(private val context: Context) {
                         seekTo(0L)
                         exoPlayer.play()
                     } else {
-                        playNext()
+                        val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                        val isEunoiaConnected = sessionManager.sessionStatus.value == app.spasiba.nativeapp2.data.engine.EunoiaSessionStatus.CONNECTED
+                        if (!isEunoiaConnected || sessionManager.isLeader.value) {
+                            playNext()
+                        }
                     }
                 }
                 Player.STATE_IDLE -> Unit

@@ -86,6 +86,10 @@ fun FriendProfileDetailsScreen(
         mutableStateOf(friendManager.getChatHistory(friendId, days = 7))
     }
 
+    val matchedFriend = remember(friendEventTime, friendId) {
+        friendManager.getFriends().find { it.friendId.equals(friendId.trim(), ignoreCase = true) }
+    }
+
     val isStillFriend = remember(friendEventTime, friendId) {
         friendManager.getAcceptedFriends().any { it.friendId.equals(friendId.trim(), ignoreCase = true) }
     }
@@ -114,7 +118,7 @@ fun FriendProfileDetailsScreen(
 
     Surface(
         modifier = Modifier.fillMaxSize(),
-        color = Color(0xFF0D0D14)
+        color = Color.Black
     ) {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -159,17 +163,28 @@ fun FriendProfileDetailsScreen(
                         modifier = Modifier
                             .size(110.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF10B981).copy(alpha = 0.15f)),
+                            .background(Color(0xFF22222E)),
                         contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = friendName.take(1).uppercase(),
-                            style = MaterialTheme.typography.headlineLarge.copy(
-                                color = Color(0xFF10B981),
-                                fontWeight = FontWeight.ExtraBold,
-                                fontSize = 46.sp
+                        if (!matchedFriend?.photoUri.isNullOrBlank()) {
+                            coil.compose.AsyncImage(
+                                model = matchedFriend.photoUri,
+                                contentDescription = friendName,
+                                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
                             )
-                        )
+                        } else {
+                            Text(
+                                text = friendName.take(1).uppercase(),
+                                style = MaterialTheme.typography.headlineLarge.copy(
+                                    color = Color.White,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 46.sp
+                                )
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -189,7 +204,7 @@ fun FriendProfileDetailsScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         modifier = Modifier
                             .clip(RoundedCornerShape(12.dp))
-                            .background(Color.White.copy(alpha = 0.06f))
+                            .background(Color.White.copy(alpha = 0.08f))
                             .clickable {
                                 clipboardManager.setText(AnnotatedString(friendId))
                                 Toast.makeText(context, "Copied ID: $friendId", Toast.LENGTH_SHORT).show()
@@ -199,7 +214,7 @@ fun FriendProfileDetailsScreen(
                         Text(
                             text = friendId,
                             style = MaterialTheme.typography.bodyMedium.copy(
-                                color = Color(0xFF10B981),
+                                color = Color(0xFFCCCCCC),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp
                             )
@@ -208,7 +223,7 @@ fun FriendProfileDetailsScreen(
                         Icon(
                             imageVector = Icons.Default.ContentCopy,
                             contentDescription = "Copy ID",
-                            tint = Color(0xFF10B981),
+                            tint = Color(0xFFCCCCCC),
                             modifier = Modifier.size(14.dp)
                         )
                     }
@@ -227,14 +242,14 @@ fun FriendProfileDetailsScreen(
                     Surface(
                         onClick = onOpenChat,
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF181826),
+                        color = Color(0xFF1E1E28),
                         modifier = Modifier.weight(1f).padding(end = 6.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(vertical = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Chat", tint = Color(0xFF10B981))
+                            Icon(Icons.Default.ChatBubbleOutline, contentDescription = "Chat", tint = Color.White)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("Chat", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
@@ -247,14 +262,14 @@ fun FriendProfileDetailsScreen(
                             onQuickInvite(friendObj)
                         },
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF181826),
+                        color = Color(0xFF1E1E28),
                         modifier = Modifier.weight(1f).padding(horizontal = 3.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(vertical = 12.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(Icons.Rounded.Bolt, contentDescription = "Invite", tint = Color(0xFF10B981))
+                            Icon(Icons.Rounded.Bolt, contentDescription = "Invite", tint = Color.White)
                             Spacer(modifier = Modifier.height(4.dp))
                             Text("Invite", color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                         }
@@ -267,7 +282,7 @@ fun FriendProfileDetailsScreen(
                             Toast.makeText(context, if (isMuted) "Muted notifications for $friendName" else "Unmuted notifications", Toast.LENGTH_SHORT).show()
                         },
                         shape = RoundedCornerShape(16.dp),
-                        color = Color(0xFF181826),
+                        color = Color(0xFF1E1E28),
                         modifier = Modifier.weight(1f).padding(start = 6.dp)
                     ) {
                         Column(
@@ -294,14 +309,14 @@ fun FriendProfileDetailsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Text(
                             text = "SHARED MEDIA, LINKS & DOCUMENTS",
                             style = MaterialTheme.typography.labelSmall.copy(
-                                color = Color(0xFF10B981),
+                                color = Color(0xFFA0A0A0),
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
                                 letterSpacing = 1.2.sp
@@ -358,7 +373,7 @@ fun FriendProfileDetailsScreen(
                                 activeList.take(5).forEach { item ->
                                     Surface(
                                         shape = RoundedCornerShape(12.dp),
-                                        color = Color(0xFF1E1E2C),
+                                        color = Color(0xFF22222C),
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         Row(
@@ -372,7 +387,7 @@ fun FriendProfileDetailsScreen(
                                                     else -> Icons.Default.Link
                                                 },
                                                 contentDescription = null,
-                                                tint = Color(0xFF10B981),
+                                                tint = Color.White,
                                                 modifier = Modifier.size(20.dp)
                                             )
                                             Spacer(modifier = Modifier.width(10.dp))
@@ -400,7 +415,7 @@ fun FriendProfileDetailsScreen(
                         .fillMaxWidth()
                         .padding(horizontal = 16.dp),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFF141420)),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFF14141E)),
                     border = androidx.compose.foundation.BorderStroke(1.dp, Color.White.copy(alpha = 0.08f))
                 ) {
                     Column {
@@ -506,7 +521,7 @@ private fun FilterChipTab(
     Surface(
         onClick = onClick,
         shape = RoundedCornerShape(12.dp),
-        color = if (selected) Color(0xFF10B981) else Color(0xFF1E1E2C),
+        color = if (selected) Color.White else Color(0xFF1E1E2C),
         modifier = Modifier.height(32.dp)
     ) {
         Box(

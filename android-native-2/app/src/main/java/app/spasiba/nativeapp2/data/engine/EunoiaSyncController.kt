@@ -7,17 +7,17 @@ import org.json.JSONObject
 import kotlin.math.abs
 
 class EunoiaSyncController(
-    private val playerManager: NativePlayerManager,
+    val playerManager: NativePlayerManager,
     private val socketClient: EunoiaSocketClient
 ) {
     private val TAG = "EunoiaSyncController"
-    private var isApplyingRemoteCommand = false
+    var isApplyingRemoteCommand = false
 
     companion object {
-        private const val DRIFT_IGNORE_MS = 2000L     // +-2 sec error acceptance threshold
-        private const val DRIFT_SMOOTH_MS = 4000L     // 2s - 4s: adaptive speed rate adjustment
-        private const val SPEED_CATCH_UP = 1.025f    // 2.5% faster to catch up smoothly
-        private const val SPEED_SLOW_DOWN = 0.975f   // 2.5% slower to let remote catch up
+        private const val DRIFT_IGNORE_MS = 300L      // +-300ms humanly imperceptible threshold
+        private const val DRIFT_SMOOTH_MS = 1500L     // 300ms - 1500ms: adaptive speed rate adjustment
+        private const val SPEED_CATCH_UP = 1.03f      // 3% faster to catch up smoothly
+        private const val SPEED_SLOW_DOWN = 0.97f     // 3% slower to let remote catch up
     }
 
     /**
@@ -45,6 +45,8 @@ class EunoiaSyncController(
         Log.d(TAG, "Emitted local playback command '$action'")
     }
 
+    var lastRemoteAppliedSongId: String? = null
+
     /**
      * Called when a socket event arrives from partner
      */
@@ -56,6 +58,25 @@ class EunoiaSyncController(
 
         isApplyingRemoteCommand = true
         try {
+            val remoteSongId = payload.optString("songId")
+            val remoteTitle = payload.optString("title")
+            val remoteAuthor = payload.optString("author")
+            val remoteThumb = payload.optString("thumbnail")
+            val remoteDuration = payload.optInt("durationSeconds", 180)
+
+            if (remoteSongId.isNotBlank() && playerManager.currentSong.value?.id != remoteSongId) {
+                val newSong = Song(
+                    id = remoteSongId,
+                    title = remoteTitle.ifBlank { "Track" },
+                    author = remoteAuthor.ifBlank { "Artist" },
+                    thumbnail = remoteThumb.ifBlank { "https://i.ytimg.com/vi/$remoteSongId/hqdefault.jpg" },
+                    durationSeconds = remoteDuration
+                )
+                lastRemoteAppliedSongId = remoteSongId
+                Log.d(TAG, "Remote song mismatch detected (local='${playerManager.currentSong.value?.id}', remote='$remoteSongId'). Loading remote song '${newSong.title}'!")
+                playerManager.playSong(newSong)
+            }
+
             when (action) {
                 "play" -> {
                     if (!playerManager.isPlaying.value) {
@@ -74,37 +95,20 @@ class EunoiaSyncController(
 
                 "seek" -> {
                     val remotePosMs = payload.optLong("positionMs", -1L)
+                    val isRemotePlaying = payload.optBoolean("isPlaying", playerManager.isPlaying.value)
                     if (remotePosMs >= 0) {
                         playerManager.setPlaybackSpeed(1.0f)
                         playerManager.seekTo(remotePosMs)
+                        if (isRemotePlaying && !playerManager.isPlaying.value) {
+                            playerManager.exoPlayer.play()
+                        } else if (!isRemotePlaying && playerManager.isPlaying.value) {
+                            playerManager.exoPlayer.pause()
+                        }
                     }
                 }
 
-                "next" -> {
-                    playerManager.playNext()
-                }
-
-                "previous" -> {
-                    playerManager.playPrevious()
-                }
-
-                "trackChanged" -> {
-                    val songId = payload.optString("songId")
-                    val songTitle = payload.optString("title")
-                    val songAuthor = payload.optString("author")
-                    val songThumb = payload.optString("thumbnail")
-                    val duration = payload.optInt("durationSeconds", 180)
-
-                    if (songId.isNotBlank() && playerManager.currentSong.value?.id != songId) {
-                        val newSong = Song(
-                            id = songId,
-                            title = songTitle.ifBlank { "Track" },
-                            author = songAuthor.ifBlank { "Artist" },
-                            thumbnail = songThumb.ifBlank { "https://i.ytimg.com/vi/$songId/hqdefault.jpg" },
-                            durationSeconds = duration
-                        )
-                        playerManager.playSong(newSong)
-                    }
+                "next", "previous", "trackChanged" -> {
+                    // Handled automatically via songId resolution above
                 }
 
                 "heartbeat" -> {

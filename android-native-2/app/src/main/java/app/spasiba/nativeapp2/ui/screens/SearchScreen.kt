@@ -232,13 +232,13 @@ fun SearchScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(top = 18.dp)
+            .padding(top = 10.dp)
     ) {
         // 1. YouTube/Spotify style Search Input Bar
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 16.dp, vertical = 10.dp),
+                .padding(start = 16.dp, top = 6.dp, end = 16.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
 

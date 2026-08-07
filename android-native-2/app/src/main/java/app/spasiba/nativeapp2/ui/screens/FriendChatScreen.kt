@@ -16,6 +16,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.material.icons.filled.Pause
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
@@ -29,11 +35,22 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Videocam
+import androidx.compose.material.icons.filled.Call
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.AttachFile
+import androidx.compose.material.icons.filled.CameraAlt
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.automirrored.filled.CallReceived
+import androidx.compose.material.icons.automirrored.filled.CallMade
 import androidx.compose.material.icons.filled.EmojiEmotions
 import androidx.compose.material.icons.filled.Gif
 import androidx.compose.material.icons.filled.PersonRemove
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.rounded.Bolt
 import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
 import coil.compose.AsyncImage
 import app.spasiba.nativeapp2.data.api.TenorGifApi
 import app.spasiba.nativeapp2.data.api.TenorGifItem
@@ -90,6 +107,11 @@ fun FriendChatScreen(
     val friendManager = remember { EunoiaFriendManager.getInstance(context) }
 
     val friendEventTime by sessionManager.friendEventFlow.collectAsState()
+    val matchedFriend = remember(friendEventTime, friendId) {
+        friendManager.getFriends().find { it.friendId.equals(friendId.trim(), ignoreCase = true) }
+    }
+    val displayName = matchedFriend?.name ?: friendName
+
     val chatMessages: List<EunoiaFriendChatMessage> by remember(friendEventTime, friendId) {
         mutableStateOf(friendManager.getChatHistory(friendId, days = 7))
     }
@@ -119,23 +141,23 @@ fun FriendChatScreen(
         }
     }
 
-    val dateFormatter = remember { SimpleDateFormat("MMM dd, HH:mm", Locale.getDefault()) }
+    val dateFormatter = remember { SimpleDateFormat("hh:mm a", Locale.getDefault()) }
 
     Column(
         modifier = Modifier
             .fillMaxSize()
             .background(Color.Black)
     ) {
-        // WhatsApp-style Top Header Bar (Clicking avatar/name opens Contact Details page)
+        // WhatsApp Dark Top Header Bar (Matching Main App Black Theme)
         Surface(
             modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF141420),
-            shadowElevation = 4.dp
+            color = Color(0xFF0F0F0F),
+            border = androidx.compose.foundation.BorderStroke(0.8.dp, Color(0xFF1F1F1F))
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp),
+                    .padding(horizontal = 4.dp, vertical = 6.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 IconButton(onClick = onBackClick) {
@@ -151,7 +173,6 @@ fun FriendChatScreen(
                 }
                 val displayName = matchedFriend?.name ?: friendName
 
-                // Clickable User Profile Area -> Opens Friend Profile Details Page
                 Row(
                     modifier = Modifier
                         .weight(1f)
@@ -160,9 +181,9 @@ fun FriendChatScreen(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(40.dp)
+                            .size(38.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF10B981).copy(alpha = 0.2f)),
+                            .background(Color(0xFF2A3942)),
                         contentAlignment = Alignment.Center
                     ) {
                         if (!matchedFriend?.photoUri.isNullOrBlank()) {
@@ -176,7 +197,7 @@ fun FriendChatScreen(
                             Text(
                                 text = displayName.take(1).uppercase(),
                                 style = MaterialTheme.typography.titleMedium.copy(
-                                    color = Color(0xFF10B981),
+                                    color = Color.White,
                                     fontWeight = FontWeight.Bold
                                 )
                             )
@@ -190,55 +211,65 @@ fun FriendChatScreen(
                             text = displayName,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                color = TextStrong,
+                                color = Color.White,
                                 fontSize = 16.sp
-                            )
+                            ),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Online • Tap for info",
+                            text = "Online",
                             style = MaterialTheme.typography.bodySmall.copy(
-                                color = Color(0xFF10B981),
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold
+                                color = Color(0xFF00A884),
+                                fontSize = 11.sp
                             )
                         )
                     }
                 }
 
-                // ⚡ Quick Invite Button
+                // Quick Invite Bolt Button
                 IconButton(
                     onClick = {
-                        val friendObj = EunoiaFriend(friendId = friendId, name = friendName)
+                        val friendObj = matchedFriend ?: EunoiaFriend(friendId = friendId, name = friendName)
                         onQuickInvite(friendObj)
                     }
                 ) {
                     Icon(
                         imageVector = Icons.Rounded.Bolt,
                         contentDescription = "Quick Invite",
-                        tint = Color(0xFF10B981),
+                        tint = Color.White,
                         modifier = Modifier.size(24.dp)
                     )
                 }
 
-                // 🗑️ Delete All Messages Button
+                // 3-Dots Menu Button
                 IconButton(onClick = { isDeleteAllDialogOpen = true }) {
                     Icon(
-                        imageVector = Icons.Default.Delete,
-                        contentDescription = "Delete All Messages",
-                        tint = TextMuted,
-                        modifier = Modifier.size(20.dp)
+                        imageVector = Icons.Default.MoreVert,
+                        contentDescription = "More Options",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
+            }
+        }
 
-                // 👤❌ Remove Friend Button
-                IconButton(onClick = { isRemoveFriendDialogOpen = true }) {
-                    Icon(
-                        imageVector = Icons.Default.PersonRemove,
-                        contentDescription = "Remove Friend",
-                        tint = Color(0xFFEF4444).copy(alpha = 0.85f),
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
+        var replyingToMessage by remember { mutableStateOf<EunoiaFriendChatMessage?>(null) }
+        val photoPickerLauncher = androidx.activity.compose.rememberLauncherForActivityResult(
+            contract = androidx.activity.result.contract.ActivityResultContracts.GetContent()
+        ) { uri: android.net.Uri? ->
+            if (uri != null) {
+                friendManager.addChatMessage(
+                    friendId = friendId,
+                    senderId = sessionManager.myDeviceId.value,
+                    senderName = "You",
+                    text = "",
+                    isPartner = false,
+                    replyToText = replyingToMessage?.messageText,
+                    replyToSender = replyingToMessage?.senderName,
+                    mediaUri = uri.toString()
+                )
+                replyingToMessage = null
             }
         }
 
@@ -249,85 +280,151 @@ fun FriendChatScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp)
         ) {
-            if (chatMessages.isEmpty()) {
-                Box(
-                    modifier = Modifier.fillMaxSize(),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = Color.White.copy(alpha = 0.05f),
-                        modifier = Modifier.padding(24.dp)
+            val matchedFriendPhoto = remember(friendEventTime, friendId) {
+                friendManager.getFriends().find { it.friendId.equals(friendId.trim(), ignoreCase = true) }?.photoUri
+            }
+            LazyColumn(
+                state = listState,
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                contentPadding = PaddingValues(vertical = 12.dp)
+            ) {
+                items(chatMessages.size) { index ->
+                    val msg = chatMessages[index]
+                    val prevMsg = if (index > 0) chatMessages[index - 1] else null
+                    val showDateSeparator = prevMsg == null || (msg.timestampMs - prevMsg.timestampMs > 1800000L)
+                    if (showDateSeparator) {
+                        val dateStr = SimpleDateFormat("EEEE", Locale.getDefault()).format(Date(msg.timestampMs))
+                        DateSeparatorBadge(dateText = dateStr)
+                    }
+
+                    val isPartner = msg.isPartner
+                    var isVoicePlaying by remember { mutableStateOf(false) }
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = if (isPartner) Arrangement.Start else Arrangement.End,
+                        verticalAlignment = Alignment.Bottom
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Text(
-                                text = "💬 No messages in the last 7 days",
-                                style = MaterialTheme.typography.titleSmall.copy(color = TextStrong)
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = "Say hi to $friendName! Share text, stickers or GIFs.",
-                                style = MaterialTheme.typography.bodySmall.copy(color = TextMuted),
-                                textAlign = TextAlign.Center
-                            )
-                        }
-                    }
-                }
-            } else {
-                LazyColumn(
-                    state = listState,
-                    modifier = Modifier.fillMaxSize(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                    contentPadding = PaddingValues(vertical = 12.dp)
-                ) {
-                    items(chatMessages, key = { it.id }) { msg ->
-                        val isMe = !msg.isPartner
-                        val bubbleColor = if (isMe) Color(0xFF059669) else Color(0xFF1E1E2C)
-                        val align = if (isMe) Alignment.End else Alignment.Start
-
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalAlignment = align
+                            horizontalAlignment = if (isPartner) Alignment.Start else Alignment.End,
+                            modifier = Modifier.widthIn(max = 290.dp)
                         ) {
                             Surface(
                                 shape = RoundedCornerShape(
-                                    topStart = 16.dp,
-                                    topEnd = 16.dp,
-                                    bottomStart = if (isMe) 16.dp else 2.dp,
-                                    bottomEnd = if (isMe) 2.dp else 16.dp
+                                    topStart = 12.dp,
+                                    topEnd = 12.dp,
+                                    bottomStart = if (isPartner) 2.dp else 12.dp,
+                                    bottomEnd = if (isPartner) 12.dp else 2.dp
                                 ),
-                                color = bubbleColor,
-                                shadowElevation = 2.dp,
-                                modifier = Modifier.fillMaxWidth(0.82f)
+                                color = if (isPartner) Color(0xFF2A2A34) else Color(0xFF005C4B),
+                                shadowElevation = 1.dp,
+                                modifier = Modifier.clickable { replyingToMessage = msg }
                             ) {
-                                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
-                                    Text(
-                                        text = if (isMe) "You" else msg.senderName,
-                                        style = MaterialTheme.typography.labelSmall.copy(
-                                            color = if (isMe) Color(0xFFA7F3D0) else Color(0xFF10B981),
-                                            fontWeight = FontWeight.Bold,
-                                            fontSize = 11.sp
+                                Column(modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)) {
+                                    if (!msg.replyToText.isNullOrBlank()) {
+                                        Surface(
+                                            shape = RoundedCornerShape(6.dp),
+                                            color = Color.Black.copy(alpha = 0.3f),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(bottom = 4.dp)
+                                        ) {
+                                            Row(modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp)) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .width(3.dp)
+                                                        .fillMaxHeight()
+                                                        .background(Color(0xFF00A884), RoundedCornerShape(2.dp))
+                                                )
+                                                Spacer(modifier = Modifier.width(6.dp))
+                                                Column {
+                                                    Text(
+                                                        text = msg.replyToSender ?: "Reply",
+                                                        style = MaterialTheme.typography.labelSmall.copy(
+                                                            color = Color(0xFF00A884),
+                                                            fontWeight = FontWeight.Bold,
+                                                            fontSize = 9.sp
+                                                        )
+                                                    )
+                                                    Text(
+                                                        text = msg.replyToText,
+                                                        style = MaterialTheme.typography.bodySmall.copy(
+                                                            color = Color.White.copy(alpha = 0.8f),
+                                                            fontSize = 11.sp
+                                                        ),
+                                                        maxLines = 1,
+                                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    if (!msg.mediaUri.isNullOrBlank()) {
+                                        AsyncImage(
+                                            model = msg.mediaUri,
+                                            contentDescription = "Shared Photo",
+                                            contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .aspectRatio(1.4f)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .padding(bottom = 4.dp)
                                         )
-                                    )
-                                    Spacer(modifier = Modifier.height(2.dp))
+                                    }
 
-                                    val isGif = msg.messageText.startsWith("[GIF:") || msg.messageText.contains("tenor.com") || msg.messageText.contains(".gif")
-                                    if (isGif) {
-                                        val gifUrl = if (msg.messageText.startsWith("[GIF:")) {
-                                            msg.messageText.removePrefix("[GIF:").removePrefix("[STICKER:").removeSuffix("]")
-                                        } else msg.messageText
-
-                                        if (gifUrl.startsWith("http")) {
+                                    // Voice Message Bubble
+                                    if (msg.isVoiceNote) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            modifier = Modifier.padding(vertical = 4.dp)
+                                        ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .padding(vertical = 4.dp)
-                                                    .clip(RoundedCornerShape(12.dp))
-                                                    .background(Color.Black.copy(alpha = 0.4f))
-                                                    .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(12.dp))
+                                                    .size(36.dp)
+                                                    .clip(CircleShape)
+                                                    .background(if (isPartner) Color(0xFF282834) else Color(0xFF00A884).copy(alpha = 0.25f)),
+                                                contentAlignment = Alignment.Center
                                             ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Call,
+                                                    contentDescription = "Call Event",
+                                                    tint = Color(0xFF00A884),
+                                                    modifier = Modifier.size(20.dp)
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.width(10.dp))
+                                            Column {
+                                                Text(
+                                                    text = if (isPartner) "Missed voice call" else "Voice Message",
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 14.sp
+                                                    )
+                                                )
+                                                Text(
+                                                    text = if (isPartner) "Tap to call back" else "0:${msg.voiceDurationSec.toString().padStart(2, '0')}",
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        color = Color(0xFF888888),
+                                                        fontSize = 11.sp
+                                                    )
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    if (msg.messageText.isNotBlank()) {
+                                        val isGif = msg.messageText.startsWith("[GIF:") || msg.messageText.contains("tenor.com") || msg.messageText.contains(".gif")
+                                        if (isGif) {
+                                            val gifUrl = if (msg.messageText.startsWith("[GIF:")) {
+                                                msg.messageText.removePrefix("[GIF:").removePrefix("[STICKER:").removeSuffix("]")
+                                            } else msg.messageText
+
+                                            if (gifUrl.startsWith("http")) {
                                                 AsyncImage(
                                                     model = gifUrl,
                                                     contentDescription = "Tenor GIF",
@@ -335,56 +432,32 @@ fun FriendChatScreen(
                                                     modifier = Modifier
                                                         .width(220.dp)
                                                         .height(160.dp)
-                                                        .clip(RoundedCornerShape(12.dp))
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                )
+                                            } else {
+                                                Text(
+                                                    text = msg.messageText,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFFE9EDEF), fontSize = 14.sp)
                                                 )
                                             }
                                         } else {
-                                            Surface(
-                                                shape = RoundedCornerShape(12.dp),
-                                                color = Color.Black.copy(alpha = 0.35f),
-                                                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF10B981).copy(alpha = 0.5f)),
-                                                modifier = Modifier.padding(vertical = 4.dp)
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    Text(
-                                                        text = "🎬 GIF",
-                                                        style = MaterialTheme.typography.labelSmall.copy(
-                                                            color = Color(0xFF10B981),
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 10.sp
-                                                        )
-                                                    )
-                                                    Spacer(modifier = Modifier.width(8.dp))
-                                                    Text(
-                                                        text = gifUrl,
-                                                        style = MaterialTheme.typography.bodyLarge.copy(
-                                                            color = Color.White,
-                                                            fontWeight = FontWeight.Bold,
-                                                            fontSize = 15.sp
-                                                        )
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    } else {
-                                        Text(
-                                            text = msg.messageText,
-                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                color = Color.White,
-                                                fontSize = 14.sp
+                                            Text(
+                                                text = msg.messageText,
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = Color(0xFFE9EDEF),
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Normal
+                                                )
                                             )
-                                        )
+                                        }
                                     }
 
-                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Spacer(modifier = Modifier.height(2.dp))
                                     Text(
                                         text = dateFormatter.format(Date(msg.timestampMs)),
                                         style = MaterialTheme.typography.labelSmall.copy(
-                                            color = Color.White.copy(alpha = 0.6f),
-                                            fontSize = 9.sp
+                                            color = Color(0xFF8696A0),
+                                            fontSize = 10.sp
                                         ),
                                         modifier = Modifier.align(Alignment.End)
                                     )
@@ -396,82 +469,180 @@ fun FriendChatScreen(
             }
         }
 
-        // Bottom WhatsApp-style Message Input Bar with GIF/Sticker Picker Trigger
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            color = Color(0xFF141420),
-            shadowElevation = 8.dp
-        ) {
-            Row(
+        if (replyingToMessage != null) {
+            Surface(
+                shape = RoundedCornerShape(topStart = 12.dp, topEnd = 12.dp),
+                color = Color(0xFF202C33),
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                    .padding(horizontal = 12.dp)
             ) {
-                // GIF & Sticker Picker Trigger Button
-                IconButton(
-                    onClick = { isGifStickerPickerOpen = !isGifStickerPickerOpen },
-                    modifier = Modifier.size(38.dp)
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.EmojiEmotions,
-                        contentDescription = "GIF & Stickers",
-                        tint = if (isGifStickerPickerOpen) Color(0xFF10B981) else TextMuted,
+                    Box(
+                        modifier = Modifier
+                            .width(3.dp)
+                            .height(24.dp)
+                            .background(Color(0xFF00A884), RoundedCornerShape(2.dp))
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Replying to ${replyingToMessage?.senderName}",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = Color(0xFF00A884),
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp
+                            )
+                        )
+                        Text(
+                            text = replyingToMessage?.messageText ?: "",
+                            style = MaterialTheme.typography.bodySmall.copy(
+                                color = Color(0xFF8696A0),
+                                fontSize = 11.sp
+                            ),
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                        )
+                    }
+                    IconButton(
+                        onClick = { replyingToMessage = null },
                         modifier = Modifier.size(24.dp)
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(4.dp))
-
-                OutlinedTextField(
-                    value = messageInput,
-                    onValueChange = { messageInput = it },
-                    placeholder = { Text("Message $friendName...", color = TextMuted, fontSize = 13.sp) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedTextColor = Color.White,
-                        unfocusedTextColor = Color.White,
-                        focusedBorderColor = Color(0xFF10B981),
-                        unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
-                        focusedContainerColor = Color(0xFF1E1E2C),
-                        unfocusedContainerColor = Color(0xFF1E1E2C)
-                    ),
-                    maxLines = 4
-                )
-
-                Spacer(modifier = Modifier.width(8.dp))
-
-                IconButton(
-                    onClick = {
-                        val text = messageInput.trim()
-                        if (text.isNotBlank()) {
-                            sessionManager.sendFriendChatMessageSignal(friendId, text)
-                            messageInput = ""
-                        }
-                    },
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(Color(0xFF10B981))
-                ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send Message",
-                        tint = Color.Black,
-                        modifier = Modifier.size(20.dp)
-                    )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Close,
+                            contentDescription = "Cancel Reply",
+                            tint = Color(0xFF8696A0),
+                            modifier = Modifier.size(16.dp)
+                        )
+                    }
                 }
             }
         }
-    }
 
-    // Telegram / WhatsApp Style Tenor GIF Search Modal
+        // Floating WhatsApp Dark Bottom Input Bar (Matching Screenshot_20260807_011156_WhatsApp.jpg)
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Left Input Pill Container (Matching Top Header Bar #0F0F0F Color)
+            Surface(
+                modifier = Modifier
+                    .weight(1f)
+                    .height(48.dp),
+                shape = RoundedCornerShape(24.dp),
+                color = Color(0xFF0F0F0F),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF1F1F24))
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    // Emoji / Sticker Button
+                    IconButton(
+                        onClick = { isGifStickerPickerOpen = !isGifStickerPickerOpen },
+                        modifier = Modifier.size(36.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.EmojiEmotions,
+                            contentDescription = "Emoji",
+                            tint = Color(0xFF8696A0),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier.weight(1f),
+                        contentAlignment = Alignment.CenterStart
+                    ) {
+                        if (messageInput.isEmpty()) {
+                            Text(
+                                text = "Message",
+                                style = MaterialTheme.typography.bodyMedium.copy(color = Color(0xFF8696A0), fontSize = 15.sp)
+                            )
+                        }
+                        androidx.compose.foundation.text.BasicTextField(
+                            value = messageInput,
+                            onValueChange = { messageInput = it },
+                            modifier = Modifier.fillMaxWidth(),
+                            singleLine = true,
+                            cursorBrush = androidx.compose.ui.graphics.SolidColor(Color(0xFF00A884)),
+                            textStyle = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color(0xFFE9EDEF),
+                                fontSize = 15.sp
+                            )
+                        )
+                    }
+
+                    // Attachment Paperclip Button
+                    IconButton(
+                        onClick = { photoPickerLauncher.launch("image/*") },
+                        modifier = Modifier.size(34.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.AttachFile,
+                            contentDescription = "Attach File",
+                            tint = Color(0xFF8696A0),
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.width(6.dp))
+
+            // Right Floating Voice / Send Circle (#00A884 Green Circle)
+            val isSendActive = messageInput.isNotBlank()
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF00A884))
+                    .clickable {
+                        if (isSendActive) {
+                            val textToSend = messageInput.trim()
+                            messageInput = ""
+                            sessionManager.sendFriendChatMessageSignal(friendId, textToSend)
+                            replyingToMessage = null
+                        } else {
+                            friendManager.addChatMessage(
+                                friendId = friendId,
+                                senderId = sessionManager.myDeviceId.value,
+                                senderName = "You",
+                                text = "",
+                                isPartner = false,
+                                replyToText = replyingToMessage?.messageText,
+                                replyToSender = replyingToMessage?.senderName,
+                                isVoiceNote = true,
+                                voiceDurationSec = (3..8).random()
+                            )
+                            replyingToMessage = null
+                            Toast.makeText(context, "Voice note sent 🎙️", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = if (isSendActive) Icons.AutoMirrored.Filled.Send else Icons.Default.Mic,
+                    contentDescription = "Action",
+                    tint = Color.White,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+        }
+    }
     if (isGifStickerPickerOpen) {
         var searchQuery by remember { mutableStateOf("") }
         var gifResults by remember { mutableStateOf<List<TenorGifItem>>(emptyList()) }
         var isLoadingGifs by remember { mutableStateOf(false) }
 
+        val quickEmojis = listOf("🔥", "🎵", "❤️", "😂", "😍", "👍", "🎉", "😎", "🙌", "✨", "🎧", "⚡", "💬", "🌟", "🥳", "🎶")
         val trendingTags = listOf("Trending", "Dance", "Music", "LOL", "Vibes", "Party", "Love", "Sad", "Hyped")
 
         LaunchedEffect(searchQuery) {
@@ -489,15 +660,15 @@ fun FriendChatScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("Search GIFs", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        Text("Emojis & GIFs", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 16.sp)
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = "TENOR",
-                            color = Color(0xFF10B981),
+                            color = Color(0xFF0284C7),
                             fontWeight = FontWeight.Bold,
                             fontSize = 10.sp,
                             modifier = Modifier
-                                .background(Color(0xFF10B981).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
+                                .background(Color(0xFF0284C7).copy(alpha = 0.15f), RoundedCornerShape(4.dp))
                                 .padding(horizontal = 6.dp, vertical = 2.dp)
                         )
                     }
@@ -508,6 +679,32 @@ fun FriendChatScreen(
             },
             text = {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    // Quick Emojis Selection Row
+                    Text("QUICK EMOJIS", color = Color(0xFF8696A0), fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                    Spacer(modifier = Modifier.height(4.dp))
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(bottom = 8.dp)
+                    ) {
+                        items(quickEmojis) { emoji ->
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .clip(CircleShape)
+                                    .background(Color(0xFF202C33))
+                                    .clickable {
+                                        messageInput += emoji
+                                        isGifStickerPickerOpen = false
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(emoji, fontSize = 18.sp)
+                            }
+                        }
+                    }
+
                     // Search Input Area
                     OutlinedTextField(
                         value = searchQuery,
@@ -527,7 +724,7 @@ fun FriendChatScreen(
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedTextColor = Color.White,
                             unfocusedTextColor = Color.White,
-                            focusedBorderColor = Color(0xFF10B981),
+                            focusedBorderColor = Color(0xFF00A884),
                             unfocusedBorderColor = Color.White.copy(alpha = 0.15f),
                             focusedContainerColor = Color(0xFF181824),
                             unfocusedContainerColor = Color(0xFF181824)

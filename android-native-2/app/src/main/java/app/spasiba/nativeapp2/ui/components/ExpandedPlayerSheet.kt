@@ -158,7 +158,7 @@ fun ExpandedPlayerSheet(
     val downloadItem = downloadsState[song.id]
 
     val currentQuality by playerManager.videoQuality.collectAsState()
-
+    val videoAspectRatio by playerManager.videoAspectRatio.collectAsState()
     var isVideoModeActive by remember { mutableStateOf(false) }
     var isFullscreenVideoOpen by remember { mutableStateOf(false) }
     var showVideoControls by remember { mutableStateOf(true) }

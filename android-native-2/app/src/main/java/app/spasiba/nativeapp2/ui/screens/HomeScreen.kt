@@ -70,6 +70,7 @@ import app.spasiba.nativeapp2.data.model.Song
 import app.spasiba.nativeapp2.ui.components.HeroBanner
 import app.spasiba.nativeapp2.ui.components.SongTile
 import app.spasiba.nativeapp2.ui.components.SongTileSkeleton
+import app.spasiba.nativeapp2.ui.components.HomeScreenSkeleton
 import app.spasiba.nativeapp2.ui.components.SilverBrandHeader
 
 // Spotify & YouTube Music Design System Tokens
@@ -135,6 +136,7 @@ fun HomeScreen(
 
     var categoryChipsState by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.dynamicCategoryChips) }
     var isCategoryLoading by remember { mutableStateOf(false) }
+    var isShelvesLoading by remember { mutableStateOf(app.spasiba.nativeapp2.data.api.YouTubeMusicApi.cachedHomeShelves.isEmpty()) }
 
     androidx.compose.runtime.LaunchedEffect(Unit) {
         val dynamicChips = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchCategoryChips()
@@ -148,27 +150,28 @@ fun HomeScreen(
             isCategoryLoading = true
             categoryShelvesState = emptyList()
             val catLower = activeFilterName.lowercase()
+            if (catLower.contains("podcast")) {
+                val podcastShelves = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchPodcastTopicShelves()
+                categoryShelvesState = podcastShelves
+            } else {
+                val matchedChip = categoryChipsState.find { it.label.equals(activeFilterName, ignoreCase = true) || it.id.equals(activeFilterName, ignoreCase = true) }
+                val rawYtParam = selectedCategory?.params?.ifBlank { null }
+                    ?: matchedChip?.params?.ifBlank { null }
+                    ?: when (catLower) {
+                        "romance" -> "ggMPOZ3ZyZXF1ZW5jeT0y"
+                        "workout" -> "ggMPOZ3ZyZXF1ZW5jeT0z"
+                        "energize" -> "ggMPOZ3ZyZXF1ZW5jeT00"
+                        "relax" -> "ggMPOZ3ZyZXF1ZW5jeT01"
+                        "focus" -> "ggMPOZ3ZyZXF1ZW5jeT06"
+                        "commute" -> "ggMPOZ3ZyZXF1ZW5jeT07"
+                        "sad" -> "ggMPOZ3ZyZXF1ZW5jeT04"
+                        "sleep" -> "ggMPOZ3ZyZXF1ZW5jeT05"
+                        else -> null
+                    }
 
-            val matchedChip = categoryChipsState.find { it.label.equals(activeFilterName, ignoreCase = true) || it.id.equals(activeFilterName, ignoreCase = true) }
-            val rawYtParam = selectedCategory?.params?.ifBlank { null }
-                ?: matchedChip?.params?.ifBlank { null }
-                ?: when (catLower) {
-                    "podcasts" -> "ggMPOZ3ZyZXF1ZW5jeT0x"
-                    "romance" -> "ggMPOZ3ZyZXF1ZW5jeT0y"
-                    "workout" -> "ggMPOZ3ZyZXF1ZW5jeT0z"
-                    "energize" -> "ggMPOZ3ZyZXF1ZW5jeT00"
-                    "relax" -> "ggMPOZ3ZyZXF1ZW5jeT01"
-                    "focus" -> "ggMPOZ3ZyZXF1ZW5jeT06"
-                    "commute" -> "ggMPOZ3ZyZXF1ZW5jeT03"
-                    "sad" -> "ggMPOZ3ZyZXF1ZW5jeT04"
-                    "sleep" -> "ggMPOZ3ZyZXF1ZW5jeT05"
-                    else -> null
-                }
-
-            val rawYtBrowseId = if (catLower == "podcasts") "FEmusic_podcasts" else "FEmusic_home"
-            val directYtShelves = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicBrowseShelves(rawYtBrowseId, rawYtParam)
-            
-            categoryShelvesState = directYtShelves
+                val directYtShelves = app.spasiba.nativeapp2.data.api.YouTubeMusicApi.fetchYouTubeMusicBrowseShelves("FEmusic_home", rawYtParam)
+                categoryShelvesState = directYtShelves
+            }
             isCategoryLoading = false
         } else {
             categorySearchSongs = emptyList()
@@ -190,6 +193,7 @@ fun HomeScreen(
 
             val fetchedShelves = shelvesDeferred.await()
             if (fetchedShelves.isNotEmpty()) liveHomeShelves = fetchedShelves
+            isShelvesLoading = false
 
             val fetchedCharts = chartsDeferred.await()
             if (fetchedCharts.isNotEmpty()) {
@@ -233,16 +237,59 @@ fun HomeScreen(
 
     val featuredHeroSong = remember(filteredSongs) { filteredSongs.firstOrNull() }
     val displayShelves = remember(liveHomeShelves, categoryShelvesState, activeFilterName) {
-        if (activeFilterName != null) {
+        val rawShelves = if (activeFilterName != null) {
             categoryShelvesState
         } else {
-            liveHomeShelves.filter { !it.title.lowercase().contains("quick") }
+            liveHomeShelves.filter { shelf ->
+                val titleLower = shelf.title.lowercase()
+                !titleLower.contains("quick") && !titleLower.contains("speed dial")
+            }
+        }
+        val isPodcastFilter = activeFilterName?.lowercase()?.contains("podcast") == true
+        rawShelves.map { shelf ->
+            val cleanedTitle = if (isPodcastFilter || shelf.title.lowercase().contains("podcast")) {
+                val t = shelf.title.replace(Regex("(?i)\\bpodcasts?\\b"), "").replace(Regex("\\s+"), " ").trim()
+                if (t.isEmpty()) "Featured Shows" else t
+            } else {
+                shelf.title
+            }
+            val normalizedSongs = shelf.songs.map { song ->
+                val validThumb = when {
+                    song.thumbnail.startsWith("http://") -> song.thumbnail.replace("http://", "https://")
+                    song.thumbnail.startsWith("//") -> "https:${song.thumbnail}"
+                    song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") -> song.thumbnail
+                    song.id.length == 11 -> "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
+                    else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+                }
+                song.copy(thumbnail = validThumb)
+            }
+            shelf.copy(title = cleanedTitle, songs = normalizedSongs)
         }
     }
 
-    val quickPicks = remember(liveHomeShelves) {
-        val apiQuickPicksShelf = liveHomeShelves.find { it.title.lowercase().contains("quick") }
-        apiQuickPicksShelf?.songs ?: emptyList()
+    val quickPicks = remember(liveHomeShelves, filteredSongs, recommendedSongs) {
+        val apiQuickPicksShelf = liveHomeShelves.find { shelf ->
+            val t = shelf.title.lowercase()
+            t.contains("quick") || t.contains("pick") || t.contains("favorite") || t.contains("dial") || t.contains("radio") || t.contains("mixed")
+        } ?: liveHomeShelves.firstOrNull()
+
+        val rawList = if (!apiQuickPicksShelf?.songs.isNullOrEmpty()) {
+            apiQuickPicksShelf!!.songs
+        } else if (filteredSongs.isNotEmpty()) {
+            filteredSongs.take(16)
+        } else {
+            recommendedSongs.take(16)
+        }
+        rawList.map { song ->
+            val validThumb = when {
+                song.thumbnail.startsWith("http://") -> song.thumbnail.replace("http://", "https://")
+                song.thumbnail.startsWith("//") -> "https:${song.thumbnail}"
+                song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") -> song.thumbnail
+                song.id.length == 11 -> "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
+                else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+            }
+            song.copy(thumbnail = validThumb)
+        }
     }
     val quickPickColumns = remember(quickPicks) { quickPicks.chunked(4) }
     val mixedTracks = remember(likedSongs, filteredSongs) {
@@ -290,6 +337,11 @@ fun HomeScreen(
                 artistAvatars = avatars
             }
         }
+    }
+
+    if (isShelvesLoading && liveHomeShelves.isEmpty()) {
+        HomeScreenSkeleton()
+        return
     }
 
     LazyColumn(
@@ -482,9 +534,6 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable {
-                                onCategorySelect(CategoryChip(shelf.title.lowercase(), shelf.title, "top ${shelf.title.lowercase()} songs"))
-                            }
                             .padding(horizontal = 16.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -554,7 +603,8 @@ fun HomeScreen(
                                                     fontSize = 14.sp
                                                 ),
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 2.dp)
                                             )
                                             Text(
                                                 text = song.author,
@@ -563,7 +613,8 @@ fun HomeScreen(
                                                     fontSize = 12.sp
                                                 ),
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 2.dp)
                                             )
                                         }
                                     }
@@ -595,7 +646,8 @@ fun HomeScreen(
                                                     fontSize = 13.sp
                                                 ),
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 2.dp)
                                             )
                                             Text(
                                                 text = song.author,
@@ -604,7 +656,8 @@ fun HomeScreen(
                                                     fontSize = 11.sp
                                                 ),
                                                 maxLines = 1,
-                                                overflow = TextOverflow.Ellipsis
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.padding(horizontal = 2.dp)
                                             )
                                         }
                                     }
@@ -618,424 +671,199 @@ fun HomeScreen(
 
         // 2. Default Home Sections (Only shown when no Category Filter is active)
         if (activeFilterName == null) {
-            // 2B. QUICK PICKS (Placed directly below Most Played right now)
+            // 4. Language & Genre Horizontal Song Rails (Just like Mixed for you & Jump back in)
             item {
-                Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (selectedLanguages.contains("Punjabi")) {
+                        CategorySongRail(
+                            title = "Punjabi Hits",
+                            eyebrow = "PUNJABI SPOTLIGHT",
+                            songs = punjabiSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
+                    if (selectedLanguages.contains("Hindi")) {
+                        CategorySongRail(
+                            title = "Hindi Bollywood",
+                            eyebrow = "FOR HINDI MOODS",
+                            songs = hindiSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
+                    if (selectedLanguages.contains("English")) {
+                        CategorySongRail(
+                            title = "English Pop Hits",
+                            eyebrow = "GLOBAL HITS",
+                            songs = englishSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
+                    if (selectedLanguages.contains("South Hits") || selectedLanguages.contains("South")) {
+                        CategorySongRail(
+                            title = "South Tamil & Telugu",
+                            eyebrow = "SOUTH SPOTLIGHT",
+                            songs = southSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
+                    if (selectedLanguages.contains("Haryanvi")) {
+                        CategorySongRail(
+                            title = "Haryanvi Explosives",
+                            eyebrow = "LOCAL HITS",
+                            songs = haryanviSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
+                    if (selectedLanguages.contains("Bhojpuri")) {
+                        CategorySongRail(
+                            title = "Bhojpuri Party",
+                            eyebrow = "FOLK & DANCE",
+                            songs = bhojpuriSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+                }
+            }
+
+            // 3. Hero Recommendation Spotlight (To solve information overload)
+            item {
+                if (featuredHeroSong != null && !isLoading) {
+                    HeroSpotlightCard(
+                        song = featuredHeroSong,
+                        onPlayClick = { onSongClick(featuredHeroSong, filteredSongs, 0) }
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                }
+            }
+
+            // 4. Spotify 2-Column Shortcuts Grid (6 items, height 56dp, 8dp radius)
+            item {
+                if (filteredSongs.isNotEmpty()) {
+                    SpotifyShortcutsGrid(
+                        songs = filteredSongs,
+                        currentSong = currentSong,
+                        likedCount = likedSongs.size,
+                        onSongClick = onSongClick,
+                        onLikedSongsClick = onLibraryClick
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            // 7. "Mixed For You" Horizontal Shelf (Album art 70% of card, 160x160dp)
+            item {
+                if (!isLoading && mixedTracks.isNotEmpty()) {
+                    Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 16.dp, vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
                             Text(
-                                text = "Quick picks",
+                                text = "Mixed for you",
                                 style = MaterialTheme.typography.titleLarge.copy(
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 20.sp,
                                     color = Color.White
-                                )
-                            )
-                            Text(
-                                text = "Start radio from any song",
-                                style = MaterialTheme.typography.bodySmall.copy(
-                                    color = TextSecondaryGray,
-                                    fontSize = 12.sp
-                                )
-                            )
-                        }
-
-                        if (quickPicks.isNotEmpty()) {
-                            Surface(
-                                modifier = Modifier
-                                    .clip(CircleShape)
-                                    .clickable { onSongClick(quickPicks.first(), quickPicks, 0) },
-                                color = Color.White.copy(alpha = 0.1f)
-                            ) {
-                                Text(
-                                    text = "PLAY ALL",
-                                    style = MaterialTheme.typography.labelSmall.copy(
-                                        color = Color.White,
-                                        fontWeight = FontWeight.Bold,
-                                        fontSize = 11.sp,
-                                        letterSpacing = 1.2.sp
-                                    ),
-                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
-                                )
-                            }
-                        }
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    if (quickPickColumns.isEmpty() || isLoading) {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(3) {
-                                Column(
-                                    modifier = Modifier.width(320.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    repeat(4) {
-                                        SongTileSkeleton()
-                                    }
-                                }
-                            }
-                        }
-                    } else {
-                        LazyRow(
-                            contentPadding = PaddingValues(horizontal = 16.dp),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp)
-                        ) {
-                            items(quickPickColumns) { columnTracks ->
-                                Column(
-                                    modifier = Modifier.width(320.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    columnTracks.forEach { track ->
-                                        val isCurrentPlaying = track.id == currentSong?.id
-
-                                        AnimatedPressCard(
-                                            onClick = {
-                                                val index = filteredSongs.indexOfFirst { it.id == track.id }
-                                                onSongClick(track, filteredSongs, if (index >= 0) index else 0)
-                                            }
-                                        ) {
-                                            Surface(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(8.dp),
-                                                color = if (isCurrentPlaying) SpotifyGreen.copy(alpha = 0.18f) else Color.Transparent
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 4.dp),
-                                                    verticalAlignment = Alignment.CenterVertically
-                                                ) {
-                                                    AsyncImage(
-                                                        model = track.thumbnail,
-                                                        contentDescription = track.title,
-                                                        contentScale = ContentScale.Crop,
-                                                        modifier = Modifier
-                                                            .size(48.dp)
-                                                            .clip(RoundedCornerShape(6.dp))
-                                                    )
-                                                    Spacer(modifier = Modifier.width(12.dp))
-                                                    Column(modifier = Modifier.weight(1f)) {
-                                                        Text(
-                                                            text = track.title,
-                                                            style = MaterialTheme.typography.bodyMedium.copy(
-                                                                fontWeight = FontWeight.SemiBold,
-                                                                color = if (isCurrentPlaying) SpotifyGreen else Color.White,
-                                                                fontSize = 14.sp
-                                                            ),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                        Text(
-                                                            text = "${track.author} • ${track.durationFormatted}",
-                                                            style = MaterialTheme.typography.bodySmall.copy(
-                                                                color = TextSecondaryGray,
-                                                                fontSize = 12.sp
-                                                            ),
-                                                            maxLines = 1,
-                                                            overflow = TextOverflow.Ellipsis
-                                                        )
-                                                    }
-                                                    IconButton(
-                                                        onClick = { onOptionsClick(track) },
-                                                        modifier = Modifier.size(36.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Default.MoreVert,
-                                                            contentDescription = "Options",
-                                                            tint = TextSecondaryGray,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-        // 3. YT Music Circular Artist Spotlight Row
-        item {
-            Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                Text(
-                    text = "ARTIST SPOTLIGHT",
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = SpotifyGreen,
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 10.sp,
-                        letterSpacing = 1.4.sp
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp)
-                )
-                Text(
-                    text = "Your favorite creators",
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 20.sp,
-                        color = Color.White
-                    ),
-                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                LazyRow(
-                    contentPadding = PaddingValues(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    items(artistNames) { artistName ->
-                        val songForArtist = remember(artistName, filteredSongs) {
-                            filteredSongs.firstOrNull { it.author.equals(artistName, ignoreCase = true) }
-                        }
-                        val avatarUrl = artistAvatars[artistName]
-                            ?: songForArtist?.thumbnail
-                            ?: "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=300"
-                        Column(
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .width(100.dp)
-                                .clickable { onArtistClick(artistName) }
-                        ) {
-                            AsyncImage(
-                                model = avatarUrl,
-                                contentDescription = artistName,
-                                contentScale = ContentScale.Crop,
-                                modifier = Modifier
-                                    .size(100.dp)
-                                    .clip(CircleShape)
-                                    .border(1.5.dp, Color.White.copy(alpha = 0.2f), CircleShape)
-                            )
-
-                            Spacer(modifier = Modifier.height(8.dp))
-
-                            Text(
-                                text = artistName,
-                                style = MaterialTheme.typography.bodyMedium.copy(
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color.White,
-                                    fontSize = 12.sp
                                 ),
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                modifier = Modifier.weight(1f)
                             )
-
-                            Text(
-                                text = "Artist",
-                                style = MaterialTheme.typography.labelSmall.copy(
-                                    color = TextSecondaryGray,
-                                    fontSize = 10.sp
-                                )
+                            Icon(
+                                imageVector = Icons.Default.ChevronRight,
+                                contentDescription = "Show All",
+                                tint = TextSecondaryGray,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
-                    }
-                }
-            }
-        }
 
-        // 4. Language & Genre Horizontal Song Rails (Just like Mixed for you & Jump back in)
-        item {
-            Column(modifier = Modifier.fillMaxWidth()) {
-                if (selectedLanguages.contains("Punjabi")) {
-                    CategorySongRail(
-                        title = "Punjabi Hits",
-                        eyebrow = "PUNJABI SPOTLIGHT",
-                        songs = punjabiSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
+                        Spacer(modifier = Modifier.height(12.dp))
 
-                if (selectedLanguages.contains("Hindi")) {
-                    CategorySongRail(
-                        title = "Hindi Bollywood",
-                        eyebrow = "FOR HINDI MOODS",
-                        songs = hindiSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
-
-                if (selectedLanguages.contains("English")) {
-                    CategorySongRail(
-                        title = "English Pop Hits",
-                        eyebrow = "GLOBAL HITS",
-                        songs = englishSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
-
-                if (selectedLanguages.contains("South Hits") || selectedLanguages.contains("South")) {
-                    CategorySongRail(
-                        title = "South Tamil & Telugu",
-                        eyebrow = "SOUTH SPOTLIGHT",
-                        songs = southSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
-
-                if (selectedLanguages.contains("Haryanvi")) {
-                    CategorySongRail(
-                        title = "Haryanvi Explosives",
-                        eyebrow = "LOCAL HITS",
-                        songs = haryanviSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
-
-                if (selectedLanguages.contains("Bhojpuri")) {
-                    CategorySongRail(
-                        title = "Bhojpuri Party",
-                        eyebrow = "FOLK & DANCE",
-                        songs = bhojpuriSongs,
-                        currentSong = currentSong,
-                        onSongClick = onSongClick
-                    )
-                }
-            }
-        }
-
-        // 3. Hero Recommendation Spotlight (To solve information overload)
-        item {
-            if (featuredHeroSong != null && !isLoading) {
-                HeroSpotlightCard(
-                    song = featuredHeroSong,
-                    onPlayClick = { onSongClick(featuredHeroSong, filteredSongs, 0) }
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-            }
-        }
-
-        // 4. Spotify 2-Column Shortcuts Grid (6 items, height 56dp, 8dp radius)
-        item {
-            if (filteredSongs.isNotEmpty()) {
-                SpotifyShortcutsGrid(
-                    songs = filteredSongs,
-                    currentSong = currentSong,
-                    likedCount = likedSongs.size,
-                    onSongClick = onSongClick,
-                    onLikedSongsClick = onLibraryClick
-                )
-                Spacer(modifier = Modifier.height(24.dp))
-            }
-        }
-
-
-
-        // 7. "Mixed For You" Horizontal Shelf (Album art 70% of card, 160x160dp)
-        item {
-            if (!isLoading && mixedTracks.isNotEmpty()) {
-                Column(modifier = Modifier.padding(bottom = 24.dp)) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 4.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "Mixed for you",
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 20.sp,
-                                color = Color.White
-                            ),
-                            modifier = Modifier.weight(1f)
-                        )
-                        Icon(
-                            imageVector = Icons.Default.ChevronRight,
-                            contentDescription = "Show All",
-                            tint = TextSecondaryGray,
-                            modifier = Modifier.size(24.dp)
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(12.dp))
-
-                    LazyRow(
-                        contentPadding = PaddingValues(horizontal = 16.dp),
-                        horizontalArrangement = Arrangement.spacedBy(14.dp)
-                    ) {
-                        itemsIndexed(mixedTracks) { index, song ->
-                            AnimatedPressCard(
-                                onClick = { onSongClick(song, filteredSongs, index) }
-                            ) {
-                                Column(modifier = Modifier.width(156.dp)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(156.dp)
-                                            .clip(RoundedCornerShape(8.dp))
-                                    ) {
-                                        AsyncImage(
-                                            model = song.thumbnail,
-                                            contentDescription = song.title,
-                                            contentScale = ContentScale.Crop,
-                                            modifier = Modifier.fillMaxSize()
-                                        )
+                        LazyRow(
+                            contentPadding = PaddingValues(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(14.dp)
+                        ) {
+                            itemsIndexed(mixedTracks) { index, song ->
+                                AnimatedPressCard(
+                                    onClick = { onSongClick(song, filteredSongs, index) }
+                                ) {
+                                    Column(modifier = Modifier.width(156.dp)) {
                                         Box(
                                             modifier = Modifier
-                                                .fillMaxSize()
-                                                .background(
-                                                    Brush.verticalGradient(
-                                                        listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
-                                                    )
-                                                )
-                                        )
-                                        Surface(
-                                            shape = RoundedCornerShape(6.dp),
-                                            color = Color.Black.copy(alpha = 0.6f),
-                                            modifier = Modifier
-                                                .align(Alignment.TopStart)
-                                                .padding(6.dp)
+                                                .size(156.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                         ) {
-                                            Text(
-                                                text = "DAILY MIX ${index + 1}",
-                                                style = MaterialTheme.typography.labelSmall.copy(
-                                                    color = Color.White,
-                                                    fontWeight = FontWeight.Bold,
-                                                    fontSize = 9.sp,
-                                                    letterSpacing = 1.2.sp
-                                                ),
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                            AsyncImage(
+                                                model = song.thumbnail,
+                                                contentDescription = song.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier.fillMaxSize()
                                             )
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxSize()
+                                                    .background(
+                                                        Brush.verticalGradient(
+                                                            listOf(Color.Transparent, Color.Black.copy(alpha = 0.5f))
+                                                        )
+                                                    )
+                                            )
+                                            Surface(
+                                                shape = RoundedCornerShape(6.dp),
+                                                color = Color.Black.copy(alpha = 0.6f),
+                                                modifier = Modifier
+                                                    .align(Alignment.TopStart)
+                                                    .padding(6.dp)
+                                            ) {
+                                                Text(
+                                                    text = "DAILY MIX ${index + 1}",
+                                                    style = MaterialTheme.typography.labelSmall.copy(
+                                                        color = Color.White,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 9.sp,
+                                                        letterSpacing = 1.2.sp
+                                                    ),
+                                                    modifier = Modifier.padding(horizontal = 6.dp, vertical = 3.dp)
+                                                )
+                                            }
                                         }
+
+                                        Spacer(modifier = Modifier.height(8.dp))
+
+                                        Text(
+                                            text = song.title,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Bold,
+                                                color = Color.White,
+                                                fontSize = 14.sp
+                                            ),
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+
+                                        Spacer(modifier = Modifier.height(4.dp))
+
+                                        Text(
+                                            text = "${song.author} and more",
+                                            style = MaterialTheme.typography.bodySmall.copy(
+                                                color = TextSecondaryGray,
+                                                fontSize = 12.sp
+                                            ),
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
                                     }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Text(
-                                        text = song.title,
-                                        style = MaterialTheme.typography.bodyMedium.copy(
-                                            fontWeight = FontWeight.Bold,
-                                            color = Color.White,
-                                            fontSize = 14.sp
-                                        ),
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-
-                                    Spacer(modifier = Modifier.height(4.dp))
-
-                                    Text(
-                                        text = "${song.author} and more",
-                                        style = MaterialTheme.typography.bodySmall.copy(
-                                            color = TextSecondaryGray,
-                                            fontSize = 12.sp
-                                        ),
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
                                 }
                             }
                         }
@@ -1044,7 +872,6 @@ fun HomeScreen(
             }
         }
     }
-}
 }
 
 // ------------------- Helper Sub-Composables -------------------
@@ -1441,7 +1268,6 @@ private fun AnimatedPressCard(
 ) {
     Box(
         modifier = modifier
-            .clip(RoundedCornerShape(12.dp))
             .clickable { onClick() }
     ) {
         content()

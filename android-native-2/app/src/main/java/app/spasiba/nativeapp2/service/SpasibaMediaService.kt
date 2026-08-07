@@ -180,6 +180,12 @@ class SpasibaMediaService : MediaSessionService() {
         lastNotifiedSongId = song.id
         lastNotifiedIsPlaying = isPlaying
 
+        // Post immediate notification update (0ms latency!) using current/cached bitmap
+        val currentBitmap = if (song.thumbnail == cachedBitmapUrl) cachedBitmap else null
+        val immediateNotification = buildNotification(song, isPlaying, currentBitmap, pendingIntent)
+        val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        notificationManager.notify(NOTIFICATION_ID, immediateNotification)
+
         if (isSongChanged) {
             artworkJob?.cancel()
             artworkJob = serviceScope.launch {
@@ -206,14 +212,9 @@ class SpasibaMediaService : MediaSessionService() {
 
                 compatSession?.setMetadata(metadataBuilder.build())
 
-                val notification = buildNotification(song, isPlaying, bitmap, pendingIntent)
-                val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+                val notification = buildNotification(song, playerManager.isPlaying.value, bitmap, pendingIntent)
                 notificationManager.notify(NOTIFICATION_ID, notification)
             }
-        } else {
-            val notification = buildNotification(song, isPlaying, cachedBitmap, pendingIntent)
-            val notificationManager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            notificationManager.notify(NOTIFICATION_ID, notification)
         }
     }
 
@@ -263,7 +264,7 @@ class SpasibaMediaService : MediaSessionService() {
             .setSmallIcon(android.R.drawable.ic_media_play)
             .setLargeIcon(artwork)
             .setContentIntent(pendingIntent)
-            .setOngoing(isPlaying)
+            .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setSound(null)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)

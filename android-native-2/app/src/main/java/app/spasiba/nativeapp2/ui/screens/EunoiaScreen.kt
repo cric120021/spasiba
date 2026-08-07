@@ -139,56 +139,238 @@ import java.util.Date
 import java.util.Locale
 
 @Composable
-fun EunoiaMessageRow(message: EunoiaChatMessage) {
+fun DateSeparatorBadge(dateText: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 10.dp),
+        contentAlignment = Alignment.Center
+    ) {
+        Surface(
+            shape = RoundedCornerShape(12.dp),
+            color = Color(0xFF1E1F28),
+            border = BorderStroke(0.5.dp, Color.White.copy(alpha = 0.12f))
+        ) {
+            Text(
+                text = dateText,
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
+            )
+        }
+    }
+}
+
+@Composable
+fun EunoiaMessageRow(
+    message: EunoiaChatMessage,
+    partnerPhotoUri: String? = null,
+    onReplySelected: (EunoiaChatMessage) -> Unit = {}
+) {
     val isPartner = message.isPartner
     val align = if (isPartner) Alignment.Start else Alignment.End
-    val bubbleBg = if (isPartner) Color(0xFF1E1E26) else Color.White.copy(alpha = 0.9f)
-    val textColor = if (isPartner) Color.White else Color.Black
     val timeFormatted = remember(message.timestampMs) {
         SimpleDateFormat("hh:mm a", Locale.getDefault()).format(Date(message.timestampMs))
     }
+    var isVoicePlaying by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalAlignment = align
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(vertical = 3.dp),
+        horizontalArrangement = if (isPartner) Arrangement.Start else Arrangement.End,
+        verticalAlignment = Alignment.Bottom
     ) {
-        Text(
-            text = if (isPartner) message.senderName else "You",
-            style = MaterialTheme.typography.labelSmall.copy(
-                color = TextMuted,
-                fontSize = 10.sp,
-                fontWeight = FontWeight.SemiBold
-            ),
-            modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
-        )
-
-        Surface(
-            shape = RoundedCornerShape(
-                topStart = 16.dp,
-                topEnd = 16.dp,
-                bottomStart = if (isPartner) 4.dp else 16.dp,
-                bottomEnd = if (isPartner) 16.dp else 4.dp
-            ),
-            color = bubbleBg,
-            modifier = Modifier.padding(vertical = 2.dp)
-        ) {
-            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
-                Text(
-                    text = message.messageText,
-                    style = MaterialTheme.typography.bodyMedium.copy(
-                        color = textColor,
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium
+        if (isPartner) {
+            // Partner Avatar DP pinned to left of incoming bubble
+            if (!partnerPhotoUri.isNullOrBlank()) {
+                AsyncImage(
+                    model = partnerPhotoUri,
+                    contentDescription = "Partner Avatar",
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .border(1.dp, Color(0xFFE50914).copy(alpha = 0.6f), CircleShape)
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .size(28.dp)
+                        .clip(CircleShape)
+                        .background(Brush.linearGradient(listOf(Color(0xFF8E0E25), Color(0xFF1C1D27)))),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = message.senderName.take(1).uppercase(),
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 11.sp
+                        )
                     )
-                )
-                Text(
-                    text = timeFormatted,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        color = if (isPartner) Color.White.copy(alpha = 0.5f) else Color.Black.copy(alpha = 0.5f),
-                        fontSize = 9.sp
-                    ),
-                    modifier = Modifier.align(Alignment.End)
-                )
+                }
+            }
+            Spacer(modifier = Modifier.width(8.dp))
+        }
+
+        Column(
+            horizontalAlignment = align,
+            modifier = Modifier.widthIn(max = 280.dp)
+        ) {
+            Text(
+                text = if (isPartner) message.senderName else "You",
+                style = MaterialTheme.typography.labelSmall.copy(
+                    color = TextMuted,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold
+                ),
+                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+            )
+
+            Surface(
+                shape = RoundedCornerShape(
+                    topStart = 18.dp,
+                    topEnd = 18.dp,
+                    bottomStart = if (isPartner) 4.dp else 18.dp,
+                    bottomEnd = if (isPartner) 18.dp else 4.dp
+                ),
+                color = if (isPartner) Color(0xFF1C1D27) else Color(0xFF8E0E25),
+                border = BorderStroke(
+                    1.dp,
+                    if (isPartner) Color(0xFF2C2D3C) else Color(0xFFE50914).copy(alpha = 0.5f)
+                ),
+                modifier = Modifier.clickable { onReplySelected(message) }
+            ) {
+                Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
+                    // Quoted Reply Preview Box inside bubble
+                    if (!message.replyToText.isNullOrBlank()) {
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color.Black.copy(alpha = 0.35f),
+                            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.1f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(bottom = 6.dp)
+                        ) {
+                            Row(modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(3.dp)
+                                        .fillMaxHeight()
+                                        .background(Color(0xFFE50914), RoundedCornerShape(2.dp))
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Column {
+                                    Text(
+                                        text = message.replyToSender ?: "Reply",
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            color = Color(0xFFE50914),
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 9.sp
+                                        )
+                                    )
+                                    Text(
+                                        text = message.replyToText,
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = Color.White.copy(alpha = 0.7f),
+                                            fontSize = 11.sp
+                                        ),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    // Media Attachment Preview (Photo)
+                    if (!message.mediaUri.isNullOrBlank()) {
+                        AsyncImage(
+                            model = message.mediaUri,
+                            contentDescription = "Shared Media",
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .aspectRatio(1.4f)
+                                .clip(RoundedCornerShape(10.dp))
+                                .padding(bottom = 6.dp)
+                        )
+                    }
+
+                    // Voice Note Player Bubble
+                    if (message.isVoiceNote) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.padding(vertical = 4.dp)
+                        ) {
+                            IconButton(
+                                onClick = { isVoicePlaying = !isVoicePlaying },
+                                modifier = Modifier
+                                    .size(32.dp)
+                                    .background(Color.White.copy(alpha = 0.15f), CircleShape)
+                            ) {
+                                Icon(
+                                    imageVector = if (isVoicePlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                    contentDescription = "Play Voice Note",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Column {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Icon(
+                                        imageVector = Icons.Default.Headphones,
+                                        contentDescription = null,
+                                        tint = Color(0xFF10B981),
+                                        modifier = Modifier.size(14.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = "Voice Message",
+                                        style = MaterialTheme.typography.bodySmall.copy(
+                                            color = Color.White,
+                                            fontWeight = FontWeight.Bold,
+                                            fontSize = 12.sp
+                                        )
+                                    )
+                                }
+                                Text(
+                                    text = "0:${message.voiceDurationSec.toString().padStart(2, '0')}",
+                                    style = MaterialTheme.typography.labelSmall.copy(
+                                        color = TextMuted,
+                                        fontSize = 10.sp
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    // Standard Text Content
+                    if (message.messageText.isNotBlank()) {
+                        Text(
+                            text = message.messageText,
+                            style = MaterialTheme.typography.bodyMedium.copy(
+                                color = Color.White,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Medium
+                            )
+                        )
+                    }
+
+                    Text(
+                        text = timeFormatted,
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            color = Color.White.copy(alpha = 0.5f),
+                            fontSize = 9.sp
+                        ),
+                        modifier = Modifier.align(Alignment.End)
+                    )
+                }
             }
         }
     }
@@ -270,6 +452,7 @@ fun EunoiaScreen(
     val isPlaying by playerManager.isPlaying.collectAsState()
     val positionMs by playerManager.positionMs.collectAsState()
     val durationMs by playerManager.durationMs.collectAsState()
+    val videoAspectRatio by playerManager.videoAspectRatio.collectAsState()
 
     val prefs = remember { context.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
     val myPhotoUri = remember(prefs) { prefs.getString("profile_photo_uri", null) }
@@ -987,6 +1170,7 @@ fun EunoiaScreen(
                         }
                     }
                 }
+                }
             }
 
             Spacer(modifier = Modifier.height(6.dp))
@@ -1293,5 +1477,4 @@ fun EunoiaScreen(
             }
         }
     }
-}
 }

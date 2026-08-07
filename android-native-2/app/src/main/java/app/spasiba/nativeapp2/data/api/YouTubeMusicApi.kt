@@ -6,6 +6,8 @@ import app.spasiba.nativeapp2.data.model.CategoryChip
 import app.spasiba.nativeapp2.data.model.Song
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
@@ -95,7 +97,7 @@ object YouTubeMusicApi {
 
     private val searchCache = android.util.LruCache<String, List<Song>>(200)
     @Volatile
-    private var cachedHomeShelves: List<HomeShelf> = emptyList()
+    var cachedHomeShelves: List<HomeShelf> = emptyList()
     @Volatile
     var cachedHomeRecommendations: List<Song> = emptyList()
 
@@ -329,7 +331,13 @@ object YouTubeMusicApi {
                         }
 
                         if (finalId.isNotBlank() && titleText.isNotBlank()) {
-                            val finalThumb = if (thumbUrl.isNotBlank()) thumbUrl else "https://i.ytimg.com/vi/default/hqdefault.jpg"
+                            val finalThumb = when {
+                                thumbUrl.startsWith("//") -> "https:$thumbUrl"
+                                thumbUrl.startsWith("http://") -> thumbUrl.replace("http://", "https://")
+                                thumbUrl.isNotBlank() && !thumbUrl.contains("default/hqdefault.jpg") -> thumbUrl
+                                finalId.length == 11 -> "https://i.ytimg.com/vi/$finalId/hqdefault.jpg"
+                                else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+                            }
                             songsList.add(
                                 Song(
                                     id = finalId,
@@ -558,6 +566,49 @@ object YouTubeMusicApi {
             cachedHomeShelves = shelves
         }
         shelves
+    }
+
+    suspend fun fetchPodcastTopicShelves(): List<HomeShelf> = withContext(Dispatchers.IO) {
+        val topics = listOf(
+            "Films" to "Films podcast",
+            "Motivation" to "Motivation podcast",
+            "Business" to "Business podcast",
+            "Marketing" to "Marketing podcast",
+            "Lifestyle" to "Lifestyle podcast",
+            "Science" to "Science podcast",
+            "Finances" to "Finances podcast",
+            "Spirituality" to "Spirituality podcast",
+            "Fiction" to "Fiction podcast",
+            "History" to "History podcast",
+            "Literature" to "Literature podcast",
+            "Government" to "Government podcast",
+            "News" to "News podcast",
+            "Politics" to "Politics podcast",
+            "Comedy" to "Comedy podcast",
+            "Horoscopes" to "Horoscopes podcast",
+            "Astrology" to "Astrology podcast",
+            "Religion" to "Religion podcast",
+            "Popular Shows" to "Popular shows podcast"
+        )
+
+        coroutineScope {
+            topics.map { (title, query) ->
+                async {
+                    val rawSongs = searchSongs(query)
+                    val podcastSongs = rawSongs.filter { song ->
+                        val t = song.title.lowercase()
+                        !t.contains("jukebox") && !t.contains("compilation") && !t.contains("non stop")
+                    }
+                    if (podcastSongs.isNotEmpty()) {
+                        HomeShelf(
+                            title = title,
+                            songs = podcastSongs,
+                            style = ShelfLayoutStyle.CAROUSEL_SQUARE
+                        )
+                    } else null
+                }
+            }.mapNotNull { it.await() }
+        }
     }
 
     suspend fun fetchWebSearchSongs(query: String): List<Song> = withContext(Dispatchers.IO) {

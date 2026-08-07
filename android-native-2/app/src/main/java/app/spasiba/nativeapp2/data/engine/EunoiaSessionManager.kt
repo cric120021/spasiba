@@ -36,7 +36,12 @@ data class EunoiaChatMessage(
     val senderName: String,
     val isPartner: Boolean,
     val messageText: String,
-    val timestampMs: Long = System.currentTimeMillis()
+    val timestampMs: Long = System.currentTimeMillis(),
+    val replyToText: String? = null,
+    val replyToSender: String? = null,
+    val mediaUri: String? = null,
+    val isVoiceNote: Boolean = false,
+    val voiceDurationSec: Int = 0
 )
 
 data class FlyingReaction(
@@ -103,6 +108,8 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
 
     private val _leaderDeviceId = MutableStateFlow<String?>(null)
     val leaderDeviceId: StateFlow<String?> = _leaderDeviceId.asStateFlow()
+
+    private var sessionConnectedTimeMs = 0L
 
     private var syncController: EunoiaSyncController? = null
 
@@ -243,6 +250,8 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         })
     }
 
+    private val processedSignalIds = java.util.Collections.synchronizedSet(HashSet<String>())
+
     private fun startSignalPolling() {
         scope.launch(Dispatchers.IO) {
             while (true) {
@@ -269,6 +278,18 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                             val payload = sigObj.optJSONObject("payload") ?: JSONObject()
                                             val type = payload.optString("type")
 
+                                            val sigId = sigObj.optString("id").ifEmpty {
+                                                sigObj.optString("_id").ifEmpty {
+                                                    "${from}_${sigObj.optString("createdAt")}_${type}_${payload.optString("songId")}_${payload.optLong("timestampMs")}_$i"
+                                                }
+                                            }
+
+                                            if (processedSignalIds.contains(sigId)) continue
+                                            processedSignalIds.add(sigId)
+                                            if (processedSignalIds.size > 500) {
+                                                processedSignalIds.clear()
+                                            }
+
                                             scope.launch(Dispatchers.Main) {
                                                 when (type) {
                                                     "LEADERSHIP_TRANSFER" -> {
@@ -293,9 +314,6 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                              val localPhotoUri = photoB64?.let { saveBase64ToFileUri(it, "partner_$from") }
                                                              withContext(Dispatchers.Main) {
                                                                  if (localPhotoUri != null) _partnerPhotoUri.value = localPhotoUri
-                                                                 if (inviterName != null) {
-                                                                     EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, inviterName, isOutgoing = false, photoUri = localPhotoUri ?: _partnerPhotoUri.value)
-                                                                 }
                                                              }
                                                          }
                                                          fetchAndResolvePartnerProfile(from)
@@ -322,12 +340,10 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                             val localPhotoUri = photoB64?.let { saveBase64ToFileUri(it, "partner_$from") }
                                                             withContext(Dispatchers.Main) {
                                                                 if (localPhotoUri != null) _partnerPhotoUri.value = localPhotoUri
-                                                                if (senderName != null) {
-                                                                    EunoiaFriendManager.getInstance(context).addOrSendFriendRequest(from, senderName, isOutgoing = false, photoUri = localPhotoUri ?: _partnerPhotoUri.value)
-                                                                }
                                                             }
                                                         }
                                                         fetchAndResolvePartnerProfile(from)
+                                                        sessionConnectedTimeMs = System.currentTimeMillis()
                                                         _sessionStatus.value = EunoiaSessionStatus.CONNECTED
                                                         if (sessId.isNotBlank()) {
                                                             _sessionId.value = sessId
@@ -336,9 +352,13 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                         broadcastProfileUpdateSignal()
                                                     }
                                                     "REJECT" -> {
-                                                        dismissInviteNotification()
-                                                        _pendingInviteSender.value = null
-                                                        _sessionStatus.value = EunoiaSessionStatus.REJECTED_BUSY
+                                                        if (_sessionStatus.value != EunoiaSessionStatus.CONNECTED) {
+                                                            dismissInviteNotification()
+                                                            _pendingInviteSender.value = null
+                                                            _sessionStatus.value = EunoiaSessionStatus.REJECTED_BUSY
+                                                        } else {
+                                                            Log.d("EunoiaSessionManager", "Ignored stale REJECT signal while currently CONNECTED!")
+                                                        }
                                                     }
                                                     "WEBRTC_OFFER" -> {
                                                         val offerSdp = payload.optString("sdp")
@@ -362,13 +382,24 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                     "chatMessage" -> {
                                                         val text = payload.optString("text")
                                                         val ts = payload.optLong("timestampMs", System.currentTimeMillis())
+                                                        val rText = payload.optString("replyToText").takeIf { it.isNotBlank() }
+                                                        val rSender = payload.optString("replyToSender").takeIf { it.isNotBlank() }
+                                                        val mUri = payload.optString("mediaUri").takeIf { it.isNotBlank() }
+                                                        val isVoice = payload.optBoolean("isVoiceNote", false)
+                                                        val vDur = payload.optInt("voiceDurationSec", 0)
+
                                                         val newMsg = EunoiaChatMessage(
                                                             id = UUID.randomUUID().toString(),
                                                             senderId = from,
-                                                            senderName = from,
+                                                            senderName = _partnerName.value.orEmpty().ifBlank { from },
                                                             isPartner = true,
                                                             messageText = text,
-                                                            timestampMs = ts
+                                                            timestampMs = ts,
+                                                            replyToText = rText,
+                                                            replyToSender = rSender,
+                                                            mediaUri = mUri,
+                                                            isVoiceNote = isVoice,
+                                                            voiceDurationSec = vDur
                                                         )
                                                         _sessionMessages.value = _sessionMessages.value + newMsg
                                                     }
@@ -437,15 +468,20 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                                                         EunoiaFriendManager.getInstance(context).clearChatHistory(from)
                                                         friendEventFlow.value = System.currentTimeMillis()
                                                     }
-                                                     "END_SESSION" -> {
-                                                         dismissInviteNotification()
-                                                         _partnerDeviceId.value = null
-                                                         _partnerName.value = null
-                                                         _sessionStatus.value = EunoiaSessionStatus.IDLE
-                                                         _sessionMessages.value = emptyList()
-                                                         webrtcManager.close()
-                                                         Toast.makeText(context, "Partner ended the session", Toast.LENGTH_SHORT).show()
-                                                     }
+                                                    "END_SESSION" -> {
+                                                        val sigSentAt = payload.optLong("clientSentAt", sigObj.optLong("createdAt", System.currentTimeMillis()))
+                                                        if (sessionConnectedTimeMs > 0 && sigSentAt >= (sessionConnectedTimeMs - 5000L)) {
+                                                            dismissInviteNotification()
+                                                            _partnerDeviceId.value = null
+                                                            _partnerName.value = null
+                                                            _sessionStatus.value = EunoiaSessionStatus.IDLE
+                                                            _sessionMessages.value = emptyList()
+                                                            webrtcManager.close()
+                                                            Toast.makeText(context, "Partner ended the session", Toast.LENGTH_SHORT).show()
+                                                        } else {
+                                                            Log.d("EunoiaSessionManager", "Ignored stale END_SESSION signal (sigSentAt=$sigSentAt, sessionConnectedTimeMs=$sessionConnectedTimeMs)")
+                                                        }
+                                                    }
                                                     "FRIEND_REMOVE" -> {
                                                         EunoiaFriendManager.getInstance(context).removeFriend(from)
                                                         friendEventFlow.value = System.currentTimeMillis()
@@ -474,7 +510,9 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                 } catch (e: Exception) {
                     Log.e("EunoiaSessionManager", "Signal polling exception: ${e.message}")
                 }
-                delay(1500)
+                val isRoomActive = (_sessionStatus.value == EunoiaSessionStatus.CONNECTED || _sessionStatus.value == EunoiaSessionStatus.INVITE_SENT)
+                val pollInterval = if (isRoomActive) 1500L else 3000L
+                delay(pollInterval)
             }
         }
     }
@@ -667,16 +705,25 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
     fun attachPlayerManager(playerManager: NativePlayerManager) {
         if (syncController == null) {
             syncController = EunoiaSyncController(playerManager, socketClient)
-            playerManager.eunoiaTrackChangeListener = { song ->
-                if (_sessionStatus.value == EunoiaSessionStatus.CONNECTED) {
-                    emitPlaybackAction("trackChanged", JSONObject().apply {
-                        put("songId", song.id)
-                        put("title", song.title)
-                        put("author", song.author)
-                        put("thumbnail", song.thumbnail)
-                        put("durationSeconds", song.durationSeconds)
-                    })
-                }
+        }
+        playerManager.eunoiaTrackChangeListener = { song ->
+            val lastApplied = syncController?.lastRemoteAppliedSongId
+            if (lastApplied != null && lastApplied == song.id) {
+                Log.d("EunoiaSessionManager", "Track change was triggered by remote sync for '${song.title}' - suppressing echo emit!")
+                syncController?.lastRemoteAppliedSongId = null
+            } else if (!_partnerDeviceId.value.isNullOrBlank() && syncController?.isApplyingRemoteCommand != true) {
+                emitPlaybackAction("trackChanged", JSONObject().apply {
+                    put("songId", song.id)
+                    put("title", song.title)
+                    put("author", song.author)
+                    put("thumbnail", song.thumbnail)
+                    put("durationSeconds", song.durationSeconds)
+                })
+            }
+        }
+        playerManager.eunoiaPlaybackActionListener = { action, extraPayload ->
+            if (!_partnerDeviceId.value.isNullOrBlank() && syncController?.isApplyingRemoteCommand != true) {
+                emitPlaybackAction(action, extraPayload)
             }
         }
     }
@@ -804,6 +851,20 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         val isPlaying = playerManager?.isPlaying?.value ?: false
         val myName = getMyDisplayName()
 
+        val myPhotoUri = context.getSharedPreferences("spasiba_user_prefs", Context.MODE_PRIVATE).getString("profile_photo_uri", null)
+        val myB64 = myPhotoUri?.let { uriToBase64(it) }
+
+        val inviteSignalPayload = JSONObject().apply {
+            put("type", "EUNOIA_INVITE")
+            put("inviterName", myName)
+            put("senderName", myName)
+            put("sessionId", _sessionId.value ?: "")
+            if (!myB64.isNullOrBlank()) {
+                put("photoBase64", myB64)
+            }
+        }
+        sendHttpSignal(trimmed, "EUNOIA_INVITE", inviteSignalPayload)
+
         scope.launch(Dispatchers.IO) {
             try {
                 val jsonPayload = JSONObject().apply {
@@ -867,6 +928,7 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         _partnerDeviceId.value = senderId
         val localName = customName?.trim()?.ifBlank { null } ?: EunoiaFriendManager.getInstance(context).getFriends().find { it.friendId.equals(senderId, ignoreCase = true) }?.name
         _partnerName.value = localName ?: "Friend (${senderId.takeLast(6)})"
+        sessionConnectedTimeMs = System.currentTimeMillis()
         _sessionStatus.value = EunoiaSessionStatus.CONNECTED
 
         fetchAndResolvePartnerProfile(senderId)
@@ -879,13 +941,20 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         initiateWebRtcHandshake(senderId)
 
         val myName = getMyDisplayName()
+        val myPhotoUri = context.getSharedPreferences("spasiba_user_prefs", Context.MODE_PRIVATE).getString("profile_photo_uri", null)
+        val myB64 = myPhotoUri?.let { uriToBase64(it) }
+
         val acceptPayload = JSONObject().apply {
             put("type", "ACCEPT")
             put("sessionId", activeSessionId)
             put("senderId", _myDeviceId.value)
             put("senderName", myName)
+            if (!myB64.isNullOrBlank()) {
+                put("photoBase64", myB64)
+            }
         }
         sendHttpSignal(senderId, "ACCEPT", acceptPayload)
+        broadcastProfileUpdateSignal(myName, myPhotoUri)
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -972,8 +1041,15 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
         }
     }
 
-    fun sendMessage(text: String) {
-        if (text.isBlank()) return
+    fun sendMessage(
+        text: String,
+        replyToText: String? = null,
+        replyToSender: String? = null,
+        mediaUri: String? = null,
+        isVoiceNote: Boolean = false,
+        voiceDurationSec: Int = 0
+    ) {
+        if (text.isBlank() && mediaUri == null && !isVoiceNote) return
         val partnerId = _partnerDeviceId.value ?: return
 
         val ts = System.currentTimeMillis()
@@ -983,7 +1059,12 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
             senderName = "You",
             isPartner = false,
             messageText = text,
-            timestampMs = ts
+            timestampMs = ts,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
+            mediaUri = mediaUri,
+            isVoiceNote = isVoiceNote,
+            voiceDurationSec = voiceDurationSec
         )
         _sessionMessages.value = _sessionMessages.value + myMsg
 
@@ -992,6 +1073,13 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
             put("text", text)
             put("senderId", _myDeviceId.value)
             put("timestampMs", ts)
+            if (replyToText != null) put("replyToText", replyToText)
+            if (replyToSender != null) put("replyToSender", replyToSender)
+            if (mediaUri != null) put("mediaUri", mediaUri)
+            if (isVoiceNote) {
+                put("isVoiceNote", true)
+                put("voiceDurationSec", voiceDurationSec)
+            }
         }
 
         val p2pOk = webrtcManager.sendP2pMessage(payload.toString())
@@ -1110,25 +1198,31 @@ class EunoiaSessionManager private constructor(private val context: Context) : E
                 if (_sessionStatus.value == EunoiaSessionStatus.CONNECTED) {
                     emitPlaybackAction("heartbeat")
                 }
-                delay(1000)
+                delay(3000)
             }
         }
     }
 
     fun emitPlaybackAction(action: String, extraPayload: JSONObject = JSONObject()) {
         val partnerId = _partnerDeviceId.value
+        val currentSong = syncController?.playerManager?.currentSong?.value
         val payload = JSONObject(extraPayload.toString()).apply {
             put("type", action)
             put("senderId", _myDeviceId.value)
             put("clientSentAt", System.currentTimeMillis())
+            if (!has("songId") && currentSong != null && currentSong.id.isNotBlank()) {
+                put("songId", currentSong.id)
+                put("title", currentSong.title)
+                put("author", currentSong.author)
+                put("thumbnail", currentSong.thumbnail)
+                put("durationSeconds", currentSong.durationSeconds)
+            }
         }
 
         val p2pOk = webrtcManager.sendP2pMessage(payload.toString())
-        if (!p2pOk) {
-            syncController?.emitLocalPlaybackCommand(action, extraPayload)
-            if (!partnerId.isNullOrBlank()) {
-                sendHttpSignal(partnerId, action, payload)
-            }
+        syncController?.emitLocalPlaybackCommand(action, payload)
+        if (!partnerId.isNullOrBlank() && action != "heartbeat") {
+            sendHttpSignal(partnerId, action, payload)
         }
     }
 }

@@ -117,6 +117,9 @@ class NativePlayerManager(private val context: Context) {
     private val _isLyricsLoading = MutableStateFlow(false)
     val isLyricsLoading: StateFlow<Boolean> = _isLyricsLoading.asStateFlow()
 
+    private val _videoAspectRatio = MutableStateFlow<Float>(16f / 9f)
+    val videoAspectRatio: StateFlow<Float> = _videoAspectRatio.asStateFlow()
+
     fun fetchLyricsForCurrentSong() {
         val song = _currentSong.value ?: return
         scope.launch(Dispatchers.IO) {
@@ -596,9 +599,10 @@ class NativePlayerManager(private val context: Context) {
     }
 
     var eunoiaTrackChangeListener: ((Song) -> Unit)? = null
+    var eunoiaPlaybackActionListener: ((action: String, extraPayload: org.json.JSONObject) -> Unit)? = null
 
-    fun playSong(song: Song) {
-        Log.d(TAG, "playSong requested for title='${song.title}' id='${song.id}'")
+    fun playSong(song: Song, initialPosMs: Long = 0L) {
+        Log.d(TAG, "playSong requested for title='${song.title}' id='${song.id}' initialPosMs=$initialPosMs")
         eunoiaTrackChangeListener?.invoke(song)
         
         // Auto cleanup video files once previous song is out of picture
@@ -611,7 +615,7 @@ class NativePlayerManager(private val context: Context) {
         upsertCurrentTrack(song)
         fetchLyricsForCurrentSong()
         app.spasiba.nativeapp2.data.analytics.SessionBrainManager.recordPlayStart(song)
-        _positionMs.value = 0L
+        _positionMs.value = initialPosMs.coerceAtLeast(0L)
 
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
@@ -666,6 +670,7 @@ class NativePlayerManager(private val context: Context) {
 
                     exoPlayer.setMediaItem(mediaItem)
                     exoPlayer.prepare()
+                    if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
                     exoPlayer.play()
                     _isLoading.value = false
                 }
@@ -701,42 +706,55 @@ class NativePlayerManager(private val context: Context) {
                     Uri.parse(result.url)
                 }
 
-                val mediaMetadata = MediaMetadata.Builder()
-                    .setTitle(song.title)
-                    .setArtist(song.author)
-                    .setArtworkUri(Uri.parse(song.thumbnail))
-                    .build()
-
-                val mediaItem = MediaItem.Builder()
-                    .setUri(targetUri)
-                    .setMediaId(song.id)
-                    .setMediaMetadata(mediaMetadata)
-                    .build()
-
-                if (result.url.startsWith("/")) {
+                if (targetUri.scheme == "file") {
+                    val mediaMetadata = MediaMetadata.Builder()
+                        .setTitle(song.title)
+                        .setArtist(song.author)
+                        .setArtworkUri(Uri.parse(song.thumbnail))
+                        .build()
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(targetUri)
+                        .setMediaId(song.id)
+                        .setMediaMetadata(mediaMetadata)
+                        .build()
                     exoPlayer.setMediaItem(mediaItem)
                 } else {
                     val headers = result.headers.toMutableMap().apply {
                         putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                     }
-
                     val dataSourceFactory = DefaultHttpDataSource.Factory()
                         .setAllowCrossProtocolRedirects(true)
-                        .setConnectTimeoutMs(15000)
-                        .setReadTimeoutMs(15000)
+                        .setConnectTimeoutMs(8000)
+                        .setReadTimeoutMs(8000)
                         .setDefaultRequestProperties(headers)
 
-                    val mediaSource = ProgressiveMediaSource.Factory(dataSourceFactory)
+                    val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                        .setDataSourceFactory(dataSourceFactory)
+
+                    val mediaMetadata = MediaMetadata.Builder()
+                        .setTitle(song.title)
+                        .setArtist(song.author)
+                        .setArtworkUri(Uri.parse(song.thumbnail))
+                        .build()
+
+                    val mediaItem = MediaItem.Builder()
+                        .setUri(targetUri)
+                        .setMediaId(song.id)
+                        .setMediaMetadata(mediaMetadata)
+                        .build()
+
+                    val mediaSource = mediaSourceFactory
                         .createMediaSource(mediaItem)
 
                     exoPlayer.setMediaSource(mediaSource)
                 }
 
                 exoPlayer.prepare()
+                if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
                 exoPlayer.playWhenReady = true
                 _isLoading.value = false
                 _isPlaying.value = true
-                Log.d(TAG, "ExoPlayer prepared and starting for '${song.title}' URI=$targetUri")
+                Log.d(TAG, "ExoPlayer prepared and starting for '${song.title}' URI=$targetUri initialPosMs=$initialPosMs")
 
                 maybePrefetchNextTrack()
             }
@@ -747,6 +765,10 @@ class NativePlayerManager(private val context: Context) {
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
             _isPlaying.value = false
+            eunoiaPlaybackActionListener?.invoke("pause", org.json.JSONObject().apply {
+                put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
+                put("isPlaying", false)
+            })
         } else {
             val song = _currentSong.value
             if (song != null) {
@@ -764,6 +786,10 @@ class NativePlayerManager(private val context: Context) {
                     playQueue(fallbacks, 0)
                 }
             }
+            eunoiaPlaybackActionListener?.invoke("play", org.json.JSONObject().apply {
+                put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
+                put("isPlaying", true)
+            })
         }
     }
 
@@ -783,6 +809,10 @@ class NativePlayerManager(private val context: Context) {
         val safePos = positionMs.coerceAtLeast(0L)
         exoPlayer.seekTo(safePos)
         _positionMs.value = safePos
+        eunoiaPlaybackActionListener?.invoke("seek", org.json.JSONObject().apply {
+            put("positionMs", safePos)
+            put("isPlaying", _isPlaying.value)
+        })
     }
 
     fun setPlaybackSpeed(speed: Float) {
@@ -857,7 +887,11 @@ class NativePlayerManager(private val context: Context) {
                         seekTo(0L)
                         exoPlayer.play()
                     } else {
-                        playNext()
+                        val sessionManager = app.spasiba.nativeapp2.data.engine.EunoiaSessionManager.getInstance(context)
+                        val isEunoiaConnected = sessionManager.sessionStatus.value == app.spasiba.nativeapp2.data.engine.EunoiaSessionStatus.CONNECTED
+                        if (!isEunoiaConnected || sessionManager.isLeader.value) {
+                            playNext()
+                        }
                     }
                 }
                 Player.STATE_IDLE -> Unit
@@ -867,10 +901,19 @@ class NativePlayerManager(private val context: Context) {
         override fun onIsPlayingChanged(isPlaying: Boolean) {
             Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onIsPlayingChanged: isPlaying=$isPlaying")
             _isPlaying.value = isPlaying
+            eunoiaPlaybackActionListener?.invoke(if (isPlaying) "play" else "pause", org.json.JSONObject().apply {
+                put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
+                put("isPlaying", isPlaying)
+            })
         }
 
         override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
             Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onVideoSizeChanged: width=${videoSize.width} height=${videoSize.height} unappliedRotationDegrees=${videoSize.unappliedRotationDegrees}")
+            if (videoSize.width > 0 && videoSize.height > 0) {
+                val calculatedRatio = videoSize.width.toFloat() / videoSize.height.toFloat()
+                val safeRatio = calculatedRatio.coerceIn(0.55f, 2.2f)
+                _videoAspectRatio.value = safeRatio
+            }
         }
 
         override fun onRenderedFirstFrame() {

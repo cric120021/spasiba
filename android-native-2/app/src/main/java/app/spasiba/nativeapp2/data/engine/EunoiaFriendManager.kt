@@ -31,7 +31,12 @@ data class EunoiaFriendChatMessage(
     val senderName: String,
     val isPartner: Boolean,
     val messageText: String,
-    val timestampMs: Long = System.currentTimeMillis()
+    val timestampMs: Long = System.currentTimeMillis(),
+    val replyToText: String? = null,
+    val replyToSender: String? = null,
+    val mediaUri: String? = null,
+    val isVoiceNote: Boolean = false,
+    val voiceDurationSec: Int = 0
 )
 
 class EunoiaFriendManager private constructor(private val context: Context) {
@@ -222,8 +227,13 @@ class EunoiaFriendManager private constructor(private val context: Context) {
                             senderId = obj.getString("senderId"),
                             senderName = obj.optString("senderName", "Friend"),
                             isPartner = obj.optBoolean("isPartner", false),
-                            messageText = obj.getString("messageText"),
-                            timestampMs = ts
+                            messageText = obj.optString("messageText", ""),
+                            timestampMs = ts,
+                            replyToText = obj.optString("replyToText").takeIf { it.isNotBlank() },
+                            replyToSender = obj.optString("replyToSender").takeIf { it.isNotBlank() },
+                            mediaUri = obj.optString("mediaUri").takeIf { it.isNotBlank() },
+                            isVoiceNote = obj.optBoolean("isVoiceNote", false),
+                            voiceDurationSec = obj.optInt("voiceDurationSec", 0)
                         )
                     )
                 }
@@ -234,14 +244,30 @@ class EunoiaFriendManager private constructor(private val context: Context) {
         return list.sortedBy { it.timestampMs }
     }
 
-    fun addChatMessage(friendId: String, senderId: String, senderName: String, text: String, isPartner: Boolean): EunoiaFriendChatMessage {
+    fun addChatMessage(
+        friendId: String,
+        senderId: String,
+        senderName: String,
+        text: String,
+        isPartner: Boolean,
+        replyToText: String? = null,
+        replyToSender: String? = null,
+        mediaUri: String? = null,
+        isVoiceNote: Boolean = false,
+        voiceDurationSec: Int = 0
+    ): EunoiaFriendChatMessage {
         val trimmedFriendId = friendId.trim().uppercase()
         val msg = EunoiaFriendChatMessage(
             friendId = trimmedFriendId,
             senderId = senderId,
             senderName = senderName,
             isPartner = isPartner,
-            messageText = text
+            messageText = text,
+            replyToText = replyToText,
+            replyToSender = replyToSender,
+            mediaUri = mediaUri,
+            isVoiceNote = isVoiceNote,
+            voiceDurationSec = voiceDurationSec
         )
 
         val history = getChatHistory(trimmedFriendId, days = 7).toMutableList()
@@ -268,10 +294,22 @@ class EunoiaFriendManager private constructor(private val context: Context) {
                 put("isPartner", m.isPartner)
                 put("messageText", m.messageText)
                 put("timestampMs", m.timestampMs)
+                if (m.replyToText != null) put("replyToText", m.replyToText)
+                if (m.replyToSender != null) put("replyToSender", m.replyToSender)
+                if (m.mediaUri != null) put("mediaUri", m.mediaUri)
+                if (m.isVoiceNote) {
+                    put("isVoiceNote", true)
+                    put("voiceDurationSec", m.voiceDurationSec)
+                }
             }
             array.put(obj)
         }
         prefs.edit().putString(key, array.toString()).apply()
+        try {
+            EunoiaSessionManager.getInstance(context).friendEventFlow.value = System.currentTimeMillis()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     companion object {

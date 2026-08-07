@@ -7,10 +7,12 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -139,6 +141,143 @@ fun ChartItemSkeleton() {
                     .clip(RoundedCornerShape(4.dp))
                     .background(brush)
             )
+        }
+    }
+}
+
+@Composable
+fun HomeScreenSkeleton() {
+    val brush = ShimmerBrush()
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color.Black)
+            .padding(top = 16.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .width(140.dp)
+                    .height(28.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(brush)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(brush)
+            )
+            Spacer(modifier = Modifier.width(12.dp))
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .clip(androidx.compose.foundation.shape.CircleShape)
+                    .background(brush)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(12.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            repeat(4) {
+                Box(
+                    modifier = Modifier
+                        .width(90.dp)
+                        .height(34.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(brush)
+                )
+            }
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
+
+        Box(
+            modifier = Modifier
+                .width(180.dp)
+                .height(24.dp)
+                .padding(horizontal = 16.dp)
+                .clip(RoundedCornerShape(6.dp))
+                .background(brush)
+        )
+
+        Spacer(modifier = Modifier.height(14.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            repeat(2) {
+                Column(
+                    modifier = Modifier.width(300.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    repeat(4) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(52.dp)
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(brush)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Column {
+                                Box(
+                                    modifier = Modifier
+                                        .width(160.dp)
+                                        .height(16.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(brush)
+                                )
+                                Spacer(modifier = Modifier.height(6.dp))
+                                Box(
+                                    modifier = Modifier
+                                        .width(100.dp)
+                                        .height(12.dp)
+                                        .clip(RoundedCornerShape(4.dp))
+                                        .background(brush)
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(28.dp))
+
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            repeat(3) {
+                Column(modifier = Modifier.width(150.dp)) {
+                    Box(
+                        modifier = Modifier
+                            .size(150.dp)
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(brush)
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Box(
+                        modifier = Modifier
+                            .width(120.dp)
+                            .height(14.dp)
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(brush)
+                    )
+                }
+            }
         }
     }
 }
