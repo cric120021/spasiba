@@ -474,7 +474,7 @@ fun HomeScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     modifier = Modifier.padding(vertical = 6.dp)
                 ) {
-                    items(filterChips) { chip ->
+                    items(filterChips, key = { it.id }) { chip ->
                         val filter = chip.label
                         val isSelected = activeFilterName?.equals(filter, ignoreCase = true) == true
                         val isThisChipLoading = isSelected && isCategoryLoading
@@ -619,7 +619,7 @@ fun HomeScreen(
 
         // Live YouTube Music Fetched Home Shelves & Category Shelves
         if (displayShelves.isNotEmpty()) {
-            items(displayShelves) { shelf ->
+            items(displayShelves, key = { it.title }) { shelf ->
                 Column(modifier = Modifier.padding(bottom = 24.dp)) {
                     Row(
                         modifier = Modifier

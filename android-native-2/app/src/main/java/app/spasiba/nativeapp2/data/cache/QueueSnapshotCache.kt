@@ -25,8 +25,12 @@ class QueueSnapshotCache(context: Context) {
         if (songs.isEmpty()) return
         val sanitizedSongs = songs.take(80).map { it.copy(streamUrl = null) }
         val snapshot = QueueSnapshot(sanitizedSongs, currentIndex)
-        val json = gson.toJson(snapshot)
-        prefs.edit().putString(KEY_QUEUE, json).apply()
+        kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
+            runCatching {
+                val json = gson.toJson(snapshot)
+                prefs.edit().putString(KEY_QUEUE, json).apply()
+            }
+        }
     }
 
     fun restoreSnapshot(): QueueSnapshot? {

@@ -250,8 +250,8 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
             } else 0f
             val posSec = positionMs / 1000
             val durSec = durationMs / 1000
-            val posFormatted = String.format("%d:%02d", posSec / 60, posSec % 60)
-            val durFormatted = String.format("%d:%02d", durSec / 60, durSec % 60)
+            val posFormatted = remember(posSec) { String.format("%d:%02d", posSec / 60, posSec % 60) }
+            val durFormatted = remember(durSec) { String.format("%d:%02d", durSec / 60, durSec % 60) }
             val upcomingCount = (queue.size - currentIndex - 1).coerceAtLeast(0)
 
             Scaffold(

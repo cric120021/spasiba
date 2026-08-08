@@ -38,7 +38,7 @@ class SpasibaApplication : Application(), ImageLoaderFactory {
                     add(GifDecoder.Factory())
                 }
             }
-            .crossfade(true)
+            .crossfade(false)
             .build()
     }
 
@@ -48,10 +48,9 @@ class SpasibaApplication : Application(), ImageLoaderFactory {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching {
                 YoutubeDL.getInstance().init(this@SpasibaApplication)
-                YoutubeDL.getInstance().updateYoutubeDL(this@SpasibaApplication, YoutubeDL.UpdateChannel.STABLE)
-                android.util.Log.d("SpasibaApplication", "YoutubeDL initialized & updated to STABLE successfully!")
+                android.util.Log.d("SpasibaApplication", "YoutubeDL initialized successfully!")
             }.onFailure {
-                android.util.Log.e("SpasibaApplication", "YoutubeDL init/update failed: ${it.message}", it)
+                android.util.Log.e("SpasibaApplication", "YoutubeDL init failed: ${it.message}", it)
             }
         }
     }

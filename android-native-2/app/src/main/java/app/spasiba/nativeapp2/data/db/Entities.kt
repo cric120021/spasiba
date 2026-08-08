@@ -52,7 +52,7 @@ data class PlaylistSongEntity(
     fun toSong() = Song(songId, title, author, thumbnail, durationSeconds)
 }
 
-@Entity(tableName = "search_history")
+@Entity(tableName = "search_history", indices = [Index(value = ["searchedAt"])])
 data class SearchHistoryEntity(
     @PrimaryKey val query: String,
     val searchedAt: Long = System.currentTimeMillis()
