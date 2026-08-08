@@ -450,6 +450,7 @@ fun EunoiaScreen(
 
     val currentSong by playerManager.currentSong.collectAsState()
     val isPlaying by playerManager.isPlaying.collectAsState()
+    val isLoading by playerManager.isLoading.collectAsState()
     val positionMs by playerManager.positionMs.collectAsState()
     val durationMs by playerManager.durationMs.collectAsState()
     val videoAspectRatio by playerManager.videoAspectRatio.collectAsState()
@@ -965,12 +966,20 @@ fun EunoiaScreen(
                                     },
                                 contentAlignment = Alignment.Center
                             ) {
-                                Icon(
-                                    imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                                    contentDescription = if (isPlaying) "Pause" else "Play",
-                                    tint = Color.Black,
-                                    modifier = Modifier.size(28.dp)
-                                )
+                                if (isLoading) {
+                                    androidx.compose.material3.CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Color.Black,
+                                        strokeWidth = 2.5.dp
+                                    )
+                                } else {
+                                    Icon(
+                                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                                        contentDescription = if (isPlaying) "Pause" else "Play",
+                                        tint = Color.Black,
+                                        modifier = Modifier.size(28.dp)
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.width(24.dp))

@@ -497,6 +497,19 @@ object YouTubeMusicApi {
                                         ?.getAsJsonObject("musicThumbnailRenderer")
                                         ?.getAsJsonObject("thumbnail")
                                         ?.getAsJsonArray("thumbnails")
+                                        ?: twoRow.getAsJsonObject("thumbnail")
+                                            ?.getAsJsonObject("musicThumbnailRenderer")
+                                            ?.getAsJsonObject("thumbnail")
+                                            ?.getAsJsonArray("thumbnails")
+                                        ?: twoRow.getAsJsonObject("thumbnail")
+                                            ?.getAsJsonObject("croppedSquareThumbnailRenderer")
+                                            ?.getAsJsonObject("thumbnail")
+                                            ?.getAsJsonArray("thumbnails")
+                                        ?: twoRow.getAsJsonObject("leftThumbnail")
+                                            ?.getAsJsonObject("musicThumbnailRenderer")
+                                            ?.getAsJsonObject("thumbnail")
+                                            ?.getAsJsonArray("thumbnails")
+
                                     if (thumbArray != null && thumbArray.size() > 0) {
                                         thumbUrl = thumbArray.get(thumbArray.size() - 1).asJsonObject.get("url")?.asString ?: ""
                                     }
@@ -528,7 +541,11 @@ object YouTubeMusicApi {
                                     }
 
                                     if (finalId.isNotBlank() && titleText.isNotBlank()) {
-                                        val finalThumb = if (thumbUrl.isNotBlank()) thumbUrl else "https://i.ytimg.com/vi/default/hqdefault.jpg"
+                                        val finalThumb = when {
+                                            thumbUrl.isNotBlank() -> thumbUrl
+                                            videoId.length == 11 -> "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+                                            else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+                                        }
                                         songsList.add(Song(id = finalId, title = titleText, author = authorText, thumbnail = finalThumb, durationSeconds = 210))
                                     }
                                 }
@@ -1691,21 +1708,97 @@ object YouTubeMusicApi {
         null
     }
 
+    private fun queryInnerTubeClient(
+        clientName: String,
+        clientVersion: String,
+        userAgent: String,
+        videoId: String
+    ): StreamingResult? {
+        return runCatching {
+            val payload = """
+                {
+                  "videoId": "$videoId",
+                  "contentCheckOk": true,
+                  "racyCheckOk": true,
+                  "context": {
+                    "client": {
+                      "clientName": "$clientName",
+                      "clientVersion": "$clientVersion",
+                      "hl": "en",
+                      "gl": "US"
+                    },
+                    "thirdParty": {
+                      "embedUrl": "https://www.youtube.com/watch?v=$videoId"
+                    }
+                  }
+                }
+            """.trimIndent()
+
+            val request = Request.Builder()
+                .url("https://www.youtube.com/youtubei/v1/player")
+                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
+                .header("User-Agent", userAgent)
+                .build()
+
+            client.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) return@runCatching null
+                val body = response.body?.string() ?: return@runCatching null
+                val json = JsonParser.parseString(body).asJsonObject
+                val streamingData = json.getAsJsonObject("streamingData") ?: return@runCatching null
+
+                val adaptiveFormats = streamingData.getAsJsonArray("adaptiveFormats")?.map { it.asJsonObject } ?: emptyList()
+                val formats = streamingData.getAsJsonArray("formats")?.map { it.asJsonObject } ?: emptyList()
+
+                val pureAudioFormats = adaptiveFormats.filter {
+                    val mime = it.get("mimeType")?.asString ?: ""
+                    mime.contains("audio")
+                }
+
+                val directAudioUrl = (pureAudioFormats.ifEmpty { adaptiveFormats + formats })
+                    .filter { it.has("url") }
+                    .maxByOrNull { it.get("bitrate")?.asInt ?: 0 }
+                    ?.get("url")?.asString
+
+                if (!directAudioUrl.isNullOrBlank()) {
+                    return@runCatching StreamingResult(
+                        url = directAudioUrl,
+                        headers = mapOf("User-Agent" to userAgent)
+                    )
+                }
+
+                for (fmt in (pureAudioFormats.ifEmpty { adaptiveFormats + formats })) {
+                    val cipher = fmt.get("signatureCipher")?.asString ?: fmt.get("cipher")?.asString ?: continue
+                    val params = cipher.split("&").associate {
+                        val parts = it.split("=")
+                        val key = parts.getOrNull(0) ?: ""
+                        val value = parts.getOrNull(1) ?: ""
+                        val decoded = runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
+                        key to decoded
+                    }
+                    val rawUrl = params["url"] ?: continue
+                    if (rawUrl.isNotBlank()) {
+                        return@runCatching StreamingResult(
+                            url = rawUrl,
+                            headers = mapOf("User-Agent" to userAgent)
+                        )
+                    }
+                }
+
+                null
+            }
+        }.getOrNull()
+    }
+
     suspend fun resolveStreamResult(context: Context, videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         Log.d(TAG, "Resolving stream URL for videoId=$videoId")
 
-        // 1. Direct YouTube Official InnerTube Endpoints (~200ms ultra-fast response)
-        val innerTubeClients = listOf(
+        // Top 3 primary ultra-fast InnerTube client specs
+        val fastClients = listOf(
             Triple(
                 "ANDROID_VR",
                 "1.59.19",
                 "com.google.android.apps.youtube.vr.oculus/1.59.19 (Linux; U; Android 12)"
-            ),
-            Triple(
-                "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-                "2.0",
-                "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
             ),
             Triple(
                 "WEB_EMBEDDED_PLAYER",
@@ -1713,100 +1806,50 @@ object YouTubeMusicApi {
                 "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
             ),
             Triple(
-                "ANDROID_TESTSUITE",
-                "1.9.0",
-                "com.google.android.youtube/1.9.0 (Linux; U; Android 14)"
-            ),
-            Triple(
-                "ANDROID_MUSIC",
-                "6.42.52",
-                "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 14; gzip)"
+                "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
+                "2.0",
+                "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
             )
         )
 
-        for ((clientName, clientVersion, userAgent) in innerTubeClients) {
-            val result = runCatching {
-                val payload = """
-                    {
-                      "videoId": "$videoId",
-                      "contentCheckOk": true,
-                      "racyCheckOk": true,
-                      "context": {
-                        "client": {
-                          "clientName": "$clientName",
-                          "clientVersion": "$clientVersion",
-                          "hl": "en",
-                          "gl": "US"
-                        },
-                        "thirdParty": {
-                          "embedUrl": "https://www.youtube.com/watch?v=$videoId"
-                        }
-                      }
-                    }
-                """.trimIndent()
-
-                val request = Request.Builder()
-                    .url("https://www.youtube.com/youtubei/v1/player")
-                    .post(payload.toRequestBody(JSON_MEDIA_TYPE))
-                    .header("User-Agent", userAgent)
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@runCatching null
-                    val body = response.body?.string() ?: return@runCatching null
-                    val json = JsonParser.parseString(body).asJsonObject
-                    val streamingData = json.getAsJsonObject("streamingData") ?: return@runCatching null
-
-                    val adaptiveFormats = streamingData.getAsJsonArray("adaptiveFormats")?.map { it.asJsonObject } ?: emptyList()
-                    val formats = streamingData.getAsJsonArray("formats")?.map { it.asJsonObject } ?: emptyList()
-
-                    val pureAudioFormats = adaptiveFormats.filter {
-                        val mime = it.get("mimeType")?.asString ?: ""
-                        mime.contains("audio")
-                    }
-
-                    val directAudioUrl = (pureAudioFormats.ifEmpty { adaptiveFormats + formats })
-                        .filter { it.has("url") }
-                        .maxByOrNull { it.get("bitrate")?.asInt ?: 0 }
-                        ?.get("url")?.asString
-
-                    if (!directAudioUrl.isNullOrBlank()) {
-                        return@runCatching StreamingResult(
-                            url = directAudioUrl,
-                            headers = mapOf("User-Agent" to userAgent)
-                        )
-                    }
-
-                    for (fmt in (pureAudioFormats.ifEmpty { adaptiveFormats + formats })) {
-                        val cipher = fmt.get("signatureCipher")?.asString ?: fmt.get("cipher")?.asString ?: continue
-                        val params = cipher.split("&").associate {
-                            val parts = it.split("=")
-                            val key = parts.getOrNull(0) ?: ""
-                            val value = parts.getOrNull(1) ?: ""
-                            val decoded = runCatching { URLDecoder.decode(value, "UTF-8") }.getOrDefault(value)
-                            key to decoded
-                        }
-                        val rawUrl = params["url"] ?: continue
-                        if (rawUrl.isNotBlank()) {
-                            return@runCatching StreamingResult(
-                                url = rawUrl,
-                                headers = mapOf("User-Agent" to userAgent)
-                            )
-                        }
-                    }
-
-                    null
+        // Execute top clients in parallel with coroutines for sub-second response (~200ms)
+        val parallelResult = coroutineScope {
+            val deferreds = fastClients.map { (clientName, clientVersion, userAgent) ->
+                async(Dispatchers.IO) {
+                    queryInnerTubeClient(clientName, clientVersion, userAgent, videoId)
                 }
-            }.getOrNull()
+            }
+            deferreds.forEach { def ->
+                val res = def.await()
+                if (res != null && res.url.isNotBlank()) {
+                    deferreds.forEach { if (it != def) it.cancel() }
+                    return@coroutineScope res
+                }
+            }
+            null
+        }
 
-            if (result != null && result.url.isNotBlank()) {
+        if (parallelResult != null && parallelResult.url.isNotBlank()) {
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "SUCCESS via Parallel InnerTube in ${elapsed}ms: ${parallelResult.url.take(60)}")
+            return@withContext parallelResult
+        }
+
+        // Fallback: Secondary clients (ANDROID_TESTSUITE, ANDROID_MUSIC)
+        val fallbackClients = listOf(
+            Triple("ANDROID_TESTSUITE", "1.9.0", "com.google.android.youtube/1.9.0 (Linux; U; Android 14)"),
+            Triple("ANDROID_MUSIC", "6.42.52", "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 14; gzip)")
+        )
+        for ((clientName, clientVersion, userAgent) in fallbackClients) {
+            val res = queryInnerTubeClient(clientName, clientVersion, userAgent, videoId)
+            if (res != null && res.url.isNotBlank()) {
                 val elapsed = System.currentTimeMillis() - startTime
-                Log.d(TAG, "SUCCESS via InnerTube $clientName in ${elapsed}ms: ${result.url}")
-                return@withContext result
+                Log.d(TAG, "SUCCESS via Fallback InnerTube $clientName in ${elapsed}ms: ${res.url.take(60)}")
+                return@withContext res
             }
         }
 
-        // 2. Fast High-Speed Native yt-dlp Resolver Fallback
+        // Fast High-Speed Native yt-dlp Resolver Fallback
         val ytDlpResult = resolveWithYtDlp(context, videoId, isVideo = false)
         if (ytDlpResult != null && ytDlpResult.url.isNotBlank()) {
             val elapsed = System.currentTimeMillis() - startTime
@@ -1814,7 +1857,7 @@ object YouTubeMusicApi {
             return@withContext ytDlpResult
         }
 
-        // 2. Direct Vercel Audio Stream API Proxy
+        // Direct Vercel Audio Stream API Proxy
         val vercelResult = runCatching {
             val req = Request.Builder()
                 .url("https://spasiba.vercel.app/api/stream?videoId=$videoId")

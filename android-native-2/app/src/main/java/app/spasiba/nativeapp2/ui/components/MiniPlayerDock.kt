@@ -40,6 +40,7 @@ fun MiniPlayerDock(
     song: Song,
     isPlaying: Boolean,
     progress: Float,
+    isLoading: Boolean = false,
     positionFormatted: String = "0:00",
     durationFormatted: String = "0:00",
     queueCount: Int = 19,
@@ -108,17 +109,25 @@ fun MiniPlayerDock(
                     )
                 }
 
-                // 3. Right Action Buttons (Play/Pause, Next Track, Options)
+                // 3. Right Action Buttons (Play/Pause/Loading, Next Track, Options)
                 IconButton(
                     onClick = onPlayPauseClick,
                     modifier = Modifier.size(40.dp)
                 ) {
-                    Icon(
-                        imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
-                        contentDescription = if (isPlaying) "Pause" else "Play",
-                        tint = Color.White,
-                        modifier = Modifier.size(28.dp)
-                    )
+                    if (isLoading) {
+                        androidx.compose.material3.CircularProgressIndicator(
+                            modifier = Modifier.size(24.dp),
+                            color = Color.White,
+                            strokeWidth = 2.5.dp
+                        )
+                    } else {
+                        Icon(
+                            imageVector = if (isPlaying) Icons.Default.Pause else Icons.Default.PlayArrow,
+                            contentDescription = if (isPlaying) "Pause" else "Play",
+                            tint = Color.White,
+                            modifier = Modifier.size(28.dp)
+                        )
+                    }
                 }
 
                 IconButton(

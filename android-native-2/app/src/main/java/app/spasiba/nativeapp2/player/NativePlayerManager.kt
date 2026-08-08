@@ -42,14 +42,25 @@ class NativePlayerManager(private val context: Context) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     val repository = MusicRepository(context)
     private val queueCache = QueueSnapshotCache(context)
-
     companion object {
         private const val MAX_QUEUE_TRACKS = 80
         private const val RESTART_PREVIOUS_AFTER_MS = 3000L
     }
 
-    private val preResolvedStreamMap = mutableMapOf<String, StreamingResult>()
+    private data class CachedStream(val result: StreamingResult, val timestampMs: Long)
+    private val preResolvedStreamMap = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
+    private val retryAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private var prefetchedVideoId: String? = null
+
+    private fun getValidCachedStream(targetId: String): StreamingResult? {
+        val cached = preResolvedStreamMap[targetId] ?: return null
+        val age = System.currentTimeMillis() - cached.timestampMs
+        if (age < 3 * 3600 * 1000L && cached.result.url.isNotBlank()) {
+            return cached.result
+        }
+        preResolvedStreamMap.remove(targetId)
+        return null
+    }
 
     val exoPlayer: ExoPlayer by lazy {
         val loadControl = DefaultLoadControl.Builder()
@@ -254,8 +265,9 @@ class NativePlayerManager(private val context: Context) {
                         ?: YouTubeMusicApi.resolveStreamResult(context, targetId)
 
                     if (streamResult != null && streamResult.url.isNotBlank()) {
-                        preResolvedStreamMap[nextTrack.id] = streamResult
-                        preResolvedStreamMap[targetId] = streamResult
+                        val entry = CachedStream(streamResult, System.currentTimeMillis())
+                        preResolvedStreamMap[nextTrack.id] = entry
+                        preResolvedStreamMap[targetId] = entry
                         Log.d(TAG, "PREFETCH SUCCESS for '${nextTrack.title}' (targetId=$targetId)")
                     }
                 }
@@ -496,15 +508,27 @@ class NativePlayerManager(private val context: Context) {
     }
 
     fun startProgressiveVideoDownloadAndPlay(song: Song) {
-        val videoId = song.id
         scope.launch(Dispatchers.IO) {
             _isLoading.value = true
 
-            val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(videoId)
+            var targetVideoId = song.id
+            if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
+                runCatching {
+                    Log.d(TAG, "Resolving actual 11-char videoId for video mode '${song.title}' by ${song.author} (original id='${song.id}')")
+                    val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
+                    val validTrack = searchResults.firstOrNull { it.id.length == 11 }
+                    if (validTrack != null) {
+                        targetVideoId = validTrack.id
+                        Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
+                    }
+                }
+            }
+
+            val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
             _availableVideoQualities.value = fetchedQualities
 
-            Log.d(TAG, "Resolving video stream for '${song.title}' (videoId=$videoId quality=${_currentVideoQuality.value} available=$fetchedQualities)")
-            val result = YouTubeMusicApi.resolveVideoStreamResult(context, videoId, _currentVideoQuality.value)
+            Log.d(TAG, "Resolving video stream for '${song.title}' (videoId=$targetVideoId quality=${_currentVideoQuality.value} available=$fetchedQualities)")
+            val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
             
             launch(Dispatchers.Main) {
                 if (result != null && result.url.isNotBlank()) {
@@ -555,7 +579,8 @@ class NativePlayerManager(private val context: Context) {
                     _isPlaying.value = true
                     Log.d(TAG, "ExoPlayer video prepared and playing at pos=$currentPos with quality=${_currentVideoQuality.value}")
                 } else {
-                    Log.e(TAG, "Failed to resolve video stream result for videoId=$videoId")
+                    Log.e(TAG, "Failed to resolve video stream result for videoId=$targetVideoId")
+                    android.widget.Toast.makeText(context, "Video stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
                 }
                 _isLoading.value = false
             }
@@ -603,6 +628,7 @@ class NativePlayerManager(private val context: Context) {
 
     fun playSong(song: Song, initialPosMs: Long = 0L) {
         Log.d(TAG, "playSong requested for title='${song.title}' id='${song.id}' initialPosMs=$initialPosMs")
+        _isLoading.value = true
         eunoiaTrackChangeListener?.invoke(song)
         
         // Auto cleanup video files once previous song is out of picture
@@ -627,76 +653,83 @@ class NativePlayerManager(private val context: Context) {
         }
 
         scope.launch(Dispatchers.IO) {
-            repository.recordPlayedSong(song)
+            try {
+                repository.recordPlayedSong(song)
 
-            var targetVideoId = song.id
-            if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
-                runCatching {
-                    Log.d(TAG, "Resolving actual 11-char videoId for '${song.title}' by ${song.author} (original id='${song.id}')")
-                    val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
-                    val validTrack = searchResults.firstOrNull { it.id.length == 11 }
-                    if (validTrack != null) {
-                        targetVideoId = validTrack.id
-                        Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
+                var targetVideoId = song.id
+                if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
+                    runCatching {
+                        Log.d(TAG, "Resolving actual 11-char videoId for '${song.title}' by ${song.author} (original id='${song.id}')")
+                        val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
+                        val validTrack = searchResults.firstOrNull { it.id.length == 11 }
+                        if (validTrack != null) {
+                            targetVideoId = validTrack.id
+                            Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
+                        }
                     }
                 }
-            }
 
-            // Check if track is cached or downloaded locally first via DownloadManager and AudioCacheManager
-            val downloadMgr = app.spasiba.nativeapp2.data.download.SpasibaDownloadManager(context)
-            val localFile = downloadMgr.getDownloadedFile(song.id)
-                ?: downloadMgr.getDownloadedFile(targetVideoId)
-                ?: app.spasiba.nativeapp2.data.cache.SpasibaAudioCacheManager(context).findCachedAudioFile(song.id)
-                ?: app.spasiba.nativeapp2.data.cache.SpasibaAudioCacheManager(context).findCachedAudioFile(targetVideoId)
-                ?: File(context.cacheDir, "spasiba_audio/${song.id}.m4a").takeIf { it.exists() && it.length() > 0 }
-                ?: File(context.cacheDir, "spasiba_video/${song.id}.mp4").takeIf { it.exists() && it.length() > 0 }
-                ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.m4a").takeIf { it.exists() && it.length() > 0 }
-                ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.mp3").takeIf { it.exists() && it.length() > 0 }
+                // Check if track is cached or downloaded locally first via DownloadManager and AudioCacheManager
+                val downloadMgr = app.spasiba.nativeapp2.data.download.SpasibaDownloadManager(context)
+                val localFile = downloadMgr.getDownloadedFile(song.id)
+                    ?: downloadMgr.getDownloadedFile(targetVideoId)
+                    ?: app.spasiba.nativeapp2.data.cache.SpasibaAudioCacheManager(context).findCachedAudioFile(song.id)
+                    ?: app.spasiba.nativeapp2.data.cache.SpasibaAudioCacheManager(context).findCachedAudioFile(targetVideoId)
+                    ?: File(context.cacheDir, "spasiba_audio/${song.id}.m4a").takeIf { it.exists() && it.length() > 0 }
+                    ?: File(context.cacheDir, "spasiba_video/${song.id}.mp4").takeIf { it.exists() && it.length() > 0 }
+                    ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.m4a").takeIf { it.exists() && it.length() > 0 }
+                    ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.mp3").takeIf { it.exists() && it.length() > 0 }
 
-            if (localFile != null && localFile.length() > 0) {
-                Log.d(TAG, "Playing local downloaded audio file: ${localFile.absolutePath}")
-                launch(Dispatchers.Main) {
-                    val mediaMetadata = MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.author)
-                        .setArtworkUri(Uri.parse(song.thumbnail))
-                        .build()
+                if (localFile != null && localFile.length() > 0) {
+                    Log.d(TAG, "Playing local downloaded audio file: ${localFile.absolutePath}")
+                    launch(Dispatchers.Main) {
+                        val mediaMetadata = MediaMetadata.Builder()
+                            .setTitle(song.title)
+                            .setArtist(song.author)
+                            .setArtworkUri(Uri.parse(song.thumbnail))
+                            .build()
 
-                    val mediaItem = MediaItem.Builder()
-                        .setUri(Uri.fromFile(localFile))
-                        .setMediaId(song.id)
-                        .setMediaMetadata(mediaMetadata)
-                        .build()
+                        val mediaItem = MediaItem.Builder()
+                            .setUri(Uri.fromFile(localFile))
+                            .setMediaId(song.id)
+                            .setMediaMetadata(mediaMetadata)
+                            .build()
 
-                    exoPlayer.setMediaItem(mediaItem)
-                    exoPlayer.prepare()
-                    if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
-                    exoPlayer.play()
-                    _isLoading.value = false
+                        exoPlayer.setMediaItem(mediaItem)
+                        exoPlayer.prepare()
+                        if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
+                        exoPlayer.play()
+                        _isLoading.value = false
+                    }
+                    return@launch
                 }
-                return@launch
-            }
 
-            // Check if stream URL was already pre-warmed for instant playback
-            var result = preResolvedStreamMap[targetVideoId]
-                ?: repository.resolveStreamResult(targetVideoId)
-                ?: YouTubeMusicApi.resolveStreamResult(context, targetVideoId)
+                // Check if stream URL was already pre-warmed for instant playback (with TTL validation)
+                var result = getValidCachedStream(targetVideoId)
+                    ?: repository.resolveStreamResult(targetVideoId)
+                    ?: YouTubeMusicApi.resolveStreamResult(context, targetVideoId)
 
-            if (result == null || result.url.isBlank()) {
-                Log.d(TAG, "Direct stream failed for ${song.title} id=$targetVideoId, searching alternate audio track...")
-                runCatching {
-                    val fallbackSearch = YouTubeMusicApi.searchSongs("${song.title} ${song.author} audio")
-                    val altId = fallbackSearch.firstOrNull { it.id != targetVideoId && it.id.length == 11 }?.id
-                    if (altId != null) {
-                        result = YouTubeMusicApi.resolveStreamResult(context, altId)
+                if (result == null || result.url.isBlank()) {
+                    Log.d(TAG, "Direct stream failed for ${song.title} id=$targetVideoId, searching alternate audio track...")
+                    runCatching {
+                        val fallbackSearch = YouTubeMusicApi.searchSongs("${song.title} ${song.author} audio")
+                        val altId = fallbackSearch.firstOrNull { it.id != targetVideoId && it.id.length == 11 }?.id
+                        if (altId != null) {
+                            result = YouTubeMusicApi.resolveStreamResult(context, altId)
+                        }
                     }
                 }
-            }
+
+                if (result != null && result.url.isNotBlank()) {
+                    preResolvedStreamMap[targetVideoId] = CachedStream(result!!, System.currentTimeMillis())
+                }
 
             launch(Dispatchers.Main) {
                 if (result == null || result.url.isBlank()) {
                     Log.e(TAG, "Stream URL resolution failed for ${song.title}")
                     _isLoading.value = false
+                    android.widget.Toast.makeText(context, "Playback error: Stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
+                    playQueueOffset(1)
                     return@launch
                 }
 
@@ -758,8 +791,15 @@ class NativePlayerManager(private val context: Context) {
 
                 maybePrefetchNextTrack()
             }
+        } catch (e: Exception) {
+            Log.e(TAG, "playSong stream resolution failed for '${song.title}': ${e.message}", e)
+            launch(Dispatchers.Main) {
+                _isLoading.value = false
+                _isPlaying.value = false
+            }
         }
     }
+}
 
     fun togglePlayPause() {
         if (exoPlayer.isPlaying) {
@@ -922,6 +962,28 @@ class NativePlayerManager(private val context: Context) {
 
         override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
             Log.e("SPASIBA_VIDEO_DEBUG", "ExoPlayer ERROR: errorCode=${error.errorCodeName} message=${error.message}", error)
+            val song = _currentSong.value
+            if (song != null && (retryAttempts[song.id] ?: 0) < 1) {
+                retryAttempts[song.id] = 1
+                Log.w(TAG, "Playback failure detected on '${song.title}' (errorCode=${error.errorCodeName}). Auto-evicting cache & retrying with fresh URL...")
+                preResolvedStreamMap.remove(song.id)
+                _isLoading.value = true
+                scope.launch(Dispatchers.IO) {
+                    val freshResult = YouTubeMusicApi.resolveStreamResult(context, song.id)
+                    if (freshResult != null && freshResult.url.isNotBlank()) {
+                        preResolvedStreamMap[song.id] = CachedStream(freshResult, System.currentTimeMillis())
+                        launch(Dispatchers.Main) {
+                            playSong(song, exoPlayer.currentPosition.coerceAtLeast(0L))
+                        }
+                    } else {
+                        launch(Dispatchers.Main) {
+                            _isLoading.value = false
+                            _isPlaying.value = false
+                        }
+                    }
+                }
+                return
+            }
             _isLoading.value = false
             _isPlaying.value = false
         }

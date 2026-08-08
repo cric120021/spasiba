@@ -23,7 +23,8 @@ class QueueSnapshotCache(context: Context) {
 
     fun saveSnapshot(songs: List<Song>, currentIndex: Int) {
         if (songs.isEmpty()) return
-        val snapshot = QueueSnapshot(songs.take(80), currentIndex)
+        val sanitizedSongs = songs.take(80).map { it.copy(streamUrl = null) }
+        val snapshot = QueueSnapshot(sanitizedSongs, currentIndex)
         val json = gson.toJson(snapshot)
         prefs.edit().putString(KEY_QUEUE, json).apply()
     }
@@ -36,7 +37,8 @@ class QueueSnapshotCache(context: Context) {
             if (System.currentTimeMillis() - snapshot.timestamp > THREE_DAYS_MS) {
                 null
             } else {
-                snapshot
+                val sanitizedSongs = snapshot.songs.map { it.copy(streamUrl = null) }
+                snapshot.copy(songs = sanitizedSongs)
             }
         } catch (e: Exception) {
             null

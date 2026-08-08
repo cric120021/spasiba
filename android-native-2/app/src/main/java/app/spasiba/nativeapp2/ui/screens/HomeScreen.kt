@@ -257,9 +257,10 @@ fun HomeScreen(
                 val validThumb = when {
                     song.thumbnail.startsWith("http://") -> song.thumbnail.replace("http://", "https://")
                     song.thumbnail.startsWith("//") -> "https:${song.thumbnail}"
-                    song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") -> song.thumbnail
+                    song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") && !song.thumbnail.contains("photo-1511671782779") -> song.thumbnail
                     song.id.length == 11 -> "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
-                    else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+                    song.thumbnail.isNotBlank() -> song.thumbnail
+                    else -> "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500"
                 }
                 song.copy(thumbnail = validThumb)
             }
@@ -284,9 +285,10 @@ fun HomeScreen(
             val validThumb = when {
                 song.thumbnail.startsWith("http://") -> song.thumbnail.replace("http://", "https://")
                 song.thumbnail.startsWith("//") -> "https:${song.thumbnail}"
-                song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") -> song.thumbnail
+                song.thumbnail.isNotBlank() && !song.thumbnail.contains("default/hqdefault.jpg") && !song.thumbnail.contains("photo-1511671782779") -> song.thumbnail
                 song.id.length == 11 -> "https://i.ytimg.com/vi/${song.id}/hqdefault.jpg"
-                else -> "https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?w=500"
+                song.thumbnail.isNotBlank() -> song.thumbnail
+                else -> "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500"
             }
             song.copy(thumbnail = validThumb)
         }
@@ -526,6 +528,95 @@ fun HomeScreen(
             }
         }
 
+        // Quick Picks Horizontal 4x4 Swipe Grid (YT Music Official Style)
+        item {
+            if (activeFilterName == null && quickPicks.isNotEmpty()) {
+                Column(modifier = Modifier.padding(bottom = 24.dp)) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp)) {
+                        Text(
+                            text = "START RADIO",
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                color = SpotifyGreen,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                letterSpacing = 1.4.sp
+                            )
+                        )
+                        Text(
+                            text = "Quick picks",
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 22.sp,
+                                color = Color.White
+                            )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(12.dp))
+
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 16.dp),
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        items(quickPickColumns) { columnSongs ->
+                            Column(
+                                modifier = Modifier.width(320.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                columnSongs.forEach { song ->
+                                    val isPlaying = song.id == currentSong?.id
+                                    val globalIndex = quickPicks.indexOfFirst { it.id == song.id }
+                                    AnimatedPressCard(
+                                        onClick = { onSongClick(song, quickPicks, if (globalIndex >= 0) globalIndex else 0) }
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(Color.White.copy(alpha = 0.05f))
+                                                .padding(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            AsyncImage(
+                                                model = song.thumbnail,
+                                                contentDescription = song.title,
+                                                contentScale = ContentScale.Crop,
+                                                modifier = Modifier
+                                                    .size(48.dp)
+                                                    .clip(RoundedCornerShape(6.dp))
+                                            )
+                                            Spacer(modifier = Modifier.width(12.dp))
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = song.title,
+                                                    style = MaterialTheme.typography.bodyMedium.copy(
+                                                        fontWeight = FontWeight.SemiBold,
+                                                        color = if (isPlaying) SpotifyGreen else Color.White,
+                                                        fontSize = 14.sp
+                                                    ),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                                Text(
+                                                    text = song.author,
+                                                    style = MaterialTheme.typography.bodySmall.copy(
+                                                        color = TextSecondaryGray,
+                                                        fontSize = 12.sp
+                                                    ),
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         // Live YouTube Music Fetched Home Shelves & Category Shelves
         if (displayShelves.isNotEmpty()) {
             items(displayShelves) { shelf ->
@@ -534,6 +625,7 @@ fun HomeScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
+                            .clickable { onSearchClick() }
                             .padding(horizontal = 16.dp, vertical = 6.dp),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -667,6 +759,32 @@ fun HomeScreen(
                     }
                 }
             }
+        } else if (activeFilterName != null && !isCategoryLoading) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 24.dp, vertical = 32.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Text(
+                        text = "Exploring $activeFilterName",
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            color = Color.White,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 18.sp
+                        )
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Top picks for $activeFilterName mood",
+                        style = MaterialTheme.typography.bodySmall.copy(
+                            color = TextSecondaryGray,
+                            fontSize = 13.sp
+                        )
+                    )
+                }
+            }
         }
 
         // 2. Default Home Sections (Only shown when no Category Filter is active)
@@ -674,6 +792,16 @@ fun HomeScreen(
             // 4. Language & Genre Horizontal Song Rails (Just like Mixed for you & Jump back in)
             item {
                 Column(modifier = Modifier.fillMaxWidth()) {
+                    if (topChartSongs.isNotEmpty()) {
+                        CategorySongRail(
+                            title = "Top Charts 2026",
+                            eyebrow = "GLOBAL CHARTS",
+                            songs = topChartSongs,
+                            currentSong = currentSong,
+                            onSongClick = onSongClick
+                        )
+                    }
+
                     if (selectedLanguages.contains("Punjabi")) {
                         CategorySongRail(
                             title = "Punjabi Hits",
@@ -1119,8 +1247,7 @@ private fun HeroSpotlightCard(
 
                         Surface(
                             shape = RoundedCornerShape(20.dp),
-                            color = SpotifyGreen,
-                            modifier = Modifier.clickable { onPlayClick() }
+                            color = SpotifyGreen
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),

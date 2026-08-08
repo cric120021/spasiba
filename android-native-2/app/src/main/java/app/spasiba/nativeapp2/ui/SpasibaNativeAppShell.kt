@@ -270,6 +270,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                 song = activeSong,
                                 isPlaying = isPlaying,
                                 progress = progressFraction,
+                                isLoading = isLoading,
                                 positionFormatted = posFormatted,
                                 durationFormatted = durFormatted,
                                 queueCount = upcomingCount,
