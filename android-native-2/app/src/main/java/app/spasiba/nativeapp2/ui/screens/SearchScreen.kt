@@ -409,7 +409,7 @@ fun SearchScreen(
                                     contentPadding = PaddingValues(horizontal = 20.dp),
                                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    items(playedSongsHistory) { track ->
+                                    items(playedSongsHistory, key = { it.id }) { track ->
                                         Column(
                                             modifier = Modifier
                                                 .width(105.dp)

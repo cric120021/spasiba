@@ -453,12 +453,8 @@ fun LibraryScreen(
                                     ) {
                                         Text(
                                             text = "No custom playlists created yet.",
-                                            style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted)
-                                        )
-                                    }
-                                }
                             } else {
-                                items(playlists) { playlist ->
+                                items(playlists, key = { it.id }) { playlist ->
                                     val playlistSongsFlow = remember(playlist.id) { repository?.getSongsForPlaylist(playlist.id) }
                                     val pSongs by (playlistSongsFlow?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) })
                                     val coverUrl = pSongs.firstOrNull { it.thumbnail.isNotBlank() }?.thumbnail

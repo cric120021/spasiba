@@ -4,11 +4,7 @@ import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import org.json.JSONArray
-import org.json.JSONObject
-import java.util.concurrent.TimeUnit
+import app.spasiba.nativeapp2.data.network.HttpClientProvider
 
 data class LyricLine(
     val timestampMs: Long,
@@ -16,10 +12,7 @@ data class LyricLine(
 )
 
 object LrcLyricsFetcher {
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(5, TimeUnit.SECONDS)
-        .readTimeout(5, TimeUnit.SECONDS)
-        .build()
+    private val client get() = HttpClientProvider.client
 
     private val lrcCache = mutableMapOf<String, List<LyricLine>>()
 

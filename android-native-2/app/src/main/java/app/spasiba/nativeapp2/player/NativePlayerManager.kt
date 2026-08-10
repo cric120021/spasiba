@@ -47,10 +47,16 @@ class NativePlayerManager(private val context: Context) {
         private const val RESTART_PREVIOUS_AFTER_MS = 3000L
     }
 
-    private data class CachedStream(val result: StreamingResult, val timestampMs: Long)
     private val preResolvedStreamMap = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
     private val retryAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private var prefetchedVideoId: String? = null
+
+    private val baseHttpDataSourceFactory by lazy {
+        DefaultHttpDataSource.Factory()
+            .setAllowCrossProtocolRedirects(true)
+            .setConnectTimeoutMs(8000)
+            .setReadTimeoutMs(8000)
+    }
 
     private fun getValidCachedStream(targetId: String): StreamingResult? {
         val cached = preResolvedStreamMap[targetId] ?: return null
@@ -542,10 +548,7 @@ class NativePlayerManager(private val context: Context) {
                     val headers = result.headers.toMutableMap().apply {
                         putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                     }
-                    val dataSourceFactory = DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                        .setConnectTimeoutMs(8000)
-                        .setReadTimeoutMs(8000)
+                    val dataSourceFactory = baseHttpDataSourceFactory
                         .setDefaultRequestProperties(headers)
 
                     val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
@@ -755,10 +758,7 @@ class NativePlayerManager(private val context: Context) {
                     val headers = result.headers.toMutableMap().apply {
                         putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                     }
-                    val dataSourceFactory = DefaultHttpDataSource.Factory()
-                        .setAllowCrossProtocolRedirects(true)
-                        .setConnectTimeoutMs(8000)
-                        .setReadTimeoutMs(8000)
+                    val dataSourceFactory = baseHttpDataSourceFactory
                         .setDefaultRequestProperties(headers)
 
                     val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))

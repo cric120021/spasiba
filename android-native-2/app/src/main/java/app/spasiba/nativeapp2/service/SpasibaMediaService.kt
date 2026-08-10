@@ -41,7 +41,6 @@ class SpasibaMediaService : MediaSessionService() {
     private var artworkJob: Job? = null
 
     private lateinit var playerManager: NativePlayerManager
-    private val httpClient = OkHttpClient()
 
     companion object {
         const val NOTIFICATION_ID = 2002
@@ -218,6 +217,8 @@ class SpasibaMediaService : MediaSessionService() {
         }
     }
 
+    private val httpClient get() = HttpClientProvider.client
+
     private suspend fun fetchBitmap(urlStr: String): Bitmap? = withContext(Dispatchers.IO) {
         if (urlStr.isBlank()) return@withContext null
         runCatching {
@@ -225,9 +226,26 @@ class SpasibaMediaService : MediaSessionService() {
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) return@runCatching null
                 val bytes = response.body?.bytes() ?: return@runCatching null
-                BitmapFactory.decodeByteArray(bytes, 0, bytes.size)
+                val options = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                options.inSampleSize = calculateInSampleSize(options, 512, 512)
+                options.inJustDecodeBounds = false
+                BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
             }
         }.getOrNull()
+    }
+
+    private fun calculateInSampleSize(options: BitmapFactory.Options, reqWidth: Int, reqHeight: Int): Int {
+        val (height: Int, width: Int) = options.run { outHeight to outWidth }
+        var inSampleSize = 1
+        if (height > reqHeight || width > reqWidth) {
+            val halfHeight: Int = height / 2
+            val halfWidth: Int = width / 2
+            while (halfHeight / inSampleSize >= reqHeight && halfWidth / inSampleSize >= reqWidth) {
+                inSampleSize *= 2
+            }
+        }
+        return inSampleSize
     }
 
     private fun buildNotification(

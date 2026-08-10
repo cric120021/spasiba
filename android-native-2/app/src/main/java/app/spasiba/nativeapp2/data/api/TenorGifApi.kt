@@ -4,10 +4,7 @@ import android.util.Log
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import okhttp3.OkHttpClient
-import okhttp3.Request
-import java.net.URLEncoder
-import java.util.concurrent.TimeUnit
+import app.spasiba.nativeapp2.data.network.HttpClientProvider
 
 data class TenorGifItem(
     val id: String,
@@ -19,10 +16,7 @@ data class TenorGifItem(
 object TenorGifApi {
     private const val TAG = "TenorGifApi"
     private const val API_KEY = "LIVDSRZULEXM" // Tenor public client API key
-    private val client = OkHttpClient.Builder()
-        .connectTimeout(6, TimeUnit.SECONDS)
-        .readTimeout(6, TimeUnit.SECONDS)
-        .build()
+    private val client get() = HttpClientProvider.client
 
     suspend fun searchGifs(query: String = ""): List<TenorGifItem> = withContext(Dispatchers.IO) {
         val endpoint = if (query.trim().isBlank()) {
