@@ -1,6 +1,7 @@
 package app.spasiba.nativeapp2.ui.components
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -27,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -64,11 +66,28 @@ fun MiniPlayerDock(
             modifier = Modifier.fillMaxWidth()
         ) {
             // YouTube Music Mini Player Content Row
+            var totalDragAmount = 0f
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(56.dp)
-                    .padding(horizontal = 10.dp),
+                    .padding(horizontal = 10.dp)
+                    .pointerInput(Unit) {
+                        detectHorizontalDragGestures(
+                            onDragEnd = {
+                                if (totalDragAmount < -60f) {
+                                    onNextClick()
+                                } else if (totalDragAmount > 60f) {
+                                    onPreviousClick()
+                                }
+                                totalDragAmount = 0f
+                            },
+                            onDragCancel = { totalDragAmount = 0f },
+                            onHorizontalDrag = { _, dragAmount ->
+                                totalDragAmount += dragAmount
+                            }
+                        )
+                    },
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 // 1. Left Thumbnail Artwork (42dp x 42dp rounded)

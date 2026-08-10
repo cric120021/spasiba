@@ -172,8 +172,11 @@ class NativePlayerManager(private val context: Context) {
             _queue.value = snapshot.songs
             _currentIndex.value = snapshot.currentIndex
             _currentSong.value = snapshot.songs[snapshot.currentIndex]
+            if (snapshot.positionMs > 0L) {
+                _positionMs.value = snapshot.positionMs
+            }
             maybePrefetchNextTrack()
-            Log.d(TAG, "Restored android-native queue snapshot: ${snapshot.songs.size} tracks, index=${snapshot.currentIndex}")
+            Log.d(TAG, "Restored android-native queue snapshot: ${snapshot.songs.size} tracks, index=${snapshot.currentIndex}, posMs=${snapshot.positionMs}")
         } else {
             val fallbacks = YouTubeMusicApi.getFallbackTracks()
             if (fallbacks.isNotEmpty()) {
@@ -185,7 +188,7 @@ class NativePlayerManager(private val context: Context) {
     }
 
     private fun persistQueue() {
-        queueCache.saveSnapshot(_queue.value, _currentIndex.value)
+        queueCache.saveSnapshot(_queue.value, _currentIndex.value, _positionMs.value)
     }
 
     /**
@@ -953,6 +956,44 @@ class NativePlayerManager(private val context: Context) {
                 val calculatedRatio = videoSize.width.toFloat() / videoSize.height.toFloat()
                 val safeRatio = calculatedRatio.coerceIn(0.55f, 2.2f)
                 _videoAspectRatio.value = safeRatio
+            }
+        }
+
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e(TAG, "ExoPlayer playback error: ${error.message}", error)
+            val current = _currentSong.value ?: return
+            val currentPos = _positionMs.value.coerceAtLeast(0L)
+            
+            val isNetworkOrHttpError = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                    || error.message?.contains("403") == true
+                    || error.message?.contains("404") == true
+
+            if (isNetworkOrHttpError) {
+                Log.d(TAG, "HTTP 403/404 Stream Expiration detected for ${current.title}. Attempting silent auto-recovery...")
+                _isLoading.value = true
+                scope.launch(Dispatchers.IO) {
+                    val freshResult = YouTubeMusicApi.resolveStreamResult(context, current.id)
+                    withContext(Dispatchers.Main) {
+                        if (freshResult != null && freshResult.url.isNotBlank()) {
+                            val updatedSong = current.copy(streamUrl = freshResult.url)
+                            _currentSong.value = updatedSong
+                            val mediaItem = MediaItem.Builder()
+                                .setUri(Uri.parse(freshResult.url))
+                                .setMediaId(updatedSong.id)
+                                .build()
+                            exoPlayer.setMediaItem(mediaItem, currentPos)
+                            exoPlayer.prepare()
+                            exoPlayer.play()
+                            _isLoading.value = false
+                            Log.d(TAG, "Silent Auto-Recovery SUCCESS for ${current.title} at ${currentPos}ms!")
+                        } else {
+                            _isLoading.value = false
+                            playNext()
+                        }
+                    }
+                }
+            } else {
+                _isLoading.value = false
             }
         }
 

@@ -9,6 +9,7 @@ import com.google.gson.reflect.TypeToken
 data class QueueSnapshot(
     val songs: List<Song>,
     val currentIndex: Int,
+    val positionMs: Long = 0L,
     val timestamp: Long = System.currentTimeMillis()
 )
 
@@ -21,10 +22,10 @@ class QueueSnapshotCache(context: Context) {
         private const val THREE_DAYS_MS = 3 * 24 * 60 * 60 * 1000L
     }
 
-    fun saveSnapshot(songs: List<Song>, currentIndex: Int) {
+    fun saveSnapshot(songs: List<Song>, currentIndex: Int, positionMs: Long = 0L) {
         if (songs.isEmpty()) return
         val sanitizedSongs = songs.take(80).map { it.copy(streamUrl = null) }
-        val snapshot = QueueSnapshot(sanitizedSongs, currentIndex)
+        val snapshot = QueueSnapshot(sanitizedSongs, currentIndex, positionMs)
         kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.Dispatchers.IO).launch {
             runCatching {
                 val json = gson.toJson(snapshot)
