@@ -81,11 +81,10 @@ class NativePlayerManager(private val context: Context) {
             streamUrl?.contains("c=ANDROID") == true -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
             streamUrl?.contains("c=IOS") == true -> "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"
             streamUrl?.contains("c=TVHTML5") == true || streamUrl?.contains("c=TV") == true -> "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
-            streamUrl?.contains("c=WEB_EMBEDDED") == true || streamUrl?.contains("c=WEB") == true -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-            else -> safeHeaders["User-Agent"] ?: "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+            else -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
         }
         safeHeaders["User-Agent"] = matchingUa
-        if (streamUrl?.contains("c=WEB_EMBEDDED") == true || streamUrl?.contains("c=WEB") == true) {
+        if (streamUrl != null && !streamUrl.contains("c=ANDROID")) {
             safeHeaders["Origin"] = "https://www.youtube.com"
             safeHeaders["Referer"] = "https://www.youtube.com/"
         }

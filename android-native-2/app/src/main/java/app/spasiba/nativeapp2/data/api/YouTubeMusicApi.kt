@@ -1690,11 +1690,10 @@ object YouTubeMusicApi {
                     mainUrl.contains("c=ANDROID") -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
                     mainUrl.contains("c=IOS") -> "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"
                     mainUrl.contains("c=TVHTML5") || mainUrl.contains("c=TV") -> "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
-                    mainUrl.contains("c=WEB_EMBEDDED") || mainUrl.contains("c=WEB") -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
-                    else -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+                    else -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                 }
                 val headers = mutableMapOf("User-Agent" to ytUa)
-                if (mainUrl.contains("c=WEB_EMBEDDED") || mainUrl.contains("c=WEB")) {
+                if (!mainUrl.contains("c=ANDROID")) {
                     headers["Origin"] = "https://www.youtube.com"
                     headers["Referer"] = "https://www.youtube.com/"
                 }
@@ -1732,7 +1731,7 @@ object YouTubeMusicApi {
     val backupRacerClients = listOf(
         "YT_DLP_WEB" to "web",
         "YT_DLP_MWEB" to "mweb",
-        "YT_DLP_IOS" to "ios"
+        "YT_DLP_ANDROID" to "android"
     )
 
     suspend fun resolveStreamResult(context: Context, videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
@@ -1741,7 +1740,7 @@ object YouTubeMusicApi {
         Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_RESOLVE_START] Resolving audio via 'YT_DLP_ANDROID' for '$videoId'")
         Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        // 1. Primary Champion (0ms probe delay - instant dispatch to ExoPlayer!)
+        // 1. Primary Champion for Audio (0ms probe delay - instant dispatch to ExoPlayer!)
         val championResult = resolveWithYtDlp(context, videoId, isVideo = false, playerClient = "android")
         if (championResult != null && championResult.url.isNotBlank()) {
             val elapsed = System.currentTimeMillis() - startTime
@@ -1753,9 +1752,9 @@ object YouTubeMusicApi {
             return@withContext championResult
         }
 
-        // 2. Backup Squadron (Only if Champion fails)
+        // 2. Backup Squadron for Audio (Only if Champion fails)
         Log.w("SPASIBA_111", "🛡️ ╔══════════════════════════════════════════════════════════════════════")
-        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_SQUADRON_TRIGGERED] Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB, YT_DLP_IOS]")
+        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_SQUADRON_TRIGGERED] Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB]")
         Log.w("SPASIBA_111", "🛡️ ╚══════════════════════════════════════════════════════════════════════")
 
         coroutineScope {
@@ -1806,24 +1805,33 @@ object YouTubeMusicApi {
     suspend fun resolveVideoStreamResult(context: Context, videoId: String, quality: String = "720p"): StreamingResult? = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         Log.i("SPASIBA_111", "🎯 ╔══════════════════════════════════════════════════════════════════════")
-        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_ANDROID' for '$videoId'")
+        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_HD' for '$videoId'")
         Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        // 1. Primary Champion for Video (0ms probe delay, 100% reliable)
-        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "android")
+        // 1. Primary Champion for 720p HD (web_embedded,mweb) with 2-byte live CDN probe
+        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "web_embedded,mweb")
         if (championResult != null && championResult.url.isNotBlank()) {
-            val elapsed = System.currentTimeMillis() - startTime
-            Log.i("SPASIBA_111", "🏆 ╔══════════════════════════════════════════════════════════════════════")
-            Log.i("SPASIBA_111", "🏆 ║ 🥇 [CHAMPION_VIDEO_SUCCESS]")
-            Log.i("SPASIBA_111", "🏆 ║ Winner: YT_DLP_ANDROID (Quality: $quality)")
-            Log.i("SPASIBA_111", "🏆 ║ ⚡ Extracted in ${elapsed}ms -> Direct Dispatch to ExoPlayer (0ms probe!)")
-            Log.i("SPASIBA_111", "🏆 ╚══════════════════════════════════════════════════════════════════════")
-            return@withContext championResult
+            val probeStart = System.currentTimeMillis()
+            val isProbePassed = probeStreamUrl(championResult.url, championResult.headers)
+            val probeElapsed = System.currentTimeMillis() - probeStart
+
+            if (isProbePassed) {
+                val elapsed = System.currentTimeMillis() - startTime
+                Log.i("SPASIBA_111", "🏆 ╔══════════════════════════════════════════════════════════════════════")
+                Log.i("SPASIBA_111", "🏆 ║ 🥇 [CHAMPION_VIDEO_SUCCESS]")
+                Log.i("SPASIBA_111", "🏆 ║ Winner: YT_DLP_HD (Quality: $quality)")
+                Log.i("SPASIBA_111", "🏆 ║ ⚡ Extracted in ${elapsed - probeElapsed}ms | 🔍 Live Probe: ${probeElapsed}ms (HTTP 206 OK)")
+                Log.i("SPASIBA_111", "🏆 ║ ⏱️ Total Verified Time: ${elapsed}ms")
+                Log.i("SPASIBA_111", "🏆 ╚══════════════════════════════════════════════════════════════════════")
+                return@withContext championResult
+            } else {
+                Log.w("SPASIBA_111", "❌ [CHAMPION_VIDEO_PROBE_FAILED] HD candidate gave non-200 code in ${probeElapsed}ms. Triggering backup squadron!")
+            }
         }
 
-        // 2. Backup Squadron for Video
+        // 2. Backup Squadron for Video (web, mweb, android)
         Log.w("SPASIBA_111", "🛡️ ╔══════════════════════════════════════════════════════════════════════")
-        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_VIDEO_SQUADRON] Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB, YT_DLP_IOS]")
+        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_VIDEO_SQUADRON] HD Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB, YT_DLP_ANDROID]")
         Log.w("SPASIBA_111", "🛡️ ╚══════════════════════════════════════════════════════════════════════")
 
         coroutineScope {
