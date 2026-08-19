@@ -1555,64 +1555,36 @@ object YouTubeMusicApi {
         finalAvatar
     }
 
-    suspend fun fetchAvailableVideoQualities(videoId: String): List<String> = withContext(Dispatchers.IO) {
+    suspend fun fetchAvailableVideoQualities(context: Context, videoId: String): List<String> = withContext(Dispatchers.IO) {
         val qualities = mutableListOf<String>()
         qualities.add("Auto")
 
         try {
-            val payload = """
-                {
-                  "videoId": "$videoId",
-                  "contentCheckOk": true,
-                  "racyCheckOk": true,
-                  "context": {
-                    "client": {
-                      "clientName": "WEB_EMBEDDED_PLAYER",
-                      "clientVersion": "1.20241001.01.00",
-                      "hl": "en",
-                      "gl": "US"
-                    },
-                    "thirdParty": {
-                      "embedUrl": "https://www.youtube.com/watch?v=$videoId"
-                    }
-                  }
-                }
-            """.trimIndent()
+            runCatching { com.yausername.youtubedl_android.YoutubeDL.getInstance().init(context.applicationContext) }
+            val request = com.yausername.youtubedl_android.YoutubeDLRequest("https://www.youtube.com/watch?v=$videoId")
+            request.addOption("--dump-json")
+            request.addOption("--no-playlist")
+            request.addOption("--extractor-args", "youtube:player_client=web_embedded,mweb")
+            val response = com.yausername.youtubedl_android.YoutubeDL.getInstance().execute(request)
+            val json = JsonParser.parseString(response.out).asJsonObject
+            val formats = json.getAsJsonArray("formats")
+            if (formats != null) {
+                val heights = formats.mapNotNull {
+                    it.asJsonObject.get("height")?.takeIf { h -> !h.isJsonNull }?.asInt
+                }.filter { it > 0 }.distinct().sortedDescending()
 
-            val request = Request.Builder()
-                .url("https://www.youtube.com/youtubei/v1/player")
-                .post(payload.toRequestBody(JSON_MEDIA_TYPE))
-                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                .build()
+                Log.d("SPASIBA_111", "[DYNAMIC_HEIGHTS_RAW] Found heights for videoId=$videoId: $heights")
 
-            client.newCall(request).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string() ?: ""
-                    val json = JsonParser.parseString(body).asJsonObject
-                    val streamingData = json.getAsJsonObject("streamingData")
-                    if (streamingData != null) {
-                        val formats = streamingData.getAsJsonArray("formats")?.map { it.asJsonObject } ?: emptyList()
-                        val adaptiveFormats = streamingData.getAsJsonArray("adaptiveFormats")?.map { it.asJsonObject } ?: emptyList()
-                        val allFmts = formats + adaptiveFormats
-
-                        val heights = allFmts
-                            .mapNotNull { it.get("height")?.asInt }
-                            .filter { it > 0 }
-                            .distinct()
-                            .sortedDescending()
-
-                        for (h in heights) {
-                            when {
-                                h >= 2160 && !qualities.contains("2160p (4K)") -> qualities.add("2160p (4K)")
-                                h in 1440..2159 && !qualities.contains("1440p (2K)") -> qualities.add("1440p (2K)")
-                                h in 1080..1439 && !qualities.contains("1080p") -> qualities.add("1080p")
-                                h in 720..1079 && !qualities.contains("720p") -> qualities.add("720p")
-                                h in 480..719 && !qualities.contains("480p") -> qualities.add("480p")
-                                h in 360..479 && !qualities.contains("360p") -> qualities.add("360p")
-                                h in 240..359 && !qualities.contains("240p") -> qualities.add("240p")
-                                h in 144..239 && !qualities.contains("144p") -> qualities.add("144p")
-                            }
-                        }
+                for (h in heights) {
+                    when {
+                        h >= 2160 && !qualities.contains("2160p (4K)") -> qualities.add("2160p (4K)")
+                        h in 1440..2159 && !qualities.contains("1440p (2K)") -> qualities.add("1440p (2K)")
+                        h in 1080..1439 && !qualities.contains("1080p") -> qualities.add("1080p")
+                        h in 720..1079 && !qualities.contains("720p") -> qualities.add("720p")
+                        h in 480..719 && !qualities.contains("480p") -> qualities.add("480p")
+                        h in 360..479 && !qualities.contains("360p") -> qualities.add("360p")
+                        h in 240..359 && !qualities.contains("240p") -> qualities.add("240p")
+                        h in 144..239 && !qualities.contains("144p") -> qualities.add("144p")
                     }
                 }
             }

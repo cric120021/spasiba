@@ -691,7 +691,7 @@ class NativePlayerManager(private val context: Context) {
                 return@launch
             }
 
-            val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
+            val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
             _availableVideoQualities.value = fetchedQualities
 
             if (activePlayRequestId.get() != currentRequestId || !isActive) {
@@ -1022,7 +1022,7 @@ class NativePlayerManager(private val context: Context) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                         try {
                             // 1. Discover exact real available qualities for this video
-                            val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
+                            val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
                             if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
                                 withContext(Dispatchers.Main) {
                                     _availableVideoQualities.value = dynamicQualities
