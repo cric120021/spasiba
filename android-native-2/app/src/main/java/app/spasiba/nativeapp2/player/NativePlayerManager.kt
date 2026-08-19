@@ -252,17 +252,24 @@ class NativePlayerManager(private val context: Context) {
         persistQueue()
     }
 
+    private var queueWarmingJob: kotlinx.coroutines.Job? = null
+
     /**
-     * Smart Live Queue Warming Engine (matching audio-controller.ts):
-     * Ensures minimum 10 high-quality, diverse upcoming tracks exist in the queue at all times.
-     * Uses SmartQueueEngine for artist capping, low-quality video filtering, and score ranking.
+     * Continuous 5-Track Queue Warming Engine:
+     * 1. Replenishes radio queue when upcoming tracks < 6.
+     * 2. Inspects the next 5 upcoming tracks in queue.
+     * 3. For any track missing Audio or Video in RAM, pre-fetches both in a single pass.
      */
     private fun maybePrefetchNextTrack() {
+        warmUpcomingQueueTracks(5)
+    }
+
+    fun warmUpcomingQueueTracks(lookaheadCount: Int = 5) {
         val currentQueue = _queue.value
         val curIndex = _currentIndex.value
         val currentTrack = _currentSong.value
 
-        // Live Queue Warming: Replenish queue when upcoming tracks count < 6
+        // 1. Live Queue Warming: Replenish queue when upcoming tracks count < 6
         if (currentTrack != null && (currentQueue.size - curIndex) < 6) {
             scope.launch(Dispatchers.IO) {
                 try {
@@ -294,31 +301,57 @@ class NativePlayerManager(private val context: Context) {
             }
         }
 
-        val nextIndex = curIndex + 1
-        if (nextIndex in currentQueue.indices) {
-            val nextTrack = currentQueue[nextIndex]
-            if (prefetchedVideoId != nextTrack.id) {
-                prefetchedVideoId = nextTrack.id
-                Log.d(TAG, "PREFETCHING NEXT TRACK IN QUEUE title='${nextTrack.title}' id=${nextTrack.id}")
+        // 2. Pre-fetch Audio & Video for the next 5 upcoming tracks
+        if (curIndex !in currentQueue.indices) return
+        val upcomingTracks = currentQueue.drop(curIndex + 1).take(lookaheadCount)
+        if (upcomingTracks.isEmpty()) return
 
-                scope.launch(Dispatchers.IO) {
-                    var targetId = nextTrack.id
-                    if (targetId.length != 11 || targetId.startsWith("track_") || targetId.startsWith("item_") || targetId.startsWith("VL") || targetId.startsWith("MP")) {
-                        runCatching {
-                            val searchResults = YouTubeMusicApi.searchSongs("${nextTrack.title} ${nextTrack.author}")
-                            val validTrack = searchResults.firstOrNull { it.id.length == 11 }
-                            if (validTrack != null) targetId = validTrack.id
+        queueWarmingJob?.cancel()
+        queueWarmingJob = scope.launch(Dispatchers.IO) {
+            Log.d("SPASIBA_111", "🔥 [QUEUE_WARMING_START] Inspecting next ${upcomingTracks.size} upcoming tracks for pre-fetch...")
+
+            for ((offset, track) in upcomingTracks.withIndex()) {
+                if (!isActive) break
+
+                var targetId = track.id
+                if (targetId.length != 11 || targetId.startsWith("track_") || targetId.startsWith("item_") || targetId.startsWith("VL") || targetId.startsWith("MP")) {
+                    runCatching {
+                        val searchResults = YouTubeMusicApi.searchSongs("${track.title} ${track.author}")
+                        val validTrack = searchResults.firstOrNull { it.id.length == 11 }
+                        if (validTrack != null) targetId = validTrack.id
+                    }
+                }
+
+                val hasCachedAudio = getValidCachedStream(targetId) != null || getValidCachedStream(track.id) != null
+                val hasStandbyVideo = standbyVideoResultMap[targetId] != null || standbyVideoResultMap[track.id] != null
+
+                if (hasCachedAudio && hasStandbyVideo) {
+                    Log.d("SPASIBA_111", "⚡ [QUEUE_WARMING_SKIP] Track +${offset + 1} '${track.title}' ($targetId) already has both Audio and Video URLs in RAM")
+                    continue
+                }
+
+                Log.i("SPASIBA_111", "⏳ [QUEUE_WARMING_FETCH] Pre-fetching Audio & Video for Track +${offset + 1}: '${track.title}' ($targetId)...")
+                try {
+                    val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetId, _currentVideoQuality.value)
+                    if (result != null && result.url.isNotBlank() && isActive) {
+                        // 1. Store Standby Video URL
+                        standbyVideoResultMap[track.id] = result
+                        standbyVideoResultMap[targetId] = result
+
+                        // 2. Store Audio URL
+                        val audioStreamResult = if (!result.audioUrl.isNullOrBlank()) {
+                            StreamingResult(url = result.audioUrl, headers = result.headers)
+                        } else {
+                            result
                         }
-                    }
+                        val cachedEntry = CachedStream(audioStreamResult, System.currentTimeMillis())
+                        preResolvedStreamMap[track.id] = cachedEntry
+                        preResolvedStreamMap[targetId] = cachedEntry
 
-                    val streamResult = repository.resolveStreamResult(targetId)
-
-                    if (streamResult != null && streamResult.url.isNotBlank()) {
-                        val entry = CachedStream(streamResult, System.currentTimeMillis())
-                        preResolvedStreamMap[nextTrack.id] = entry
-                        preResolvedStreamMap[targetId] = entry
-                        Log.d(TAG, "PREFETCH SUCCESS for '${nextTrack.title}' (targetId=$targetId)")
+                        Log.i("SPASIBA_111", "✅ [QUEUE_WARMING_READY] Track +${offset + 1} '${track.title}' Audio + Video are HOT in RAM! (0ms instant playback ready)")
                     }
+                } catch (e: Exception) {
+                    Log.w("SPASIBA_111", "⚠️ [QUEUE_WARMING_WARN] Failed pre-fetching for '${track.title}': ${e.message}")
                 }
             }
         }
