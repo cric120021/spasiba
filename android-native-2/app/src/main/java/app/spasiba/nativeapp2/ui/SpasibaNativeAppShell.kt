@@ -170,6 +170,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
 
     var selectedOptionsMenuSong by remember { mutableStateOf<Song?>(null) }
     var selectedSaveToPlaylistSong by remember { mutableStateOf<Song?>(null) }
+    var pendingSongForNewPlaylist by remember { mutableStateOf<Song?>(null) }
     var isCreatePlaylistDialogOpen by remember { mutableStateOf(false) }
     var isEqualizerModalOpen by remember { mutableStateOf(false) }
 
@@ -639,6 +640,7 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                     selectedSaveToPlaylistSong = null
                                 },
                                 onCreateNewPlaylist = {
+                                    pendingSongForNewPlaylist = song
                                     isCreatePlaylistDialogOpen = true
                                     selectedSaveToPlaylistSong = null
                                 }
@@ -647,10 +649,21 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
 
                         if (isCreatePlaylistDialogOpen) {
                             CreatePlaylistDialog(
-                                onDismiss = { isCreatePlaylistDialogOpen = false },
+                                onDismiss = { 
+                                    isCreatePlaylistDialogOpen = false 
+                                    pendingSongForNewPlaylist = null
+                                },
                                 onCreate = { name ->
                                     scope.launch {
-                                        playerManager.repository.createPlaylist(name)
+                                        val newPlaylist = playerManager.repository.createPlaylist(name)
+                                        val pendingSong = pendingSongForNewPlaylist
+                                        if (pendingSong != null) {
+                                            playerManager.repository.addSongToPlaylist(newPlaylist.id, pendingSong)
+                                            Toast.makeText(context, "Created \"$name\" & added '${pendingSong.title}'", Toast.LENGTH_SHORT).show()
+                                            pendingSongForNewPlaylist = null
+                                        } else {
+                                            Toast.makeText(context, "Created playlist \"$name\"", Toast.LENGTH_SHORT).show()
+                                        }
                                         isCreatePlaylistDialogOpen = false
                                     }
                                 }

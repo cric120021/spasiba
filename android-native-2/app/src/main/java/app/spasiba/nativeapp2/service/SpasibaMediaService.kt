@@ -114,7 +114,9 @@ class SpasibaMediaService : MediaSessionService() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         super.onStartCommand(intent, flags, startId)
-        when (intent?.action) {
+        val action = intent?.action
+        Log.d("SPASIBA_111", "[NOTIFICATION_ACTION] Received intent action='$action' from system notification/lockscreen controls")
+        when (action) {
             ACTION_PLAY, ACTION_PAUSE -> playerManager.togglePlayPause()
             ACTION_PREVIOUS -> playerManager.playPrevious()
             ACTION_NEXT -> playerManager.playNext()
@@ -180,6 +182,8 @@ class SpasibaMediaService : MediaSessionService() {
         lastNotifiedSongId = song.id
         lastNotifiedIsPlaying = isPlaying
 
+        Log.d("SPASIBA_111", "[NOTIFICATION_UPDATE] Updating Media Notification for '${song.title}' by ${song.author} (isPlaying=$isPlaying, isSongChanged=$isSongChanged)")
+
         // Post immediate notification update (0ms latency!) using current/cached bitmap
         val currentBitmap = if (song.thumbnail == cachedBitmapUrl) cachedBitmap else null
         val immediateNotification = buildNotification(song, isPlaying, currentBitmap, pendingIntent)
@@ -208,12 +212,14 @@ class SpasibaMediaService : MediaSessionService() {
                 if (bitmap != null) {
                     metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ALBUM_ART, bitmap)
                     metadataBuilder.putBitmap(MediaMetadataCompat.METADATA_KEY_ART, bitmap)
+                    Log.d("SPASIBA_111", "[NOTIFICATION_ARTWORK] Loaded artwork bitmap for '${song.title}'")
                 }
 
                 compatSession?.setMetadata(metadataBuilder.build())
 
                 val notification = buildNotification(song, playerManager.isPlaying.value, bitmap, pendingIntent)
                 notificationManager.notify(NOTIFICATION_ID, notification)
+                Log.d("SPASIBA_111", "[NOTIFICATION_POST] Notification updated with artwork for '${song.title}'")
             }
         }
     }

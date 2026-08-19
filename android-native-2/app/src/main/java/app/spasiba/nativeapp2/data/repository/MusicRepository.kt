@@ -116,8 +116,10 @@ class MusicRepository(private val context: Context) {
         listeningHistoryDao.clearHistory()
     }
 
-    suspend fun createPlaylist(name: String, description: String = "") {
-        playlistDao.insertPlaylist(PlaylistEntity(id = UUID.randomUUID().toString(), name = name))
+    suspend fun createPlaylist(name: String, description: String = ""): PlaylistEntity {
+        val newPlaylist = PlaylistEntity(id = UUID.randomUUID().toString(), name = name)
+        playlistDao.insertPlaylist(newPlaylist)
+        return newPlaylist
     }
 
     suspend fun addSongToPlaylist(playlistId: String, song: Song) {
