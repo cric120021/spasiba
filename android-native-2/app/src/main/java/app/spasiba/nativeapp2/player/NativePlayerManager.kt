@@ -1360,48 +1360,52 @@ class NativePlayerManager(private val context: Context) {
                     Log.i("SPASIBA_111", "🟢 ║ └── 🎵 ExoPlayer Buffer/Play: ${exoPrepareElapsed} ms")
                     Log.i("SPASIBA_111", "🟢 ╚══════════════════════════════════════════════════════════════════════")
 
-                    // 1. Priority #1: Immediately pre-resolve Fast 360p & HD Video on standby for the CURRENT SONG
+                    // 1. Data-Saver & Performance: ONLY pre-resolve/warm video if user is actively in Video Mode
                     scope.launch(Dispatchers.IO) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                         try {
-                            // Step A: Fast 360p video pre-resolve (~2s)
-                            Log.d("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_PRE_RESOLVE] Pre-resolving instant 360p video for '${song.title}' ($targetVideoId)")
-                            val fastVideo = YouTubeMusicApi.resolveFastVideoStreamResult(context, targetVideoId)
-                            if (fastVideo != null && fastVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
-                                standbyFastVideoResultMap[song.id] = fastVideo
-                                standbyFastVideoResultMap[targetVideoId] = fastVideo
-                                standbyVideoResultMap[song.id] = fastVideo
-                                standbyVideoResultMap[targetVideoId] = fastVideo
-                                Log.i("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_HOT] Instant 360p video is HOT on standby for '${song.title}'! (0s instant visual switch ready)")
-                            }
+                            if (isVideoModeActive) {
+                                // Step A: Fast 360p video pre-resolve (~2s)
+                                Log.d("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_PRE_RESOLVE] Pre-resolving instant 360p video for '${song.title}' ($targetVideoId)")
+                                val fastVideo = YouTubeMusicApi.resolveFastVideoStreamResult(context, targetVideoId)
+                                if (fastVideo != null && fastVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId && isVideoModeActive) {
+                                    standbyFastVideoResultMap[song.id] = fastVideo
+                                    standbyFastVideoResultMap[targetVideoId] = fastVideo
+                                    standbyVideoResultMap[song.id] = fastVideo
+                                    standbyVideoResultMap[targetVideoId] = fastVideo
+                                    Log.i("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_HOT] Instant 360p video is HOT on standby for '${song.title}'! (0s instant visual switch ready)")
+                                }
 
-                            // Step B: Target HD video pre-resolve (~11s)
-                            val targetQuality = _currentVideoQuality.value
-                            if (targetQuality != "360p") {
-                                Log.d("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_PRE_RESOLVE] Pre-resolving HD video ($targetQuality) for '${song.title}' ($targetVideoId)")
-                                val hdVideo = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, targetQuality)
-                                if (hdVideo != null && hdVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
-                                    standbyHdVideoResultMap[song.id] = hdVideo
-                                    standbyHdVideoResultMap[targetVideoId] = hdVideo
-                                    standbyVideoResultMap[song.id] = hdVideo
-                                    standbyVideoResultMap[targetVideoId] = hdVideo
-                                    Log.i("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_HOT] HD video ($targetQuality) is HOT on standby for '${song.title}'!")
+                                // Step B: Target HD video pre-resolve (~11s)
+                                val targetQuality = _currentVideoQuality.value
+                                if (targetQuality != "360p" && isVideoModeActive) {
+                                    Log.d("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_PRE_RESOLVE] Pre-resolving HD video ($targetQuality) for '${song.title}' ($targetVideoId)")
+                                    val hdVideo = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, targetQuality)
+                                    if (hdVideo != null && hdVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId && isVideoModeActive) {
+                                        standbyHdVideoResultMap[song.id] = hdVideo
+                                        standbyHdVideoResultMap[targetVideoId] = hdVideo
+                                        standbyVideoResultMap[song.id] = hdVideo
+                                        standbyVideoResultMap[targetVideoId] = hdVideo
+                                        Log.i("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_HOT] HD video ($targetQuality) is HOT on standby for '${song.title}'!")
 
-                                    if (isVideoModeActive && _currentSong.value?.id == song.id) {
-                                        withContext(Dispatchers.Main) {
-                                            elevateToHdVideo(song.id, hdVideo)
+                                        if (isVideoModeActive && _currentSong.value?.id == song.id) {
+                                            withContext(Dispatchers.Main) {
+                                                elevateToHdVideo(song.id, hdVideo)
+                                            }
                                         }
                                     }
                                 }
-                            }
 
-                            // Step C: Discover exact real available qualities for this video
-                            val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
-                            if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
-                                withContext(Dispatchers.Main) {
-                                    _availableVideoQualities.value = dynamicQualities
+                                // Step C: Discover exact real available qualities for this video
+                                val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
+                                if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId && isVideoModeActive) {
+                                    withContext(Dispatchers.Main) {
+                                        _availableVideoQualities.value = dynamicQualities
+                                    }
+                                    Log.i("SPASIBA_111", "🎬 [DYNAMIC_QUALITIES] Discovered real resolutions for '${song.title}': $dynamicQualities")
                                 }
-                                Log.i("SPASIBA_111", "🎬 [DYNAMIC_QUALITIES] Discovered real resolutions for '${song.title}': $dynamicQualities")
+                            } else {
+                                Log.d("SPASIBA_111", "🎧 [DATA_SAVER] Audio Mode active: Skipping video pre-resolve & background buffer to save data/battery")
                             }
                         } catch (e: Exception) {
                             // Silent
