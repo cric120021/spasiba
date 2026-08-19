@@ -333,7 +333,7 @@ class NativePlayerManager(private val context: Context) {
         }
     }
 
-    fun createConfiguredPlayer(): ExoPlayer {
+    fun createConfiguredPlayer(handleAudioFocus: Boolean = true): ExoPlayer {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
                 15000,
@@ -348,14 +348,16 @@ class NativePlayerManager(private val context: Context) {
         return ExoPlayer.Builder(context)
             .setLoadControl(loadControl)
             .build().apply {
-                setAudioAttributes(
-                    AudioAttributes.Builder()
-                        .setUsage(C.USAGE_MEDIA)
-                        .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
-                        .build(),
-                    true
-                )
-                setHandleAudioBecomingNoisy(true)
+                if (handleAudioFocus) {
+                    setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(C.USAGE_MEDIA)
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .build(),
+                        true
+                    )
+                    setHandleAudioBecomingNoisy(true)
+                }
                 setWakeMode(C.WAKE_MODE_NETWORK)
             }
     }
@@ -874,16 +876,17 @@ class NativePlayerManager(private val context: Context) {
         
         Log.i("SPASIBA_111", "🚀 [SEAMLESS_HD_ELEVATION_START] Preparing $targetQuality HD stream for '$songId' in background at position ${currentPos}ms (360p audio/video active)")
 
-        val hdPlayer = createConfiguredPlayer()
-        hdPlayer.volume = 0f // Mute background player until ready so no sound collision occurs
+        // 1. Create background player WITHOUT grabbing audio focus so 360p playback is NOT interrupted
+        val hdPlayer = createConfiguredPlayer(handleAudioFocus = false)
+        hdPlayer.volume = 0f // Muted during background pre-buffer
 
         val finalSource = buildMediaSource(currentSong, hdResult)
         applyTrackSelectionQualityToPlayer(hdPlayer, targetQuality)
         hdPlayer.setMediaSource(finalSource)
-        hdPlayer.prepare()
         if (currentPos > 0L) {
             hdPlayer.seekTo(currentPos)
         }
+        hdPlayer.prepare()
         hdPlayer.playWhenReady = isCurrentlyPlaying
 
         var isHandedOver = false
@@ -896,16 +899,25 @@ class NativePlayerManager(private val context: Context) {
                         return
                     }
                     isHandedOver = true
-                    val livePos = currentPlayer.currentPosition.coerceAtLeast(0L)
                     val livePlaying = currentPlayer.isPlaying
+                    val livePos = currentPlayer.currentPosition.coerceAtLeast(0L)
                     
                     Log.i("SPASIBA_111", "🏆 [SEAMLESS_HD_HANDOVER] 720p HD stream buffered & ready! Performing 0ms instant hot swap at ${livePos}ms")
                     
+                    // Attach media audio attributes now that hdPlayer is becoming the active player
+                    hdPlayer.setAudioAttributes(
+                        AudioAttributes.Builder()
+                            .setUsage(C.USAGE_MEDIA)
+                            .setContentType(C.AUDIO_CONTENT_TYPE_MUSIC)
+                            .build(),
+                        true
+                    )
+                    hdPlayer.setHandleAudioBecomingNoisy(true)
+
                     // Attach main listener to new HD player
                     hdPlayer.addListener(playerListener)
                     
-                    // Sync live position and unmute
-                    hdPlayer.seekTo(livePos)
+                    // Unmute and ensure playing state
                     hdPlayer.volume = 1f
                     hdPlayer.playWhenReady = livePlaying
                     if (livePlaying) hdPlayer.play()
