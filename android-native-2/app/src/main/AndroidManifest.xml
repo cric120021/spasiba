@@ -40,23 +40,17 @@
                 <data android:scheme="spasiba" />
             </intent-filter>
 
-            <!-- HTTPS App Links: https://spasiba.vercel.app/track/... and /shared/... and /playlist/... -->
+            <!-- HTTPS / HTTP App Links: https://spasiba.vercel.app/track/... and /shared/... and /playlist/... -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
-                <data
-                    android:scheme="https"
-                    android:host="spasiba.vercel.app"
-                    android:pathPrefix="/track" />
-                <data
-                    android:scheme="https"
-                    android:host="spasiba.vercel.app"
-                    android:pathPrefix="/shared" />
-                <data
-                    android:scheme="https"
-                    android:host="spasiba.vercel.app"
-                    android:pathPrefix="/playlist" />
+                <data android:scheme="https" />
+                <data android:scheme="http" />
+                <data android:host="spasiba.vercel.app" />
+                <data android:pathPrefix="/track" />
+                <data android:pathPrefix="/shared" />
+                <data android:pathPrefix="/playlist" />
             </intent-filter>
 
             <!-- YouTube URL Intent Filter: opens shared YT links directly in Spasiba -->
