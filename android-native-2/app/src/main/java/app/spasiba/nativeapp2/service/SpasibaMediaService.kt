@@ -140,6 +140,18 @@ class SpasibaMediaService : MediaSessionService() {
 
     private fun observePlayerState(pendingIntent: PendingIntent) {
         serviceScope.launch {
+            playerManager.activePlayer.collectLatest { newPlayer ->
+                try {
+                    media3Session?.setPlayer(newPlayer)
+                    Log.d("SPASIBA_111", "[MEDIA_SESSION_UPDATE] MediaSession player updated to active player instance")
+                } catch (e: Exception) {
+                    Log.w("SpasibaMediaService", "Failed to update media3Session player: ${e.message}")
+                }
+                updateNotificationAndSession(playerManager.currentSong.value, playerManager.isPlaying.value, pendingIntent)
+            }
+        }
+
+        serviceScope.launch {
             playerManager.currentSong.collectLatest { song ->
                 updateNotificationAndSession(song, playerManager.isPlaying.value, pendingIntent)
             }
