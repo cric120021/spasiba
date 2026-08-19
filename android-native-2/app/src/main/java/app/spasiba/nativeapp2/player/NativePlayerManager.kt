@@ -53,6 +53,8 @@ class NativePlayerManager(private val context: Context) {
 
     private val preResolvedStreamMap = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
     private val standbyVideoResultMap = java.util.concurrent.ConcurrentHashMap<String, StreamingResult>()
+    private val standbyFastVideoResultMap = java.util.concurrent.ConcurrentHashMap<String, StreamingResult>()
+    private val standbyHdVideoResultMap = java.util.concurrent.ConcurrentHashMap<String, StreamingResult>()
     private val retryAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private var prefetchedVideoId: String? = null
     private var activePlayJob: kotlinx.coroutines.Job? = null
@@ -332,24 +334,24 @@ class NativePlayerManager(private val context: Context) {
 
                 Log.i("SPASIBA_111", "⏳ [QUEUE_WARMING_FETCH] Pre-fetching Audio & Video for Track +${offset + 1}: '${track.title}' ($targetId)...")
                 try {
-                    val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetId, _currentVideoQuality.value)
-                    if (result != null && result.url.isNotBlank() && isActive) {
-                        // 1. Store Standby Video URL
-                        standbyVideoResultMap[track.id] = result
-                        standbyVideoResultMap[targetId] = result
+                    // 1. Store Fast Video URL
+                    val fastVideo = YouTubeMusicApi.resolveFastVideoStreamResult(context, targetId)
+                    if (fastVideo != null && fastVideo.url.isNotBlank() && isActive) {
+                        standbyFastVideoResultMap[track.id] = fastVideo
+                        standbyFastVideoResultMap[targetId] = fastVideo
+                        standbyVideoResultMap[track.id] = fastVideo
+                        standbyVideoResultMap[targetId] = fastVideo
+                    }
 
-                        // 2. Store Audio URL
-                        val audioStreamResult = if (!result.audioUrl.isNullOrBlank()) {
-                            StreamingResult(url = result.audioUrl, headers = result.headers)
-                        } else {
-                            result
-                        }
-                        val cachedEntry = CachedStream(audioStreamResult, System.currentTimeMillis())
+                    // 2. Store Audio URL
+                    val audioResult = YouTubeMusicApi.resolveStreamResult(context, targetId)
+                    if (audioResult != null && audioResult.url.isNotBlank() && isActive) {
+                        val cachedEntry = CachedStream(audioResult, System.currentTimeMillis())
                         preResolvedStreamMap[track.id] = cachedEntry
                         preResolvedStreamMap[targetId] = cachedEntry
-
-                        Log.i("SPASIBA_111", "✅ [QUEUE_WARMING_READY] Track +${offset + 1} '${track.title}' Audio + Video are HOT in RAM! (0ms instant playback ready)")
                     }
+
+                    Log.i("SPASIBA_111", "✅ [QUEUE_WARMING_READY] Track +${offset + 1} '${track.title}' Audio + Standby Video are HOT in RAM! (0ms instant playback ready)")
                 } catch (e: Exception) {
                     Log.w("SPASIBA_111", "⚠️ [QUEUE_WARMING_WARN] Failed pre-fetching for '${track.title}': ${e.message}")
                 }
@@ -643,65 +645,109 @@ class NativePlayerManager(private val context: Context) {
         Log.d("SPASIBA_111", "[TRACK_SELECTION] Video enabled: targetHeight=$targetHeight for quality=$quality")
     }
 
+    private fun playStreamingResultAsVideo(song: Song, result: StreamingResult, currentPos: Long) {
+        val mediaMetadata = MediaMetadata.Builder()
+            .setTitle(song.title)
+            .setArtist(song.author)
+            .setArtworkUri(Uri.parse(song.thumbnail))
+            .build()
+
+        val videoDataSourceFactory = createHttpDataSourceFactory(result.url, result.headers)
+        val videoMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+            .setDataSourceFactory(videoDataSourceFactory)
+
+        val videoMediaItem = MediaItem.Builder()
+            .setUri(Uri.parse(result.url))
+            .setMediaId(song.id)
+            .setMediaMetadata(mediaMetadata)
+            .build()
+
+        val videoSource = videoMediaSourceFactory.createMediaSource(videoMediaItem)
+
+        val finalSource = if (!result.audioUrl.isNullOrBlank()) {
+            val audioDataSourceFactory = createHttpDataSourceFactory(result.audioUrl, result.headers)
+            val audioMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                .setDataSourceFactory(audioDataSourceFactory)
+
+            val audioMediaItem = MediaItem.Builder()
+                .setUri(Uri.parse(result.audioUrl))
+                .setMediaId("${song.id}_audio")
+                .build()
+            val audioSource = audioMediaSourceFactory.createMediaSource(audioMediaItem)
+            MergingMediaSource(videoSource, audioSource)
+        } else {
+            videoSource
+        }
+
+        applyTrackSelectionQuality(_currentVideoQuality.value)
+        exoPlayer.setMediaSource(finalSource)
+        exoPlayer.prepare()
+        if (currentPos > 0L) exoPlayer.seekTo(currentPos)
+        exoPlayer.playWhenReady = true
+        exoPlayer.play()
+        _isPlaying.value = true
+        _isLoading.value = false
+    }
+
+    private fun elevateToHdVideo(songId: String, hdResult: StreamingResult) {
+        if (!isVideoModeActive || _currentSong.value?.id != songId) return
+        val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
+        val isCurrentlyPlaying = exoPlayer.isPlaying
+        Log.i("SPASIBA_111", "🚀 [SEAMLESS_HD_ELEVATION] Elevating to 720p HD stream for '$songId' at ${currentPos}ms")
+        val currentSong = _currentSong.value ?: return
+        playStreamingResultAsVideo(currentSong, hdResult, currentPos)
+        exoPlayer.playWhenReady = isCurrentlyPlaying
+        if (isCurrentlyPlaying) exoPlayer.play()
+    }
+
     fun startProgressiveVideoDownloadAndPlay(song: Song, requestId: Long? = null, clickTimestampMs: Long? = null) {
         val clickTime = clickTimestampMs ?: (if (lastUserClickTimestampMs > 0 && System.currentTimeMillis() - lastUserClickTimestampMs < 5000) lastUserClickTimestampMs else System.currentTimeMillis())
         lastUserClickTimestampMs = clickTime
         activePlayJob?.cancel()
         val currentRequestId = requestId ?: activePlayRequestId.incrementAndGet()
+        val targetQuality = _currentVideoQuality.value
         
-        Log.w("SPASIBA_111", "⚡ [VIDEO_CLICK_TRIGGER] 🎬 User triggered VIDEO playback for '${song.title}' (req #$currentRequestId, targetQuality=${_currentVideoQuality.value})")
+        Log.w("SPASIBA_111", "⚡ [VIDEO_CLICK_TRIGGER] 🎬 User triggered VIDEO playback for '${song.title}' (req #$currentRequestId, targetQuality=$targetQuality)")
 
-        // 1. Instant Standby Hit (0-second switch from memory!)
-        val standbyHd = standbyVideoResultMap[song.id] ?: standbyVideoResultMap[song.id.takeIf { it.length == 11 } ?: ""]
-        if (standbyHd != null && standbyHd.url.isNotBlank()) {
+        // 1. Instant HD Standby Hit (0-second switch from memory!)
+        val standbyHd = standbyHdVideoResultMap[song.id] ?: standbyHdVideoResultMap[song.id.takeIf { it.length == 11 } ?: ""]
+        if (standbyHd != null && standbyHd.url.isNotBlank() && targetQuality != "360p") {
             val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
-            Log.i("SPASIBA_111", "⚡ [STANDBY_VIDEO_HIT] Instant 0s switch to 720p HD video from standby memory for '${song.title}' at ${currentPos}ms!")
-
-            val mediaMetadata = MediaMetadata.Builder()
-                .setTitle(song.title)
-                .setArtist(song.author)
-                .setArtworkUri(Uri.parse(song.thumbnail))
-                .build()
-
-            val videoDataSourceFactory = createHttpDataSourceFactory(standbyHd.url, standbyHd.headers)
-            val videoMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
-                .setDataSourceFactory(videoDataSourceFactory)
-
-            val videoMediaItem = MediaItem.Builder()
-                .setUri(Uri.parse(standbyHd.url))
-                .setMediaId(song.id)
-                .setMediaMetadata(mediaMetadata)
-                .build()
-
-            val videoSource = videoMediaSourceFactory.createMediaSource(videoMediaItem)
-
-            val finalSource = if (!standbyHd.audioUrl.isNullOrBlank()) {
-                val audioDataSourceFactory = createHttpDataSourceFactory(standbyHd.audioUrl, standbyHd.headers)
-                val audioMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
-                    .setDataSourceFactory(audioDataSourceFactory)
-
-                val audioMediaItem = MediaItem.Builder()
-                    .setUri(Uri.parse(standbyHd.audioUrl))
-                    .setMediaId("${song.id}_audio")
-                    .build()
-                val audioSource = audioMediaSourceFactory.createMediaSource(audioMediaItem)
-                MergingMediaSource(videoSource, audioSource)
-            } else {
-                videoSource
-            }
-
-            applyTrackSelectionQuality(_currentVideoQuality.value)
-            exoPlayer.setMediaSource(finalSource)
-            exoPlayer.prepare()
-            if (currentPos > 0L) exoPlayer.seekTo(currentPos)
-            exoPlayer.playWhenReady = true
-            exoPlayer.play()
-            _isPlaying.value = true
-            _isLoading.value = false
+            Log.i("SPASIBA_111", "⚡ [STANDBY_HD_HIT] Instant 0s switch to HD video ($targetQuality) from standby memory for '${song.title}' at ${currentPos}ms!")
+            playStreamingResultAsVideo(song, standbyHd, currentPos)
             return
         }
-        
-        // 2. Cold Resolution (if user tapped video before background pre-resolver finished)
+
+        // 2. Instant Fast 360p Standby Hit (Instant visual while HD warms!)
+        val standbyFast = standbyFastVideoResultMap[song.id] ?: standbyFastVideoResultMap[song.id.takeIf { it.length == 11 } ?: ""]
+            ?: standbyVideoResultMap[song.id] ?: standbyVideoResultMap[song.id.takeIf { it.length == 11 } ?: ""]
+        if (standbyFast != null && standbyFast.url.isNotBlank()) {
+            val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
+            Log.i("SPASIBA_111", "⚡ [STANDBY_FAST_HIT] Instant 0s switch to 360p video canvas for '${song.title}' at ${currentPos}ms! (HD warming in background)")
+            playStreamingResultAsVideo(song, standbyFast, currentPos)
+
+            // Ensure HD background warming is running if target is HD
+            if (targetQuality != "360p" && standbyHd == null) {
+                scope.launch(Dispatchers.IO) {
+                    val targetVideoId = if (song.id.length == 11) song.id else (YouTubeMusicApi.searchSongs("${song.title} ${song.author}").firstOrNull { it.id.length == 11 }?.id ?: song.id)
+                    val hdResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, targetQuality)
+                    if (hdResult != null && hdResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                        standbyHdVideoResultMap[song.id] = hdResult
+                        standbyHdVideoResultMap[targetVideoId] = hdResult
+                        standbyVideoResultMap[song.id] = hdResult
+                        standbyVideoResultMap[targetVideoId] = hdResult
+                        if (isVideoModeActive && _currentSong.value?.id == song.id) {
+                            withContext(Dispatchers.Main) {
+                                elevateToHdVideo(song.id, hdResult)
+                            }
+                        }
+                    }
+                }
+            }
+            return
+        }
+
+        // 3. Cold Resolution: Resolve Fast 360p first (~2s) so visual renders immediately, then elevate to HD
         activePlayJob = scope.launch(Dispatchers.IO) {
             _isLoading.value = true
 
@@ -724,17 +770,52 @@ class NativePlayerManager(private val context: Context) {
                 return@launch
             }
 
-            // 1. Immediately resolve video stream URL (Fast ~3.4s startup!)
+            // 3a. Immediately resolve Fast 360p stream URL (~2s startup!)
             val streamResolveStart = System.currentTimeMillis()
-            val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
+            val fastResult = YouTubeMusicApi.resolveFastVideoStreamResult(context, targetVideoId)
             val streamResolveElapsed = System.currentTimeMillis() - streamResolveStart
             
-            if (result != null && result.url.isNotBlank()) {
-                standbyVideoResultMap[song.id] = result
-                standbyVideoResultMap[targetVideoId] = result
+            if (fastResult != null && fastResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                standbyFastVideoResultMap[song.id] = fastResult
+                standbyFastVideoResultMap[targetVideoId] = fastResult
+                standbyVideoResultMap[song.id] = fastResult
+                standbyVideoResultMap[targetVideoId] = fastResult
+
+                withContext(Dispatchers.Main) {
+                    if (activePlayRequestId.get() == currentRequestId && isActive) {
+                        val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
+                        playStreamingResultAsVideo(song, fastResult, currentPos)
+                        val totalClickToPlayMs = System.currentTimeMillis() - clickTime
+                        Log.i("SPASIBA_111", "🟣 ╔══════════════════════════════════════════════════════════════════════")
+                        Log.i("SPASIBA_111", "🟣 ║ 🎬 [INSTANT_FAST_VIDEO_LAUNCH]")
+                        Log.i("SPASIBA_111", "🟣 ║ Track: '${song.title}' | Quality: 360p (Instant visual)")
+                        Log.i("SPASIBA_111", "🟣 ║ ⚡ TOTAL CLICK-TO-PLAY: ${totalClickToPlayMs} ms")
+                        Log.i("SPASIBA_111", "🟣 ║ ├── 🔍 ID Canonicalization : ${idResolveElapsed} ms")
+                        Log.i("SPASIBA_111", "🟣 ║ ├── 🌐 Fast Video Resolve : ${streamResolveElapsed} ms")
+                        Log.i("SPASIBA_111", "🟣 ║ └── 🎬 ExoPlayer Canvas   : Ready (0ms delay)")
+                        Log.i("SPASIBA_111", "🟣 ╚══════════════════════════════════════════════════════════════════════")
+                    }
+                }
             }
 
-            // 2. Discover available quality options asynchronously in the background (0ms delay on playback!)
+            // 3b. Resolve Target HD stream in background (~11s) and elevate
+            if (targetQuality != "360p") {
+                val hdResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, targetQuality)
+                if (hdResult != null && hdResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                    standbyHdVideoResultMap[song.id] = hdResult
+                    standbyHdVideoResultMap[targetVideoId] = hdResult
+                    standbyVideoResultMap[song.id] = hdResult
+                    standbyVideoResultMap[targetVideoId] = hdResult
+
+                    if (isVideoModeActive && _currentSong.value?.id == song.id) {
+                        withContext(Dispatchers.Main) {
+                            elevateToHdVideo(song.id, hdResult)
+                        }
+                    }
+                }
+            }
+
+            // 3c. Discover available quality options in background
             scope.launch(Dispatchers.IO) {
                 try {
                     val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
@@ -747,73 +828,6 @@ class NativePlayerManager(private val context: Context) {
                 } catch (e: Exception) {
                     // Silent
                 }
-            }
-
-            withContext(Dispatchers.Main) {
-                if (activePlayRequestId.get() != currentRequestId || !isActive) {
-                    Log.d("SPASIBA_111", "[VIDEO_MODE_DISCARD] Discarding stale video result for '${song.title}' (req #$currentRequestId vs active #${activePlayRequestId.get()})")
-                    return@withContext
-                }
-
-                if (result != null && result.url.isNotBlank()) {
-                    val exoPrepareStart = System.currentTimeMillis()
-                    val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
-                    val mediaMetadata = MediaMetadata.Builder()
-                        .setTitle(song.title)
-                        .setArtist(song.author)
-                        .setArtworkUri(Uri.parse(song.thumbnail))
-                        .build()
-
-                    val videoDataSourceFactory = createHttpDataSourceFactory(result.url, result.headers)
-                    val videoMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
-                        .setDataSourceFactory(videoDataSourceFactory)
-
-                    val videoMediaItem = MediaItem.Builder()
-                        .setUri(Uri.parse(result.url))
-                        .setMediaId(song.id)
-                        .setMediaMetadata(mediaMetadata)
-                        .build()
-
-                    val videoSource = videoMediaSourceFactory.createMediaSource(videoMediaItem)
-
-                    val finalSource = if (!result.audioUrl.isNullOrBlank()) {
-                        val audioDataSourceFactory = createHttpDataSourceFactory(result.audioUrl, result.headers)
-                        val audioMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
-                            .setDataSourceFactory(audioDataSourceFactory)
-
-                        val audioMediaItem = MediaItem.Builder()
-                            .setUri(Uri.parse(result.audioUrl))
-                            .setMediaId("${song.id}_audio")
-                            .build()
-                        val audioSource = audioMediaSourceFactory.createMediaSource(audioMediaItem)
-                        MergingMediaSource(videoSource, audioSource)
-                    } else {
-                        videoSource
-                    }
-
-                    applyTrackSelectionQuality(_currentVideoQuality.value)
-                    exoPlayer.setMediaSource(finalSource)
-                    exoPlayer.prepare()
-                    if (currentPos > 0) exoPlayer.seekTo(currentPos)
-                    exoPlayer.playWhenReady = true
-                    exoPlayer.play()
-                    _isPlaying.value = true
-                    val exoPrepareElapsed = System.currentTimeMillis() - exoPrepareStart
-                    val totalClickToPlayMs = System.currentTimeMillis() - clickTime
-
-                    Log.i("SPASIBA_111", "🟣 ╔══════════════════════════════════════════════════════════════════════")
-                    Log.i("SPASIBA_111", "🟣 ║ 🎬 [VIDEO_SPEED_BENCHMARK]")
-                    Log.i("SPASIBA_111", "🟣 ║ Track: '${song.title}' | Quality: ${_currentVideoQuality.value}")
-                    Log.i("SPASIBA_111", "🟣 ║ ⚡ TOTAL CLICK-TO-PLAY: ${totalClickToPlayMs} ms")
-                    Log.i("SPASIBA_111", "🟣 ║ ├── 🔍 ID Canonicalization : ${idResolveElapsed} ms")
-                    Log.i("SPASIBA_111", "🟣 ║ ├── 🌐 Stream URLs (yt-dlp) : ${streamResolveElapsed} ms")
-                    Log.i("SPASIBA_111", "🟣 ║ └── 🎬 ExoPlayer Prepare/Play: ${exoPrepareElapsed} ms")
-                    Log.i("SPASIBA_111", "🟣 ╚══════════════════════════════════════════════════════════════════════")
-                } else {
-                    Log.e("SPASIBA_111", "🔴 [VIDEO_MODE_ERROR] Failed to resolve video stream result for videoId=$targetVideoId")
-                    android.widget.Toast.makeText(context, "Video stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
-                }
-                _isLoading.value = false
             }
         }
     }
@@ -1056,19 +1070,42 @@ class NativePlayerManager(private val context: Context) {
                     Log.i("SPASIBA_111", "🟢 ║ └── 🎵 ExoPlayer Buffer/Play: ${exoPrepareElapsed} ms")
                     Log.i("SPASIBA_111", "🟢 ╚══════════════════════════════════════════════════════════════════════")
 
-                    // 1. Priority #1: Immediately pre-resolve Video URL of the CURRENT SONG on standby
+                    // 1. Priority #1: Immediately pre-resolve Fast 360p & HD Video on standby for the CURRENT SONG
                     scope.launch(Dispatchers.IO) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                         try {
-                            Log.d("SPASIBA_111", "🎬 [STANDBY_VIDEO_PRE_RESOLVE] Pre-resolving video (${_currentVideoQuality.value}) for current song '${song.title}' ($targetVideoId)")
-                            val videoResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
-                            if (videoResult != null && videoResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
-                                standbyVideoResultMap[song.id] = videoResult
-                                standbyVideoResultMap[targetVideoId] = videoResult
-                                Log.i("SPASIBA_111", "🎬 [STANDBY_VIDEO_HOT] Video (${_currentVideoQuality.value}) is HOT on standby for '${song.title}'! (0s instant video switch ready)")
+                            // Step A: Fast 360p video pre-resolve (~2s)
+                            Log.d("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_PRE_RESOLVE] Pre-resolving instant 360p video for '${song.title}' ($targetVideoId)")
+                            val fastVideo = YouTubeMusicApi.resolveFastVideoStreamResult(context, targetVideoId)
+                            if (fastVideo != null && fastVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                                standbyFastVideoResultMap[song.id] = fastVideo
+                                standbyFastVideoResultMap[targetVideoId] = fastVideo
+                                standbyVideoResultMap[song.id] = fastVideo
+                                standbyVideoResultMap[targetVideoId] = fastVideo
+                                Log.i("SPASIBA_111", "🎬 [STANDBY_FAST_VIDEO_HOT] Instant 360p video is HOT on standby for '${song.title}'! (0s instant visual switch ready)")
                             }
 
-                            // 2. Discover exact real available qualities for this video
+                            // Step B: Target HD video pre-resolve (~11s)
+                            val targetQuality = _currentVideoQuality.value
+                            if (targetQuality != "360p") {
+                                Log.d("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_PRE_RESOLVE] Pre-resolving HD video ($targetQuality) for '${song.title}' ($targetVideoId)")
+                                val hdVideo = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, targetQuality)
+                                if (hdVideo != null && hdVideo.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                                    standbyHdVideoResultMap[song.id] = hdVideo
+                                    standbyHdVideoResultMap[targetVideoId] = hdVideo
+                                    standbyVideoResultMap[song.id] = hdVideo
+                                    standbyVideoResultMap[targetVideoId] = hdVideo
+                                    Log.i("SPASIBA_111", "🎬 [STANDBY_HD_VIDEO_HOT] HD video ($targetQuality) is HOT on standby for '${song.title}'!")
+
+                                    if (isVideoModeActive && _currentSong.value?.id == song.id) {
+                                        withContext(Dispatchers.Main) {
+                                            elevateToHdVideo(song.id, hdVideo)
+                                        }
+                                    }
+                                }
+                            }
+
+                            // Step C: Discover exact real available qualities for this video
                             val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
                             if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
                                 withContext(Dispatchers.Main) {
@@ -1080,7 +1117,7 @@ class NativePlayerManager(private val context: Context) {
                             // Silent
                         }
 
-                        // 3. Priority #2: Warm the upcoming 5 queue tracks
+                        // Step D: Warm the upcoming 5 queue tracks
                         if (activePlayRequestId.get() == currentRequestId && isActive) {
                             warmUpcomingQueueTracks(5)
                         }

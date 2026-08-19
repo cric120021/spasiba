@@ -1778,7 +1778,24 @@ object YouTubeMusicApi {
         }
     }
 
+    suspend fun resolveFastVideoStreamResult(context: Context, videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
+        val startTime = System.currentTimeMillis()
+        Log.i("SPASIBA_111", "⚡ [FAST_VIDEO_RESOLVE_START] Resolving instant 360p video via 'android' client for '$videoId'")
+        val result = resolveWithYtDlp(context, videoId, isVideo = true, quality = "360p", playerClient = "android")
+        if (result != null && result.url.isNotBlank()) {
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.i("SPASIBA_111", "⚡ [FAST_VIDEO_SUCCESS] Instant 360p video extracted in ${elapsed}ms for '$videoId'!")
+            return@withContext result
+        }
+        null
+    }
+
     suspend fun resolveVideoStreamResult(context: Context, videoId: String, quality: String = "720p"): StreamingResult? = withContext(Dispatchers.IO) {
+        if (quality == "360p") {
+            val fast = resolveFastVideoStreamResult(context, videoId)
+            if (fast != null) return@withContext fast
+        }
+
         val startTime = System.currentTimeMillis()
         Log.i("SPASIBA_111", "🎯 ╔══════════════════════════════════════════════════════════════════════")
         Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_HD' for '$videoId'")
