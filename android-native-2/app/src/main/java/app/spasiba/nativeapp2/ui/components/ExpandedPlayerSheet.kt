@@ -214,6 +214,7 @@ fun ExpandedPlayerSheet(
 
     val upcomingQueue by playerManager.queue.collectAsState()
     val isLoading by playerManager.isLoading.collectAsState()
+    val activePlayer by playerManager.activePlayer.collectAsState()
 
     var sheetDragOffset by remember { mutableStateOf(0f) }
     var artDragOffset by remember { mutableStateOf(0f) }
@@ -463,7 +464,7 @@ fun ExpandedPlayerSheet(
                                                 factory = { ctx ->
                                                     val inflater = android.view.LayoutInflater.from(ctx)
                                                     (inflater.inflate(app.spasiba.nativeapp2.R.layout.spasiba_player_view, null, false) as androidx.media3.ui.PlayerView).apply {
-                                                        player = playerManager.exoPlayer
+                                                        player = activePlayer
                                                         resizeMode = if (isVideoZoomed) {
                                                             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                                         } else {
@@ -472,8 +473,8 @@ fun ExpandedPlayerSheet(
                                                     }
                                                 },
                                                 update = { playerView ->
-                                                    if (playerView.player != playerManager.exoPlayer) {
-                                                        playerView.player = playerManager.exoPlayer
+                                                    if (playerView.player != activePlayer) {
+                                                        playerView.player = activePlayer
                                                     }
                                                     playerView.resizeMode = if (isVideoZoomed) {
                                                         androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
@@ -897,7 +898,7 @@ fun ExpandedPlayerSheet(
                     factory = { ctx ->
                         val inflater = android.view.LayoutInflater.from(ctx)
                         (inflater.inflate(app.spasiba.nativeapp2.R.layout.spasiba_player_view, null, false) as androidx.media3.ui.PlayerView).apply {
-                            player = playerManager.exoPlayer
+                            player = activePlayer
                             resizeMode = if (isVideoZoomed) {
                                 androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             } else {
@@ -906,8 +907,8 @@ fun ExpandedPlayerSheet(
                         }
                     },
                     update = { playerView ->
-                        if (playerView.player != playerManager.exoPlayer) {
-                            playerView.player = playerManager.exoPlayer
+                        if (playerView.player != activePlayer) {
+                            playerView.player = activePlayer
                         }
                         playerView.resizeMode = if (isVideoZoomed) {
                             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
