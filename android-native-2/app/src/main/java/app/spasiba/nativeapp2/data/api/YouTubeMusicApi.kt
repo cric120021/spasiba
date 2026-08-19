@@ -1806,16 +1806,16 @@ object YouTubeMusicApi {
     suspend fun resolveVideoStreamResult(context: Context, videoId: String, quality: String = "720p"): StreamingResult? = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
         Log.i("SPASIBA_111", "🎯 ╔══════════════════════════════════════════════════════════════════════")
-        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via HD clients for '$videoId'")
+        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_ANDROID' for '$videoId'")
         Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        // 1. Primary Champion for True 720p HD (android_vr,web,mweb)
-        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "android_vr,web,mweb")
+        // 1. Primary Champion for Video (0ms probe delay, 100% reliable)
+        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "android")
         if (championResult != null && championResult.url.isNotBlank()) {
             val elapsed = System.currentTimeMillis() - startTime
             Log.i("SPASIBA_111", "🏆 ╔══════════════════════════════════════════════════════════════════════")
             Log.i("SPASIBA_111", "🏆 ║ 🥇 [CHAMPION_VIDEO_SUCCESS]")
-            Log.i("SPASIBA_111", "🏆 ║ Winner: HD_VIDEO_RESOLVER (Quality: $quality)")
+            Log.i("SPASIBA_111", "🏆 ║ Winner: YT_DLP_ANDROID (Quality: $quality)")
             Log.i("SPASIBA_111", "🏆 ║ ⚡ Extracted in ${elapsed}ms -> Direct Dispatch to ExoPlayer (0ms probe!)")
             Log.i("SPASIBA_111", "🏆 ╚══════════════════════════════════════════════════════════════════════")
             return@withContext championResult
