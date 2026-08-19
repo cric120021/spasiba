@@ -75,18 +75,30 @@ object SmartQueueEngine {
         QueueSignal.INDIE_NON_FILM to listOf("indie official audio", "alt pop official audio", "independent pop official audio")
     )
 
+    private val PAREN_NOISE_PATTERN = Regex("\\([^)]*\\)")
+    private val BRACKET_NOISE_PATTERN = Regex("\\[[^\\]]*\\]")
+    private val KEYWORD_NOISE_PATTERN = Regex(
+        "\\b(official|video|music|lyrics?|lyric|audio|hd|4k|visualizer|feat\\.?|ft\\.?|remix|live|version|slowed|reverb|cover|karaoke|shorts?|sped\\s*up|bass\\s*boosted|instrumental)\\b",
+        RegexOption.IGNORE_CASE
+    )
+    private val PUNCTUATION_PATTERN = Regex("[|:/\\\\-]+")
+    private val WHITESPACE_PATTERN = Regex("\\s+")
+    private val NON_ALPHANUMERIC_PATTERN = Regex("[^a-z0-9]")
+    private val TOPIC_PATTERN = Regex("\\btopic\\b", RegexOption.IGNORE_CASE)
+    private val OFFICIAL_AUDIO_PATTERN = Regex("\\bofficial\\b|\\baudio\\b", RegexOption.IGNORE_CASE)
+
     fun stripTitleNoise(value: String): String {
         return value
-            .replace(Regex("\\([^)]*\\)"), " ")
-            .replace(Regex("\\[[^\\]]*\\]"), " ")
-            .replace(Regex("\\b(official|video|music|lyrics?|lyric|audio|hd|4k|visualizer|feat\\.?|ft\\.?|remix|live|version|slowed|reverb|cover|karaoke|shorts?|sped\\s*up|bass\\s*boosted|instrumental)\\b", RegexOption.IGNORE_CASE), " ")
-            .replace(Regex("[|:/\\\\-]+"), " ")
-            .replace(Regex("\\s+"), " ")
+            .replace(PAREN_NOISE_PATTERN, " ")
+            .replace(BRACKET_NOISE_PATTERN, " ")
+            .replace(KEYWORD_NOISE_PATTERN, " ")
+            .replace(PUNCTUATION_PATTERN, " ")
+            .replace(WHITESPACE_PATTERN, " ")
             .trim()
     }
 
     fun normalizeToken(value: String): String {
-        return value.lowercase(Locale.ROOT).replace(Regex("[^a-z0-9]"), "")
+        return value.lowercase(Locale.ROOT).replace(NON_ALPHANUMERIC_PATTERN, "")
     }
 
     fun getMeaningfulSongTokens(value: String): List<String> {

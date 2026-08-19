@@ -446,9 +446,35 @@ class NativePlayerManager(private val context: Context) {
         val curIndex = _currentIndex.value
         val currentTrack = _currentSong.value
 
-        // 1. Live Queue Warming: Replenish queue when upcoming tracks count < 6
+        // 1. Live Queue Warming: Replenish queue when upcoming tracks count < 6 using YouTube Music Official Automix Radio
         if (currentTrack != null && (currentQueue.size - curIndex) < 6) {
             scope.launch(Dispatchers.IO) {
+                try {
+                    Log.d(TAG, "YOUTUBE AUTOMIX RADIO: Fetching official radio queue for '${currentTrack.title}' by ${currentTrack.author}")
+                    val automixTracks = YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(currentTrack.id)
+                    
+                    if (automixTracks.isNotEmpty()) {
+                        val currentList = _queue.value
+                        val seenIds = currentList.map { it.id }.toSet()
+                        val newCandidates = automixTracks.filter { it.id !in seenIds }
+                        
+                        if (newCandidates.isNotEmpty()) {
+                            val updatedQueue = (currentList + newCandidates).take(MAX_QUEUE_TRACKS)
+                            if (updatedQueue.size > currentList.size) {
+                                launch(Dispatchers.Main) {
+                                    _queue.value = updatedQueue
+                                    persistQueue()
+                                    Log.d(TAG, "YOUTUBE AUTOMIX WARMED: New queue size = ${updatedQueue.size}")
+                                }
+                            }
+                        }
+                    }
+                } catch (e: Exception) {
+                    Log.e(TAG, "YouTube Automix queue warming failed: ${e.message}")
+                }
+
+                /*
+                // --- LEGACY SMART QUEUE ENGINE (PRESERVED FOR FALLBACK/REFERENCE) ---
                 try {
                     Log.d(TAG, "SMART QUEUE ENGINE: Warming radio queue for '${currentTrack.title}' by ${currentTrack.author}")
                     val signals = SmartQueueEngine.inferQueueSignals(currentTrack, currentQueue)
@@ -475,6 +501,8 @@ class NativePlayerManager(private val context: Context) {
                 } catch (e: Exception) {
                     Log.e(TAG, "Smart queue warming failed: ${e.message}")
                 }
+                // --- END LEGACY SMART QUEUE ENGINE ---
+                */
             }
         }
 
@@ -617,6 +645,24 @@ class NativePlayerManager(private val context: Context) {
 
         scope.launch(Dispatchers.IO) {
             try {
+                // Official YouTube Music Automix Radio Queue
+                val radioTracks = YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(clickedSong.id)
+                if (radioTracks.isNotEmpty()) {
+                    val filtered = radioTracks.filter { it.id != clickedSong.id }
+                    val newQueue = (listOf(clickedSong) + filtered).take(SmartQueueEngine.UPCOMING_QUEUE_TARGET + 1)
+                    launch(Dispatchers.Main) {
+                        _queue.value = newQueue
+                        persistQueue()
+                        Log.d(TAG, "PLAY SINGLE SONG RADIO: Queue set to ${newQueue.size} YouTube Automix tracks")
+                    }
+                }
+            } catch (e: Exception) {
+                Log.e(TAG, "YouTube Automix single song radio failed: ${e.message}")
+            }
+
+            /*
+            // --- LEGACY SMART QUEUE ENGINE (PRESERVED FOR FALLBACK/REFERENCE) ---
+            try {
                 val radioTracks = QuickPicksEngine.generateRadioQueue(clickedSong)
                 if (radioTracks.isNotEmpty()) {
                     launch(Dispatchers.Main) {
@@ -634,6 +680,8 @@ class NativePlayerManager(private val context: Context) {
             } catch (e: Exception) {
                 Log.e(TAG, "Radio queue generation failed: ${e.message}")
             }
+            // --- END LEGACY SMART QUEUE ENGINE ---
+            */
         }
     }
 
