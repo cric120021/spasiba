@@ -1056,13 +1056,19 @@ class NativePlayerManager(private val context: Context) {
                     Log.i("SPASIBA_111", "🟢 ║ └── 🎵 ExoPlayer Buffer/Play: ${exoPrepareElapsed} ms")
                     Log.i("SPASIBA_111", "🟢 ╚══════════════════════════════════════════════════════════════════════")
 
-                    maybePrefetchNextTrack()
-
-                    // Background Standby Video Pre-Resolver & Dynamic Quality Discovery
+                    // 1. Priority #1: Immediately pre-resolve Video URL of the CURRENT SONG on standby
                     scope.launch(Dispatchers.IO) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                         try {
-                            // 1. Discover exact real available qualities for this video
+                            Log.d("SPASIBA_111", "🎬 [STANDBY_VIDEO_PRE_RESOLVE] Pre-resolving video (${_currentVideoQuality.value}) for current song '${song.title}' ($targetVideoId)")
+                            val videoResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
+                            if (videoResult != null && videoResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
+                                standbyVideoResultMap[song.id] = videoResult
+                                standbyVideoResultMap[targetVideoId] = videoResult
+                                Log.i("SPASIBA_111", "🎬 [STANDBY_VIDEO_HOT] Video (${_currentVideoQuality.value}) is HOT on standby for '${song.title}'! (0s instant video switch ready)")
+                            }
+
+                            // 2. Discover exact real available qualities for this video
                             val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
                             if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
                                 withContext(Dispatchers.Main) {
@@ -1070,17 +1076,13 @@ class NativePlayerManager(private val context: Context) {
                                 }
                                 Log.i("SPASIBA_111", "🎬 [DYNAMIC_QUALITIES] Discovered real resolutions for '${song.title}': $dynamicQualities")
                             }
-
-                            // 2. Pre-resolve 720p HD video on standby in memory
-                            Log.d("SPASIBA_111", "🎬 [STANDBY_VIDEO_PRE_RESOLVE] Pre-resolving 720p HD video for '${song.title}' ($targetVideoId) to standby memory")
-                            val hdResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
-                            if (hdResult != null && hdResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
-                                standbyVideoResultMap[song.id] = hdResult
-                                standbyVideoResultMap[targetVideoId] = hdResult
-                                Log.i("SPASIBA_111", "🎬 [STANDBY_VIDEO_HOT] 720p HD video is HOT on standby for '${song.title}'! (0s instant video switch ready)")
-                            }
                         } catch (e: Exception) {
                             // Silent
+                        }
+
+                        // 3. Priority #2: Warm the upcoming 5 queue tracks
+                        if (activePlayRequestId.get() == currentRequestId && isActive) {
+                            warmUpcomingQueueTracks(5)
                         }
                     }
                 }

@@ -1564,7 +1564,7 @@ object YouTubeMusicApi {
             val request = com.yausername.youtubedl_android.YoutubeDLRequest("https://www.youtube.com/watch?v=$videoId")
             request.addOption("--dump-json")
             request.addOption("--no-playlist")
-            request.addOption("--extractor-args", "youtube:player_client=web_embedded,mweb")
+            request.addOption("--extractor-args", "youtube:player_client=web_embedded")
             val response = com.yausername.youtubedl_android.YoutubeDL.getInstance().execute(request)
             val json = JsonParser.parseString(response.out).asJsonObject
             val formats = json.getAsJsonArray("formats")
@@ -1784,8 +1784,8 @@ object YouTubeMusicApi {
         Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_HD' for '$videoId'")
         Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        // 1. Primary Champion for 720p HD (web_embedded,mweb) with 2-byte live CDN probe
-        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "web_embedded,mweb")
+        // 1. Primary Champion for 720p HD (web_embedded) with 2-byte live CDN probe
+        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "web_embedded")
         if (championResult != null && championResult.url.isNotBlank()) {
             val probeStart = System.currentTimeMillis()
             val isProbePassed = probeStreamUrl(championResult.url, championResult.headers)
