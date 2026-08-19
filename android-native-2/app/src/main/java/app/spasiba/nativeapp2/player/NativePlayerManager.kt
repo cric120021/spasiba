@@ -56,6 +56,7 @@ class NativePlayerManager(private val context: Context) {
     private var prefetchedVideoId: String? = null
     private var activePlayJob: kotlinx.coroutines.Job? = null
     private val activePlayRequestId = java.util.concurrent.atomic.AtomicLong(0L)
+    var lastUserClickTimestampMs: Long = 0L
     val totalSessionBytes = java.util.concurrent.atomic.AtomicLong(0L)
     val currentTrackBytes = java.util.concurrent.atomic.AtomicLong(0L)
 
@@ -400,8 +401,9 @@ class NativePlayerManager(private val context: Context) {
     }
 
     fun playSingleSongWithRadio(clickedSong: Song, sourceLabel: String = "Spasiba Radio") {
+        lastUserClickTimestampMs = System.currentTimeMillis()
         setQueue(listOf(clickedSong), clickedSong.id, sourceLabel)
-        playSong(clickedSong)
+        playSong(clickedSong, clickTimestampMs = lastUserClickTimestampMs)
 
         scope.launch(Dispatchers.IO) {
             try {
@@ -427,9 +429,10 @@ class NativePlayerManager(private val context: Context) {
 
     fun playQueue(songs: List<Song>, startIndex: Int = 0, sourceLabel: String = "Spasiba Radio") {
         if (songs.isEmpty() || startIndex !in songs.indices) return
+        lastUserClickTimestampMs = System.currentTimeMillis()
         val clickedSong = songs[startIndex]
         setQueue(songs, clickedSong.id, sourceLabel)
-        playSong(clickedSong)
+        playSong(clickedSong, clickTimestampMs = lastUserClickTimestampMs)
     }
 
     fun addToQueue(song: Song) {
@@ -597,48 +600,47 @@ class NativePlayerManager(private val context: Context) {
         Log.d("SPASIBA_111", "[TRACK_SELECTION] Video enabled: targetHeight=$targetHeight for quality=$quality")
     }
 
-    fun startProgressiveVideoDownloadAndPlay(song: Song, requestId: Long? = null) {
-        val callTimestamp = System.currentTimeMillis()
+    fun startProgressiveVideoDownloadAndPlay(song: Song, requestId: Long? = null, clickTimestampMs: Long? = null) {
+        val clickTime = clickTimestampMs ?: (if (lastUserClickTimestampMs > 0 && System.currentTimeMillis() - lastUserClickTimestampMs < 5000) lastUserClickTimestampMs else System.currentTimeMillis())
+        lastUserClickTimestampMs = clickTime
         activePlayJob?.cancel()
         val currentRequestId = requestId ?: activePlayRequestId.incrementAndGet()
-        Log.d("SPASIBA_111", "[VIDEO_MODE_START] Request #$currentRequestId: startProgressiveVideoDownloadAndPlay called for title='${song.title}' author='${song.author}' id='${song.id}' targetQuality=${_currentVideoQuality.value}")
+        
+        Log.w("SPASIBA_111", "⚡ [VIDEO_CLICK_TRIGGER] 🎬 User triggered VIDEO playback for '${song.title}' (req #$currentRequestId, targetQuality=${_currentVideoQuality.value})")
         
         activePlayJob = scope.launch(Dispatchers.IO) {
             _isLoading.value = true
 
+            val idResolveStart = System.currentTimeMillis()
             var targetVideoId = song.id
             if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
                 runCatching {
-                    Log.d("SPASIBA_111", "[VIDEO_MODE_RESOLVE_ID] Step 1.1: Resolving 11-char canonical videoId for '${song.title}' (raw id='${song.id}')")
+                    Log.d("SPASIBA_111", "[VIDEO_MODE_RESOLVE_ID] Resolving 11-char canonical videoId for '${song.title}'")
                     val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
                     val validTrack = searchResults.firstOrNull { it.id.length == 11 }
                     if (validTrack != null) {
                         targetVideoId = validTrack.id
-                        Log.d("SPASIBA_111", "[VIDEO_MODE_RESOLVE_ID] Step 1.2: Resolved canonical videoId=$targetVideoId for '${song.title}'")
                     }
                 }
             }
+            val idResolveElapsed = System.currentTimeMillis() - idResolveStart
 
             if (activePlayRequestId.get() != currentRequestId || !isActive) {
-                Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId was superseded before quality fetch")
+                Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId superseded before quality fetch")
                 return@launch
             }
 
-            Log.d("SPASIBA_111", "[VIDEO_MODE_FETCH_QUALITIES] Step 2.0: Fetching available qualities for videoId=$targetVideoId")
             val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
             _availableVideoQualities.value = fetchedQualities
-            Log.d("SPASIBA_111", "[VIDEO_MODE_FETCH_QUALITIES] Step 2.1: Available qualities: $fetchedQualities (currentSelection=${_currentVideoQuality.value})")
 
             if (activePlayRequestId.get() != currentRequestId || !isActive) {
-                Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId was superseded before stream resolve")
+                Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId superseded before stream resolve")
                 return@launch
             }
 
-            Log.d("SPASIBA_111", "[VIDEO_MODE_STREAM_RESOLVE] Step 3.0: Resolving video + audio stream URLs for videoId=$targetVideoId quality=${_currentVideoQuality.value}")
-            val resolveStart = System.currentTimeMillis()
+            val streamResolveStart = System.currentTimeMillis()
             val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
-            val resolveElapsed = System.currentTimeMillis() - resolveStart
-            Log.d("SPASIBA_111", "[VIDEO_MODE_STREAM_RESOLVE] Step 3.1: Resolution took ${resolveElapsed}ms -> success=${result != null && result.url.isNotBlank()}")
+            val streamResolveElapsed = System.currentTimeMillis() - streamResolveStart
             
             withContext(Dispatchers.Main) {
                 if (activePlayRequestId.get() != currentRequestId || !isActive) {
@@ -647,8 +649,8 @@ class NativePlayerManager(private val context: Context) {
                 }
 
                 if (result != null && result.url.isNotBlank()) {
+                    val exoPrepareStart = System.currentTimeMillis()
                     val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
-                    Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.0: Binding streams to ExoPlayer at pos=${currentPos}ms. MainUrl=${result.url.take(60)} AudioUrl=${result.audioUrl?.take(60)}")
                     val mediaMetadata = MediaMetadata.Builder()
                         .setTitle(song.title)
                         .setArtist(song.author)
@@ -668,7 +670,6 @@ class NativePlayerManager(private val context: Context) {
                     val videoSource = videoMediaSourceFactory.createMediaSource(videoMediaItem)
 
                     val finalSource = if (!result.audioUrl.isNullOrBlank()) {
-                        Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.1: Creating MergingMediaSource (Separate Video + Separate Audio streams)")
                         val audioDataSourceFactory = createHttpDataSourceFactory(result.audioUrl, result.headers)
                         val audioMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
                             .setDataSourceFactory(audioDataSourceFactory)
@@ -680,7 +681,6 @@ class NativePlayerManager(private val context: Context) {
                         val audioSource = audioMediaSourceFactory.createMediaSource(audioMediaItem)
                         MergingMediaSource(videoSource, audioSource)
                     } else {
-                        Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.1: Playing single progressive/muxed video stream")
                         videoSource
                     }
 
@@ -691,10 +691,19 @@ class NativePlayerManager(private val context: Context) {
                     exoPlayer.playWhenReady = true
                     exoPlayer.play()
                     _isPlaying.value = true
-                    val totalDuration = System.currentTimeMillis() - callTimestamp
-                    Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.2: Video prepared & playback started! Total latency=${totalDuration}ms pos=${currentPos}ms")
+                    val exoPrepareElapsed = System.currentTimeMillis() - exoPrepareStart
+                    val totalClickToPlayMs = System.currentTimeMillis() - clickTime
+
+                    Log.i("SPASIBA_111", "🟣 ╔══════════════════════════════════════════════════════════════════════")
+                    Log.i("SPASIBA_111", "🟣 ║ 🎬 [VIDEO_SPEED_BENCHMARK]")
+                    Log.i("SPASIBA_111", "🟣 ║ Track: '${song.title}' | Quality: ${_currentVideoQuality.value}")
+                    Log.i("SPASIBA_111", "🟣 ║ ⚡ TOTAL CLICK-TO-PLAY: ${totalClickToPlayMs} ms")
+                    Log.i("SPASIBA_111", "🟣 ║ ├── 🔍 ID Canonicalization : ${idResolveElapsed} ms")
+                    Log.i("SPASIBA_111", "🟣 ║ ├── 🌐 Stream URLs (yt-dlp) : ${streamResolveElapsed} ms")
+                    Log.i("SPASIBA_111", "🟣 ║ └── 🎬 ExoPlayer Prepare/Play: ${exoPrepareElapsed} ms")
+                    Log.i("SPASIBA_111", "🟣 ╚══════════════════════════════════════════════════════════════════════")
                 } else {
-                    Log.e("SPASIBA_111", "[VIDEO_MODE_ERROR] Step 4.0: Failed to resolve video stream result for videoId=$targetVideoId")
+                    Log.e("SPASIBA_111", "🔴 [VIDEO_MODE_ERROR] Failed to resolve video stream result for videoId=$targetVideoId")
                     android.widget.Toast.makeText(context, "Video stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
                 }
                 _isLoading.value = false
@@ -741,11 +750,13 @@ class NativePlayerManager(private val context: Context) {
     var eunoiaTrackChangeListener: ((Song) -> Unit)? = null
     var eunoiaPlaybackActionListener: ((action: String, extraPayload: org.json.JSONObject) -> Unit)? = null
 
-    fun playSong(song: Song, initialPosMs: Long = 0L) {
-        val playStartTimestamp = System.currentTimeMillis()
+    fun playSong(song: Song, initialPosMs: Long = 0L, clickTimestampMs: Long? = null) {
+        val clickTime = clickTimestampMs ?: (if (lastUserClickTimestampMs > 0 && System.currentTimeMillis() - lastUserClickTimestampMs < 5000) lastUserClickTimestampMs else System.currentTimeMillis())
+        lastUserClickTimestampMs = clickTime
         activePlayJob?.cancel()
         val currentRequestId = activePlayRequestId.incrementAndGet()
-        Log.d("SPASIBA_111", "[PLAY_START] Request #$currentRequestId: playSong requested for title='${song.title}' author='${song.author}' id='${song.id}' initialPosMs=$initialPosMs isVideoModeActive=$isVideoModeActive")
+        
+        Log.w("SPASIBA_111", "⚡ [AUDIO_CLICK_TRIGGER] 🎧 User triggered AUDIO playback for '${song.title}' by ${song.author} (req #$currentRequestId, isVideoModeActive=$isVideoModeActive)")
         _isLoading.value = true
         retryAttempts.remove(song.id)
         eunoiaTrackChangeListener?.invoke(song)
@@ -767,8 +778,8 @@ class NativePlayerManager(private val context: Context) {
         exoPlayer.clearMediaItems()
 
         if (isVideoModeActive) {
-            Log.d("SPASIBA_111", "[PLAY_BRANCH] Step 1.1: Redirecting to Video Mode pipeline for '${song.title}' (req #$currentRequestId)")
-            startProgressiveVideoDownloadAndPlay(song, currentRequestId)
+            Log.d("SPASIBA_111", "[PLAY_BRANCH] Redirecting to Video Mode pipeline for '${song.title}' (req #$currentRequestId)")
+            startProgressiveVideoDownloadAndPlay(song, currentRequestId, clickTime)
             return
         }
 
@@ -777,18 +788,19 @@ class NativePlayerManager(private val context: Context) {
                 if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                 repository.recordPlayedSong(song)
 
+                val idResolveStart = System.currentTimeMillis()
                 var targetVideoId = song.id
                 if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
                     runCatching {
-                        Log.d("SPASIBA_111", "[PLAY_RESOLVE_ID] Step 1.2: Resolving canonical 11-char videoId for '${song.title}'")
+                        Log.d("SPASIBA_111", "[PLAY_RESOLVE_ID] Resolving canonical 11-char videoId for '${song.title}'")
                         val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
                         val validTrack = searchResults.firstOrNull { it.id.length == 11 }
                         if (validTrack != null) {
                             targetVideoId = validTrack.id
-                            Log.d("SPASIBA_111", "[PLAY_RESOLVE_ID] Step 1.3: Resolved canonical videoId=$targetVideoId for '${song.title}'")
                         }
                     }
                 }
+                val idResolveElapsed = System.currentTimeMillis() - idResolveStart
 
                 if (activePlayRequestId.get() != currentRequestId || !isActive) {
                     Log.d("SPASIBA_111", "[PLAY_ABORT] Request #$currentRequestId was superseded before local/cache check")
@@ -807,7 +819,12 @@ class NativePlayerManager(private val context: Context) {
                     ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.mp3").takeIf { it.exists() && it.length() > 0 }
 
                 if (localFile != null && localFile.length() > 0) {
-                    Log.d("SPASIBA_111", "[PLAY_LOCAL_HIT] Step 2.0: Found offline local file: ${localFile.absolutePath} (${localFile.length()} bytes)")
+                    val localPlayLatency = System.currentTimeMillis() - clickTime
+                    Log.i("SPASIBA_111", "🟢 ╔══════════════════════════════════════════════════════════════════════")
+                    Log.i("SPASIBA_111", "🟢 ║ 💾 [OFFLINE_LOCAL_PLAY_SPEED]")
+                    Log.i("SPASIBA_111", "🟢 ║ Track: '${song.title}' | ⚡ TOTAL CLICK-TO-PLAY: ${localPlayLatency} ms (100% Offline)")
+                    Log.i("SPASIBA_111", "🟢 ╚══════════════════════════════════════════════════════════════════════")
+
                     withContext(Dispatchers.Main) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@withContext
                         val mediaMetadata = MediaMetadata.Builder()
@@ -827,7 +844,6 @@ class NativePlayerManager(private val context: Context) {
                         if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
                         exoPlayer.play()
                         _isLoading.value = false
-                        Log.d("SPASIBA_111", "[PLAY_LOCAL_START] Step 2.1: Playing offline file! Latency=${System.currentTimeMillis() - playStartTimestamp}ms")
                     }
                     return@launch
                 }
@@ -839,26 +855,18 @@ class NativePlayerManager(private val context: Context) {
 
                 // Check pre-resolved cache or resolve fresh stream
                 val cached = getValidCachedStream(targetVideoId)
-                if (cached != null) {
-                    Log.d("SPASIBA_111", "[PLAY_CACHE_HIT] Step 2.0: Found valid in-memory pre-resolved stream for targetVideoId=$targetVideoId")
-                } else {
-                    Log.d("SPASIBA_111", "[PLAY_CACHE_MISS] Step 2.0: No valid stream in pre-warm cache, resolving via MusicRepository for targetVideoId=$targetVideoId...")
-                }
+                val isCacheHit = cached != null
 
                 val streamStart = System.currentTimeMillis()
                 var result = cached ?: repository.resolveStreamResult(targetVideoId)
-                val streamElapsed = System.currentTimeMillis() - streamStart
-
-                Log.d("SPASIBA_111", "[PLAY_STREAM_RESULT] Step 2.1: Stream resolution returned in ${streamElapsed}ms -> success=${result != null && result.url.isNotBlank()}")
+                val streamResolveElapsed = System.currentTimeMillis() - streamStart
 
                 if (result == null || result.url.isBlank()) {
                     if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
-                    Log.d("SPASIBA_111", "[PLAY_STREAM_FALLBACK] Step 2.2: Direct stream failed for ${song.title}, searching alternate audio track...")
                     runCatching {
                         val fallbackSearch = YouTubeMusicApi.searchSongs("${song.title} ${song.author} audio")
                         val altId = fallbackSearch.firstOrNull { it.id != targetVideoId && it.id.length == 11 }?.id
                         if (altId != null) {
-                            Log.d("SPASIBA_111", "[PLAY_STREAM_FALLBACK] Step 2.3: Found alternate audio track id=$altId. Resolving...")
                             result = repository.resolveStreamResult(altId)
                         }
                     }
@@ -875,20 +883,19 @@ class NativePlayerManager(private val context: Context) {
                     }
 
                     if (result == null || result.url.isBlank()) {
-                        Log.e("SPASIBA_111", "[PLAY_ERROR] Step 3.0: Stream URL resolution failed completely for ${song.title}")
+                        Log.e("SPASIBA_111", "🔴 [PLAY_ERROR] Stream URL resolution failed completely for ${song.title}")
                         _isLoading.value = false
                         _isPlaying.value = false
                         android.widget.Toast.makeText(context, "Playback error: Stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
                         return@withContext
                     }
 
+                    val exoPrepareStart = System.currentTimeMillis()
                     val targetUri = if (result.url.startsWith("/")) {
                         Uri.fromFile(File(result.url))
                     } else {
                         Uri.parse(result.url)
                     }
-
-                    Log.d("SPASIBA_111", "[PLAY_EXOPLAYER_PREPARE] Step 3.0: Preparing ExoPlayer with URI=${result.url.take(60)} (isLocal=${targetUri.scheme == "file"})")
 
                     if (targetUri.scheme == "file") {
                         val mediaMetadata = MediaMetadata.Builder()
@@ -930,8 +937,17 @@ class NativePlayerManager(private val context: Context) {
                     exoPlayer.playWhenReady = true
                     _isLoading.value = false
                     _isPlaying.value = true
-                    val totalElapsed = System.currentTimeMillis() - playStartTimestamp
-                    Log.d("SPASIBA_111", "[PLAY_EXOPLAYER_READY] Step 3.1: Playback started successfully! Total latency=${totalElapsed}ms initialPos=${initialPosMs}ms")
+                    val exoPrepareElapsed = System.currentTimeMillis() - exoPrepareStart
+                    val totalClickToPlayMs = System.currentTimeMillis() - clickTime
+
+                    Log.i("SPASIBA_111", "🟢 ╔══════════════════════════════════════════════════════════════════════")
+                    Log.i("SPASIBA_111", "🟢 ║ 🎧 [AUDIO_SPEED_BENCHMARK]")
+                    Log.i("SPASIBA_111", "🟢 ║ Track: '${song.title}' by ${song.author}")
+                    Log.i("SPASIBA_111", "🟢 ║ ⚡ TOTAL CLICK-TO-PLAY: ${totalClickToPlayMs} ms")
+                    Log.i("SPASIBA_111", "🟢 ║ ├── 🔍 ID Canonicalization : ${idResolveElapsed} ms")
+                    Log.i("SPASIBA_111", "🟢 ║ ├── 🌐 Stream URL Resolve  : ${streamResolveElapsed} ms (CacheHit: $isCacheHit)")
+                    Log.i("SPASIBA_111", "🟢 ║ └── 🎵 ExoPlayer Buffer/Play: ${exoPrepareElapsed} ms")
+                    Log.i("SPASIBA_111", "🟢 ╚══════════════════════════════════════════════════════════════════════")
 
                     maybePrefetchNextTrack()
                 }
@@ -940,7 +956,7 @@ class NativePlayerManager(private val context: Context) {
                     Log.d("SPASIBA_111", "[PLAY_CANCELLED] Playback job for '${song.title}' cancelled cleanly")
                     return@launch
                 }
-                Log.e("SPASIBA_111", "[PLAY_EXCEPTION] Step 3.2: Exception in playSong: ${e.message}", e)
+                Log.e("SPASIBA_111", "🔴 [PLAY_EXCEPTION] Failed to play song ${song.title}: ${e.message}", e)
                 withContext(Dispatchers.Main) {
                     if (activePlayRequestId.get() == currentRequestId) {
                         _isLoading.value = false
@@ -1160,7 +1176,11 @@ class NativePlayerManager(private val context: Context) {
         }
 
         override fun onRenderedFirstFrame() {
-            Log.d("SPASIBA_111", "[EXOPLAYER_FIRST_FRAME] SUCCESS: First video frame rendered onto SurfaceView!")
+            val latency = if (lastUserClickTimestampMs > 0) (System.currentTimeMillis() - lastUserClickTimestampMs) else 0L
+            Log.i("SPASIBA_111", "🎬 ╔══════════════════════════════════════════════════════════════════════")
+            Log.i("SPASIBA_111", "🎬 ║ 🖼️ [FIRST_VIDEO_FRAME_ON_SCREEN]")
+            Log.i("SPASIBA_111", "🎬 ║ ⚡ Latency from Click to First Screen Pixel: ${latency} ms")
+            Log.i("SPASIBA_111", "🎬 ╚══════════════════════════════════════════════════════════════════════")
         }
 
         override fun onPlayerError(error: PlaybackException) {
