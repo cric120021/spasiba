@@ -187,17 +187,29 @@ class MainActivity : ComponentActivity() {
         if (dataUri != null) {
             val app = application as? SpasibaApplication
             val playerMgr = app?.playerManager
+            val scheme = dataUri.scheme?.lowercase() ?: ""
             val host = dataUri.host?.lowercase() ?: ""
             val path = dataUri.path ?: ""
+            Log.i("SPASIBA_111", "🔗 [DEEP_LINK_DISPATCH] Received URI: '$dataUri' (scheme=$scheme, host=$host, path=$path)")
 
             // Case 1: Track Deep Link
             var videoId = dataUri.getQueryParameter("id") ?: dataUri.getQueryParameter("v") ?: ""
-            if (videoId.isBlank() && path.contains("/track/")) {
-                videoId = path.substringAfter("/track/").substringBefore("/").substringBefore("?")
-            } else if (videoId.isBlank() && path.contains("/watch")) {
-                videoId = dataUri.getQueryParameter("v") ?: ""
-            } else if (videoId.isBlank() && host == "youtu.be") {
-                videoId = path.trimStart('/').substringBefore('/').substringBefore('?')
+            if (videoId.isBlank()) {
+                if (scheme == "spasiba") {
+                    if (host == "track" || host == "song" || host == "play") {
+                        videoId = path.trimStart('/').substringBefore('/').substringBefore('?')
+                    } else if (host.length == 11) {
+                        videoId = host
+                    }
+                } else if (path.contains("/track/")) {
+                    videoId = path.substringAfter("/track/").substringBefore("/").substringBefore("?")
+                } else if (path.contains("/shared/")) {
+                    videoId = path.substringAfter("/shared/").substringBefore("/").substringBefore("?")
+                } else if (path.contains("/watch")) {
+                    videoId = dataUri.getQueryParameter("v") ?: ""
+                } else if (host == "youtu.be") {
+                    videoId = path.trimStart('/').substringBefore('/').substringBefore('?')
+                }
             }
 
             if (videoId.isNotBlank() && videoId.length == 11) {
@@ -222,6 +234,7 @@ class MainActivity : ComponentActivity() {
                     durationSeconds = duration
                 )
 
+                Log.i("SPASIBA_111", "🎵 [DEEP_LINK_PLAY] Auto-playing shared track: '${song.title}' (${song.id}) by ${song.author}")
                 if (playerMgr != null) {
                     playerMgr.playSong(song)
                     autoExpandPlayer.value = true
@@ -233,6 +246,7 @@ class MainActivity : ComponentActivity() {
             val rawUrl = dataUri.toString()
             val parsedPlaylist = ShareUtils.parsePlaylistShareCode(rawUrl)
             if (parsedPlaylist != null && parsedPlaylist.songs.isNotEmpty() && playerMgr != null) {
+                Log.i("SPASIBA_111", "🎶 [DEEP_LINK_PLAYLIST] Auto-importing playlist: '${parsedPlaylist.name}' with ${parsedPlaylist.songs.size} tracks")
                 playerMgr.setQueue(parsedPlaylist.songs, parsedPlaylist.songs.firstOrNull()?.id, parsedPlaylist.name)
                 playerMgr.playSong(parsedPlaylist.songs.first())
                 autoExpandPlayer.value = true
