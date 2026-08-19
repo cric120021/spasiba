@@ -720,18 +720,11 @@ class NativePlayerManager(private val context: Context) {
             val idResolveElapsed = System.currentTimeMillis() - idResolveStart
 
             if (activePlayRequestId.get() != currentRequestId || !isActive) {
-                Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId superseded before quality fetch")
-                return@launch
-            }
-
-            val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
-            _availableVideoQualities.value = fetchedQualities
-
-            if (activePlayRequestId.get() != currentRequestId || !isActive) {
                 Log.d("SPASIBA_111", "[VIDEO_MODE_ABORT] Request #$currentRequestId superseded before stream resolve")
                 return@launch
             }
 
+            // 1. Immediately resolve video stream URL (Fast ~3.4s startup!)
             val streamResolveStart = System.currentTimeMillis()
             val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
             val streamResolveElapsed = System.currentTimeMillis() - streamResolveStart
@@ -739,6 +732,21 @@ class NativePlayerManager(private val context: Context) {
             if (result != null && result.url.isNotBlank()) {
                 standbyVideoResultMap[song.id] = result
                 standbyVideoResultMap[targetVideoId] = result
+            }
+
+            // 2. Discover available quality options asynchronously in the background (0ms delay on playback!)
+            scope.launch(Dispatchers.IO) {
+                try {
+                    val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(context, targetVideoId)
+                    if (fetchedQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
+                        withContext(Dispatchers.Main) {
+                            _availableVideoQualities.value = fetchedQualities
+                        }
+                        Log.d("SPASIBA_111", "🎬 [DYNAMIC_QUALITIES] Discovered qualities in background: $fetchedQualities")
+                    }
+                } catch (e: Exception) {
+                    // Silent
+                }
             }
 
             withContext(Dispatchers.Main) {
