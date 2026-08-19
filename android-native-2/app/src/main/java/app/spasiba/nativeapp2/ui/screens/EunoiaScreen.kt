@@ -454,6 +454,7 @@ fun EunoiaScreen(
     val positionMs by playerManager.positionMs.collectAsState()
     val durationMs by playerManager.durationMs.collectAsState()
     val videoAspectRatio by playerManager.videoAspectRatio.collectAsState()
+    val activePlayer by playerManager.activePlayer.collectAsState()
 
     val prefs = remember { context.getSharedPreferences("spasiba_user_prefs", android.content.Context.MODE_PRIVATE) }
     val myPhotoUri = remember(prefs) { prefs.getString("profile_photo_uri", null) }
@@ -823,7 +824,7 @@ fun EunoiaScreen(
                                     AndroidView(
                                         factory = { ctx ->
                                             androidx.media3.ui.PlayerView(ctx).apply {
-                                                player = playerManager.exoPlayer
+                                                player = activePlayer
                                                 useController = false
                                                 resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                                 setBackgroundColor(android.graphics.Color.BLACK)
@@ -831,7 +832,9 @@ fun EunoiaScreen(
                                             }
                                         },
                                         update = { playerView ->
-                                            playerView.player = playerManager.exoPlayer
+                                            if (playerView.player != activePlayer) {
+                                                playerView.player = activePlayer
+                                            }
                                             playerView.resizeMode = androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                         },
                                         modifier = Modifier.fillMaxSize()
