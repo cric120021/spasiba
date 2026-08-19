@@ -8,6 +8,7 @@ import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import okhttp3.Dns
 import okhttp3.MediaType.Companion.toMediaType
@@ -1622,7 +1623,13 @@ object YouTubeMusicApi {
         }
     }
 
-    fun resolveWithYtDlp(context: Context, videoId: String, isVideo: Boolean = false, quality: String = "720p"): StreamingResult? {
+    fun resolveWithYtDlp(
+        context: Context, 
+        videoId: String, 
+        isVideo: Boolean = false, 
+        quality: String = "720p",
+        playerClient: String = "web"
+    ): StreamingResult? {
         if (videoId.isBlank()) return null
         return runCatching {
             runCatching { com.yausername.youtubedl_android.YoutubeDL.getInstance().init(context.applicationContext) }
@@ -1661,7 +1668,7 @@ object YouTubeMusicApi {
                 "140/139/bestaudio[ext=m4a]/bestaudio/best"
             }
 
-            val extractorArgs = "youtube:player_client=tv,web_embedded,android,web"
+            val extractorArgs = "youtube:player_client=$playerClient"
 
             val request = com.yausername.youtubedl_android.YoutubeDLRequest("https://www.youtube.com/watch?v=$videoId").apply {
                 addOption("-f", formatOption)
@@ -1670,7 +1677,7 @@ object YouTubeMusicApi {
                 addOption("-4")
                 addOption("--extractor-args", extractorArgs)
             }
-            Log.d("SPASIBA_111", "[YT_DLP_EXEC] Executing yt-dlp binary for videoId=$videoId isVideo=$isVideo format='$formatOption' extractorArgs='$extractorArgs'")
+            Log.d("SPASIBA_111", "[YT_DLP_EXEC] Executing yt-dlp for videoId=$videoId client='$playerClient' format='$formatOption'")
             val response = com.yausername.youtubedl_android.YoutubeDL.getInstance().execute(request)
             val httpLines = response.out.lines().map { it.trim() }.filter { it.startsWith("http") }
             if (httpLines.isNotEmpty()) {
@@ -1686,7 +1693,6 @@ object YouTubeMusicApi {
                     mainUrl.contains("c=WEB_EMBEDDED") || mainUrl.contains("c=WEB") -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
                     else -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
                 }
-                Log.d("SPASIBA_111", "[YT_DLP_SUCCESS] Resolved yt-dlp URLs for videoId=$videoId (isVideo=$isVideo quality=$quality): mainUrl=${mainUrl.take(60)} secUrl=${secUrl?.take(60)} UA=$ytUa")
                 val headers = mutableMapOf("User-Agent" to ytUa)
                 if (mainUrl.contains("c=WEB_EMBEDDED") || mainUrl.contains("c=WEB")) {
                     headers["Origin"] = "https://www.youtube.com"
@@ -1698,185 +1704,171 @@ object YouTubeMusicApi {
                     headers = headers
                 )
             } else {
-                Log.w("SPASIBA_111", "[YT_DLP_EMPTY] yt-dlp returned 0 http lines for videoId=$videoId. RawOutput=${response.out.take(200)}")
                 null
             }
         }.onFailure {
-            Log.e("SPASIBA_111", "[YT_DLP_FAIL] yt-dlp execution error for videoId=$videoId: ${it.message}")
+            Log.d("SPASIBA_111", "[YT_DLP_ERR] yt-dlp ($playerClient) failed for videoId=$videoId: ${it.message}")
         }.getOrNull()
     }
 
+    fun probeStreamUrl(url: String, headers: Map<String, String>): Boolean {
+        if (url.startsWith("/")) {
+            return java.io.File(url).exists()
+        }
+        return try {
+            val reqBuilder = Request.Builder()
+                .url(url)
+                .header("Range", "bytes=0-1")
+            headers.forEach { (k, v) -> reqBuilder.header(k, v) }
+            client.newCall(reqBuilder.build()).execute().use { response ->
+                val code = response.code
+                code == 200 || code == 206
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
 
+    val backupRacerClients = listOf(
+        "YT_DLP_WEB" to "web",
+        "YT_DLP_MWEB" to "mweb",
+        "YT_DLP_IOS" to "ios"
+    )
 
     suspend fun resolveStreamResult(context: Context, videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        Log.d("SPASIBA_111", "[STREAM_AUDIO_RESOLVE] Starting audio stream resolution for videoId=$videoId")
+        Log.i("SPASIBA_111", "🎯 ╔══════════════════════════════════════════════════════════════════════")
+        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_RESOLVE_START] Resolving audio via 'YT_DLP_ANDROID' for '$videoId'")
+        Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        val ytDlpResult = resolveWithYtDlp(context, videoId, isVideo = false)
-        if (ytDlpResult != null && ytDlpResult.url.isNotBlank()) {
+        // 1. Primary Champion (0ms probe delay - instant dispatch to ExoPlayer!)
+        val championResult = resolveWithYtDlp(context, videoId, isVideo = false, playerClient = "android")
+        if (championResult != null && championResult.url.isNotBlank()) {
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d("SPASIBA_111", "[STREAM_AUDIO_SUCCESS] Audio stream resolved via yt-dlp in ${elapsed}ms for videoId=$videoId: ${ytDlpResult.url.take(60)}")
-            return@withContext ytDlpResult
+            Log.i("SPASIBA_111", "🏆 ╔══════════════════════════════════════════════════════════════════════")
+            Log.i("SPASIBA_111", "🏆 ║ 🥇 [CHAMPION_RESOLVE_SUCCESS]")
+            Log.i("SPASIBA_111", "🏆 ║ Winner: YT_DLP_ANDROID (Client: android)")
+            Log.i("SPASIBA_111", "🏆 ║ ⚡ Extracted in ${elapsed}ms -> Direct Dispatch to ExoPlayer (0ms probe!)")
+            Log.i("SPASIBA_111", "🏆 ╚══════════════════════════════════════════════════════════════════════")
+            return@withContext championResult
         }
 
-        Log.e("SPASIBA_111", "[STREAM_AUDIO_FAIL] Audio stream resolution failed for videoId=$videoId")
-        null
+        // 2. Backup Squadron (Only if Champion fails)
+        Log.w("SPASIBA_111", "🛡️ ╔══════════════════════════════════════════════════════════════════════")
+        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_SQUADRON_TRIGGERED] Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB, YT_DLP_IOS]")
+        Log.w("SPASIBA_111", "🛡️ ╚══════════════════════════════════════════════════════════════════════")
+
+        coroutineScope {
+            val winnerChannel = kotlinx.coroutines.channels.Channel<StreamingResult>(1)
+            val isWon = java.util.concurrent.atomic.AtomicBoolean(false)
+            val racingJobs = mutableListOf<kotlinx.coroutines.Job>()
+
+            backupRacerClients.forEach { (racerName, clientParam) ->
+                val job = launch(Dispatchers.IO) {
+                    val racerStart = System.currentTimeMillis()
+                    try {
+                        if (isWon.get()) return@launch
+                        val backupResult = resolveWithYtDlp(context, videoId, isVideo = false, playerClient = clientParam)
+                        if (backupResult != null && backupResult.url.isNotBlank() && !isWon.get()) {
+                            val fetchTime = System.currentTimeMillis() - racerStart
+                            Log.d("SPASIBA_111", "🏃 [BACKUP_FETCH] $racerName extracted stream URL in ${fetchTime}ms. Testing live 2-byte probe...")
+                            val probeStart = System.currentTimeMillis()
+                            val isProbePassed = probeStreamUrl(backupResult.url, backupResult.headers)
+                            val probeElapsed = System.currentTimeMillis() - probeStart
+
+                            if (isProbePassed) {
+                                if (isWon.compareAndSet(false, true)) {
+                                    val totalRacerTime = System.currentTimeMillis() - racerStart
+                                    Log.i("SPASIBA_111", "🏆 [BACKUP_WINNER] $racerName won fallback in ${totalRacerTime}ms (Probe OK)")
+                                    winnerChannel.trySend(backupResult)
+                                }
+                            }
+                        }
+                    } catch (e: Exception) {
+                        // Cancelled cleanly
+                    }
+                }
+                racingJobs.add(job)
+            }
+
+            val fallbackWinner = try {
+                winnerChannel.receive()
+            } catch (e: Exception) {
+                null
+            }
+
+            racingJobs.forEach { it.cancel() }
+            winnerChannel.close()
+            fallbackWinner
+        }
     }
 
     suspend fun resolveVideoStreamResult(context: Context, videoId: String, quality: String = "720p"): StreamingResult? = withContext(Dispatchers.IO) {
         val startTime = System.currentTimeMillis()
-        Log.d("SPASIBA_111", "[STREAM_VIDEO_RESOLVE] Starting video stream resolution for videoId=$videoId targetQuality=$quality")
+        Log.i("SPASIBA_111", "🎯 ╔══════════════════════════════════════════════════════════════════════")
+        Log.i("SPASIBA_111", "🎯 ║ 🥇 [CHAMPION_VIDEO_RESOLVE_START] Resolving video ($quality) via 'YT_DLP_ANDROID' for '$videoId'")
+        Log.i("SPASIBA_111", "🎯 ╚══════════════════════════════════════════════════════════════════════")
 
-        // 1. Try Native yt-dlp FIRST
-        val ytDlpVideoResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality)
-        if (ytDlpVideoResult != null && ytDlpVideoResult.url.isNotBlank()) {
+        // 1. Primary Champion for Video (0ms probe delay)
+        val championResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = "android")
+        if (championResult != null && championResult.url.isNotBlank()) {
             val elapsed = System.currentTimeMillis() - startTime
-            Log.d("SPASIBA_111", "[STREAM_VIDEO_SUCCESS] Video resolved via yt-dlp in ${elapsed}ms for videoId=$videoId (quality=$quality): ${ytDlpVideoResult.url.take(60)}")
-            return@withContext ytDlpVideoResult
+            Log.i("SPASIBA_111", "🏆 ╔══════════════════════════════════════════════════════════════════════")
+            Log.i("SPASIBA_111", "🏆 ║ 🥇 [CHAMPION_VIDEO_SUCCESS]")
+            Log.i("SPASIBA_111", "🏆 ║ Winner: YT_DLP_ANDROID (Quality: $quality)")
+            Log.i("SPASIBA_111", "🏆 ║ ⚡ Extracted in ${elapsed}ms -> Direct Dispatch to ExoPlayer (0ms probe!)")
+            Log.i("SPASIBA_111", "🏆 ╚══════════════════════════════════════════════════════════════════════")
+            return@withContext championResult
         }
 
-        Log.w("SPASIBA_111", "[STREAM_VIDEO_FALLBACK] yt-dlp failed for videoId=$videoId. Falling back to InnerTube adaptive race...")
+        // 2. Backup Squadron for Video
+        Log.w("SPASIBA_111", "🛡️ ╔══════════════════════════════════════════════════════════════════════")
+        Log.w("SPASIBA_111", "🛡️ ║ [BACKUP_VIDEO_SQUADRON] Champion missed. Racing: [YT_DLP_WEB, YT_DLP_MWEB, YT_DLP_IOS]")
+        Log.w("SPASIBA_111", "🛡️ ╚══════════════════════════════════════════════════════════════════════")
 
-        // 2. Exact dev InnerTube Embedded Adaptive Resolution (100% reliable, zero PO token/DRM issues)
-        val targetHeight = when {
-            quality.contains("2160") || quality.contains("4K", ignoreCase = true) -> 2160
-            quality.contains("1440") || quality.contains("2K", ignoreCase = true) -> 1440
-            quality.contains("1080") -> 1080
-            quality.contains("720") -> 720
-            quality.contains("480") -> 480
-            quality.contains("360") -> 360
-            else -> 720
-        }
+        coroutineScope {
+            val winnerChannel = kotlinx.coroutines.channels.Channel<StreamingResult>(1)
+            val isWon = java.util.concurrent.atomic.AtomicBoolean(false)
+            val racingJobs = mutableListOf<kotlinx.coroutines.Job>()
 
-        data class InnerTubeSpec(val name: String, val payloadJson: String, val userAgent: String)
+            backupRacerClients.forEach { (racerName, clientParam) ->
+                val job = launch(Dispatchers.IO) {
+                    val racerStart = System.currentTimeMillis()
+                    try {
+                        if (isWon.get()) return@launch
+                        val backupResult = resolveWithYtDlp(context, videoId, isVideo = true, quality = quality, playerClient = clientParam)
+                        if (backupResult != null && backupResult.url.isNotBlank() && !isWon.get()) {
+                            val fetchTime = System.currentTimeMillis() - racerStart
+                            Log.d("SPASIBA_111", "🏃 [BACKUP_VIDEO_FETCH] $racerName extracted video in ${fetchTime}ms. Testing live 2-byte probe...")
+                            val probeStart = System.currentTimeMillis()
+                            val isProbePassed = probeStreamUrl(backupResult.url, backupResult.headers)
+                            val probeElapsed = System.currentTimeMillis() - probeStart
 
-        val innerTubeClients = listOf(
-            InnerTubeSpec(
-                "ANDROID_TESTSUITE",
-                """{"clientName":"ANDROID_TESTSUITE","clientVersion":"1.9.0","osName":"Android","osVersion":"14","hl":"en","gl":"US"}""",
-                "com.google.android.youtube/1.9.0 (Linux; U; Android 14)"
-            ),
-            InnerTubeSpec(
-                "TVHTML5_SIMPLY_EMBEDDED_PLAYER",
-                """{"clientName":"TVHTML5_SIMPLY_EMBEDDED_PLAYER","clientVersion":"2.0","clientScreen":"EMBED","hl":"en","gl":"US"}""",
-                "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
-            ),
-            InnerTubeSpec(
-                "WEB_EMBEDDED_PLAYER",
-                """{"clientName":"WEB_EMBEDDED_PLAYER","clientVersion":"5.20241001.01.00","hl":"en","gl":"US"}""",
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
-            )
-        )
-
-        for (spec in innerTubeClients) {
-            val result = runCatching {
-                val payload = """
-                    {
-                      "videoId": "$videoId",
-                      "contentCheckOk": true,
-                      "racyCheckOk": true,
-                      "context": {
-                        "client": ${spec.payloadJson},
-                        "thirdParty": {
-                          "embedUrl": "https://www.youtube.com/watch?v=$videoId"
-                        }
-                      }
-                    }
-                """.trimIndent()
-
-                val request = Request.Builder()
-                    .url("https://www.youtube.com/youtubei/v1/player")
-                    .post(payload.toRequestBody(JSON_MEDIA_TYPE))
-                    .header("User-Agent", spec.userAgent)
-                    .build()
-
-                client.newCall(request).execute().use { response ->
-                    if (!response.isSuccessful) return@runCatching null
-                    val body = response.body?.string() ?: return@runCatching null
-                    val json = JsonParser.parseString(body).asJsonObject
-                    val streamingData = json.getAsJsonObject("streamingData") ?: return@runCatching null
-
-                    val muxedFormats = streamingData.getAsJsonArray("formats")?.map { it.asJsonObject } ?: emptyList()
-                    val adaptiveFormats = streamingData.getAsJsonArray("adaptiveFormats")?.map { it.asJsonObject } ?: emptyList()
-
-                    // Priority 1: High-Res Adaptive Video (720p, 1080p, 1440p, 4K)
-                    val videoFormats = adaptiveFormats.filter {
-                        val mime = it.get("mimeType")?.asString ?: ""
-                        mime.contains("video")
-                    }
-                    val targetVideoFormat = videoFormats.minByOrNull {
-                        val qLabel = it.get("qualityLabel")?.asString ?: ""
-                        val w = it.get("width")?.asInt ?: 0
-                        if (qLabel.startsWith("${targetHeight}p")) {
-                            0
-                        } else {
-                            val targetWidth = when (targetHeight) {
-                                2160 -> 3840
-                                1440 -> 2560
-                                1080 -> 1920
-                                720 -> 1280
-                                480 -> 854
-                                else -> 640
-                            }
-                            Math.abs(w - targetWidth)
-                        }
-                    }
-
-                    if (targetVideoFormat != null) {
-                        val directVideoUrl = targetVideoFormat.get("url")?.asString
-                            ?: (targetVideoFormat.get("signatureCipher")?.asString ?: targetVideoFormat.get("cipher")?.asString)?.let {
-                                app.spasiba.nativeapp2.data.extractor.SpasibaNativeExtractor.decipherCipherString(it)
-                            }
-
-                        if (!directVideoUrl.isNullOrBlank()) {
-                            val audioFormat = adaptiveFormats.filter {
-                                val mime = it.get("mimeType")?.asString ?: ""
-                                mime.contains("audio")
-                            }.maxByOrNull { it.get("bitrate")?.asInt ?: 0 }
-
-                            val audioUrl = audioFormat?.get("url")?.asString
-                                ?: (audioFormat?.get("signatureCipher")?.asString ?: audioFormat?.get("cipher")?.asString)?.let {
-                                    app.spasiba.nativeapp2.data.extractor.SpasibaNativeExtractor.decipherCipherString(it)
+                            if (isProbePassed) {
+                                if (isWon.compareAndSet(false, true)) {
+                                    val totalRacerTime = System.currentTimeMillis() - racerStart
+                                    Log.i("SPASIBA_111", "🏆 [BACKUP_VIDEO_WINNER] $racerName won video fallback in ${totalRacerTime}ms (Probe OK)")
+                                    winnerChannel.trySend(backupResult)
                                 }
-
-                            return@runCatching StreamingResult(
-                                url = directVideoUrl,
-                                audioUrl = audioUrl,
-                                headers = mapOf("User-Agent" to spec.userAgent)
-                            )
-                        }
-                    }
-
-                    // Priority 2: Fallback to muxed formats
-                    if (targetHeight <= 360) {
-                        val combinedFormat = muxedFormats
-                            .filter { it.has("url") }
-                            .minByOrNull {
-                                val h = it.get("height")?.asInt ?: 0
-                                Math.abs(h - targetHeight)
-                            } ?: muxedFormats.firstOrNull { it.has("url") }
-
-                        if (combinedFormat != null) {
-                            val url = combinedFormat.get("url")?.asString
-                            if (!url.isNullOrBlank()) {
-                                return@runCatching StreamingResult(url = url, headers = mapOf("User-Agent" to spec.userAgent))
                             }
                         }
+                    } catch (e: Exception) {
+                        // Cancelled cleanly
                     }
-
-                    null
                 }
-            }.getOrNull()
-
-            if (result != null && result.url.isNotBlank()) {
-                val elapsed = System.currentTimeMillis() - startTime
-                Log.d(TAG, "SUCCESS via InnerTube (${spec.name}) video in ${elapsed}ms for videoId=$videoId (quality=$quality): ${result.url.take(60)}")
-                return@withContext result
+                racingJobs.add(job)
             }
-        }
 
-        Log.e(TAG, "All video stream resolution strategies failed for videoId=$videoId")
-        null
+            val fallbackWinner = try {
+                winnerChannel.receive()
+            } catch (e: Exception) {
+                null
+            }
+
+            racingJobs.forEach { it.cancel() }
+            winnerChannel.close()
+            fallbackWinner
+        }
     }
 
     data class ArtistPageData(

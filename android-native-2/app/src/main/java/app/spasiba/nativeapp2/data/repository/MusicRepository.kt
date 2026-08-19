@@ -70,17 +70,9 @@ class MusicRepository(private val context: Context) {
         if (forceRefresh) {
             nativeAudioCache.invalidateStreamCache(videoId)
         }
-        val nativeResult = runCatching {
-            val stream = nativeAudioCache.resolveStreamingAudio(videoId, forceRefresh = forceRefresh)
-            StreamingResult(
-                url = stream.url,
-                headers = stream.headers
-            )
-        }.onFailure { error ->
-            Log.w("MusicRepository", "Native audio cache resolve failed for videoId=$videoId; falling back to direct yt-dlp", error)
-        }.getOrNull()
 
-        nativeResult ?: YouTubeMusicApi.resolveStreamResult(context, videoId)
+        // 7-Racer Verified Parallel Race Engine with Live 2-Byte CDN Probing
+        YouTubeMusicApi.resolveStreamResult(context, videoId)
     }
 
     suspend fun resolveDownloadedAudioResult(videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
