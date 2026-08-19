@@ -1567,10 +1567,13 @@ object YouTubeMusicApi {
                   "racyCheckOk": true,
                   "context": {
                     "client": {
-                      "clientName": "ANDROID",
-                      "clientVersion": "19.29.37",
+                      "clientName": "WEB_EMBEDDED_PLAYER",
+                      "clientVersion": "1.20241001.01.00",
                       "hl": "en",
                       "gl": "US"
+                    },
+                    "thirdParty": {
+                      "embedUrl": "https://www.youtube.com/watch?v=$videoId"
                     }
                   }
                 }
@@ -1579,7 +1582,7 @@ object YouTubeMusicApi {
             val request = Request.Builder()
                 .url("https://www.youtube.com/youtubei/v1/player")
                 .post(payload.toRequestBody(JSON_MEDIA_TYPE))
-                .header("User-Agent", "com.google.android.youtube/19.29.37 (Linux; U; Android 14)")
+                .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
                 .build()
 
             client.newCall(request).execute().use { response ->
@@ -1607,6 +1610,7 @@ object YouTubeMusicApi {
                                 h in 480..719 && !qualities.contains("480p") -> qualities.add("480p")
                                 h in 360..479 && !qualities.contains("360p") -> qualities.add("360p")
                                 h in 240..359 && !qualities.contains("240p") -> qualities.add("240p")
+                                h in 144..239 && !qualities.contains("144p") -> qualities.add("144p")
                             }
                         }
                     }
@@ -1617,7 +1621,7 @@ object YouTubeMusicApi {
         }
 
         if (qualities.size <= 1) {
-            listOf("Auto", "1080p", "720p", "480p", "360p")
+            listOf("Auto", "720p", "480p", "360p")
         } else {
             qualities
         }

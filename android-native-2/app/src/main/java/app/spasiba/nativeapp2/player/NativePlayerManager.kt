@@ -1017,10 +1017,20 @@ class NativePlayerManager(private val context: Context) {
 
                     maybePrefetchNextTrack()
 
-                    // Background Standby Video Pre-Resolver: Pre-resolve 720p HD video on standby in memory
+                    // Background Standby Video Pre-Resolver & Dynamic Quality Discovery
                     scope.launch(Dispatchers.IO) {
                         if (activePlayRequestId.get() != currentRequestId || !isActive) return@launch
                         try {
+                            // 1. Discover exact real available qualities for this video
+                            val dynamicQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
+                            if (dynamicQualities.isNotEmpty() && activePlayRequestId.get() == currentRequestId) {
+                                withContext(Dispatchers.Main) {
+                                    _availableVideoQualities.value = dynamicQualities
+                                }
+                                Log.i("SPASIBA_111", "🎬 [DYNAMIC_QUALITIES] Discovered real resolutions for '${song.title}': $dynamicQualities")
+                            }
+
+                            // 2. Pre-resolve 720p HD video on standby in memory
                             Log.d("SPASIBA_111", "🎬 [STANDBY_VIDEO_PRE_RESOLVE] Pre-resolving 720p HD video for '${song.title}' ($targetVideoId) to standby memory")
                             val hdResult = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
                             if (hdResult != null && hdResult.url.isNotBlank() && activePlayRequestId.get() == currentRequestId) {
