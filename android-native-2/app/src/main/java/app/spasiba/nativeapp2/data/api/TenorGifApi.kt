@@ -4,6 +4,8 @@ import android.util.Log
 import com.google.gson.JsonParser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.Request
+import java.net.URLEncoder
 import app.spasiba.nativeapp2.data.network.HttpClientProvider
 
 data class TenorGifItem(

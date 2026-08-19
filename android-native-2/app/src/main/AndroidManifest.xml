@@ -31,6 +31,44 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+
+            <!-- Custom Scheme Deep Links: spasiba://track and spasiba://playlist -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="spasiba" />
+            </intent-filter>
+
+            <!-- HTTPS App Links: https://spasiba.vercel.app/track/... and /shared/... and /playlist/... -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="spasiba.vercel.app"
+                    android:pathPrefix="/track" />
+                <data
+                    android:scheme="https"
+                    android:host="spasiba.vercel.app"
+                    android:pathPrefix="/shared" />
+                <data
+                    android:scheme="https"
+                    android:host="spasiba.vercel.app"
+                    android:pathPrefix="/playlist" />
+            </intent-filter>
+
+            <!-- YouTube URL Intent Filter: opens shared YT links directly in Spasiba -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="www.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="music.youtube.com" android:pathPrefix="/watch" />
+                <data android:scheme="https" android:host="youtu.be" />
+            </intent-filter>
         </activity>
 
         <service

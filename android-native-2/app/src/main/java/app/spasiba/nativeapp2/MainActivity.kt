@@ -27,12 +27,16 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 
+import app.spasiba.nativeapp2.data.model.Song
+import app.spasiba.nativeapp2.utils.ShareUtils
+
 class MainActivity : ComponentActivity() {
 
     companion object {
         val requestedTab = MutableStateFlow<Int?>(null)
         val requestedChatFriendId = MutableStateFlow<String?>(null)
         val requestedChatFriendName = MutableStateFlow<String?>(null)
+        val autoExpandPlayer = MutableStateFlow(false)
     }
 
     private val showPermissionDialog = MutableStateFlow(false)
@@ -178,6 +182,64 @@ class MainActivity : ComponentActivity() {
         val chatFriendId = intent.getStringExtra("requested_chat_friend_id")
         val chatFriendName = intent.getStringExtra("requested_chat_friend_name")
 
+        // Handle Deep Links (spasiba://, https://spasiba.vercel.app/track/..., youtube links)
+        val dataUri = intent.data
+        if (dataUri != null) {
+            val app = application as? SpasibaApplication
+            val playerMgr = app?.playerManager
+            val host = dataUri.host?.lowercase() ?: ""
+            val path = dataUri.path ?: ""
+
+            // Case 1: Track Deep Link
+            var videoId = dataUri.getQueryParameter("id") ?: dataUri.getQueryParameter("v") ?: ""
+            if (videoId.isBlank() && path.contains("/track/")) {
+                videoId = path.substringAfter("/track/").substringBefore("/").substringBefore("?")
+            } else if (videoId.isBlank() && path.contains("/watch")) {
+                videoId = dataUri.getQueryParameter("v") ?: ""
+            } else if (videoId.isBlank() && host == "youtu.be") {
+                videoId = path.trimStart('/').substringBefore('/').substringBefore('?')
+            }
+
+            if (videoId.isNotBlank() && videoId.length == 11) {
+                val title = dataUri.getQueryParameter("title")
+                    ?: dataUri.getQueryParameter("t")
+                    ?: "Shared Track"
+                val author = dataUri.getQueryParameter("author")
+                    ?: dataUri.getQueryParameter("a")
+                    ?: dataUri.getQueryParameter("artist")
+                    ?: "Spasiba Music"
+                val thumbnail = dataUri.getQueryParameter("art")
+                    ?: dataUri.getQueryParameter("thumbnail")
+                    ?: dataUri.getQueryParameter("m")
+                    ?: "https://i.ytimg.com/vi/$videoId/hqdefault.jpg"
+                val duration = dataUri.getQueryParameter("dur")?.toIntOrNull() ?: 210
+
+                val song = Song(
+                    id = videoId,
+                    title = title,
+                    author = author,
+                    thumbnail = thumbnail,
+                    durationSeconds = duration
+                )
+
+                if (playerMgr != null) {
+                    playerMgr.playSong(song)
+                    autoExpandPlayer.value = true
+                }
+                return
+            }
+
+            // Case 2: Playlist Deep Link
+            val rawUrl = dataUri.toString()
+            val parsedPlaylist = ShareUtils.parsePlaylistShareCode(rawUrl)
+            if (parsedPlaylist != null && parsedPlaylist.songs.isNotEmpty() && playerMgr != null) {
+                playerMgr.setQueue(parsedPlaylist.songs, parsedPlaylist.songs.firstOrNull()?.id, parsedPlaylist.name)
+                playerMgr.playSong(parsedPlaylist.songs.first())
+                autoExpandPlayer.value = true
+                return
+            }
+        }
+
         if (!chatFriendId.isNullOrBlank()) {
             requestedChatFriendId.value = chatFriendId
             requestedChatFriendName.value = chatFriendName ?: chatFriendId
@@ -188,5 +250,15 @@ class MainActivity : ComponentActivity() {
             Log.d("MainActivity", "Opened via Eunoia notification with sessionId=$sessionId")
             requestedTab.value = 2
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        (application as? SpasibaApplication)?.playerManager?.onAppForegrounded()
+    }
+
+    override fun onStop() {
+        super.onStop()
+        (application as? SpasibaApplication)?.playerManager?.onAppBackgrounded()
     }
 }

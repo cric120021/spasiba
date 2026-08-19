@@ -201,6 +201,14 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
     val isEunoiaDisabled by fcmManager.isEunoiaDisabled.collectAsState()
     val isMobileRequired by fcmManager.isMobileRequired.collectAsState()
 
+    val autoExpand by MainActivity.autoExpandPlayer.collectAsState()
+    androidx.compose.runtime.LaunchedEffect(autoExpand) {
+        if (autoExpand) {
+            isExpandedPlayerVisible = true
+            MainActivity.autoExpandPlayer.value = false
+        }
+    }
+
     androidx.compose.runtime.LaunchedEffect(Unit) {
         fcmManager.initialize(scope)
     }
@@ -407,12 +415,14 @@ fun SpasibaNativeAppShell(playerManager: NativePlayerManager, initialScreen: Int
                                         }
                                     },
                                     onSearch = { q ->
+                                        android.util.Log.d("SpasibaSearch", "onSearch TRIGGERED for query='$q'")
                                         searchJob?.cancel()
                                         if (q.isNotBlank()) {
                                             app.spasiba.nativeapp2.data.cache.SearchHistoryManager.getInstance(context).addTextQuery(q)
                                             searchJob = scope.launch {
                                                 isSearching = true
                                                 val unified = YouTubeMusicApi.searchUnified(q)
+                                                android.util.Log.d("SpasibaSearch", "searchUnified RETURNED ${unified.songs.size} songs, detectedArtist=${unified.detectedArtist?.artistName}")
                                                 searchResults = unified.songs
                                                 detectedArtistResult = unified.detectedArtist
                                                 isSearching = false

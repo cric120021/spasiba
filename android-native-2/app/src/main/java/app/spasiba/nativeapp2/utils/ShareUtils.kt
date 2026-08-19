@@ -20,7 +20,10 @@ data class SharedPlaylistData(
 object ShareUtils {
 
     fun shareSong(context: Context, song: Song) {
-        val songUrl = "https://www.youtube.com/watch?v=${song.id}"
+        val encodedTitle = runCatching { URLEncoder.encode(song.title, StandardCharsets.UTF_8.name()) }.getOrDefault(song.title)
+        val encodedAuthor = runCatching { URLEncoder.encode(song.author, StandardCharsets.UTF_8.name()) }.getOrDefault(song.author)
+        val encodedThumb = runCatching { URLEncoder.encode(song.thumbnail, StandardCharsets.UTF_8.name()) }.getOrDefault(song.thumbnail)
+        val songUrl = "https://spasiba.vercel.app/track/${song.id}?title=$encodedTitle&author=$encodedAuthor&art=$encodedThumb&dur=${song.durationSeconds}"
         val shareText = "🎵 Listening to '${song.title}' by ${song.author} on Spasiba Music:\n$songUrl"
 
         val sendIntent = Intent().apply {

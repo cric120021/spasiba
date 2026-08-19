@@ -1,6 +1,7 @@
 package app.spasiba.nativeapp2.data.repository
 
 import android.content.Context
+import android.util.Log
 import app.spasiba.nativeapp2.data.api.StreamingResult
 import app.spasiba.nativeapp2.data.api.YouTubeMusicApi
 import app.spasiba.nativeapp2.data.cache.SpasibaNativeAudioCache
@@ -16,8 +17,10 @@ import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.withContext
 import java.util.UUID
 
 class MusicRepository(private val context: Context) {
@@ -63,8 +66,30 @@ class MusicRepository(private val context: Context) {
         return YouTubeMusicApi.searchSongs(query)
     }
 
-    suspend fun resolveStreamResult(videoId: String): StreamingResult? {
-        return YouTubeMusicApi.resolveStreamResult(context, videoId)
+    suspend fun resolveStreamResult(videoId: String, forceRefresh: Boolean = false): StreamingResult? = withContext(Dispatchers.IO) {
+        if (forceRefresh) {
+            nativeAudioCache.invalidateStreamCache(videoId)
+        }
+        val nativeResult = runCatching {
+            val stream = nativeAudioCache.resolveStreamingAudio(videoId, forceRefresh = forceRefresh)
+            StreamingResult(
+                url = stream.url,
+                headers = stream.headers
+            )
+        }.onFailure { error ->
+            Log.w("MusicRepository", "Native audio cache resolve failed for videoId=$videoId; falling back to direct yt-dlp", error)
+        }.getOrNull()
+
+        nativeResult ?: YouTubeMusicApi.resolveStreamResult(context, videoId)
+    }
+
+    suspend fun resolveDownloadedAudioResult(videoId: String): StreamingResult? = withContext(Dispatchers.IO) {
+        runCatching {
+            val cached = nativeAudioCache.getOrDownload(videoId)
+            StreamingResult(url = cached.file.absolutePath)
+        }.onFailure { error ->
+            Log.w("MusicRepository", "Native audio download fallback failed for videoId=$videoId", error)
+        }.getOrNull()
     }
 
     suspend fun getHomeQuickPicks(history: List<Song>, liked: List<Song>): List<Song> {

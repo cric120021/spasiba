@@ -33,7 +33,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import androidx.media3.common.PlaybackException
 import java.io.File
+
+data class CachedStream(val result: StreamingResult, val timestampMs: Long)
 
 enum class RepeatState { OFF, ALL, ONE }
 
@@ -50,12 +53,45 @@ class NativePlayerManager(private val context: Context) {
     private val preResolvedStreamMap = java.util.concurrent.ConcurrentHashMap<String, CachedStream>()
     private val retryAttempts = java.util.concurrent.ConcurrentHashMap<String, Int>()
     private var prefetchedVideoId: String? = null
+    val totalSessionBytes = java.util.concurrent.atomic.AtomicLong(0L)
+    val currentTrackBytes = java.util.concurrent.atomic.AtomicLong(0L)
 
-    private val baseHttpDataSourceFactory by lazy {
-        DefaultHttpDataSource.Factory()
+    private val networkTransferListener = object : androidx.media3.datasource.TransferListener {
+        override fun onTransferInitializing(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+        override fun onTransferStart(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+        override fun onBytesTransferred(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean, bytesTransferred: Int) {
+            if (isNetwork && bytesTransferred > 0) {
+                totalSessionBytes.addAndGet(bytesTransferred.toLong())
+                currentTrackBytes.addAndGet(bytesTransferred.toLong())
+            }
+        }
+        override fun onTransferEnd(source: androidx.media3.datasource.DataSource, dataSpec: androidx.media3.datasource.DataSpec, isNetwork: Boolean) {}
+    }
+
+    private fun createHttpDataSourceFactory(streamUrl: String? = null, headers: Map<String, String>? = null): androidx.media3.datasource.DataSource.Factory {
+        val safeHeaders = headers?.toMutableMap() ?: mutableMapOf()
+        val matchingUa = when {
+            streamUrl?.contains("c=ANDROID_VR") == true -> "com.google.android.apps.youtube.vr.oculus/1.59.19 (Linux; U; Android 12)"
+            streamUrl?.contains("c=ANDROID_TESTSUITE") == true -> "com.google.android.youtube/1.9.0 (Linux; U; Android 14)"
+            streamUrl?.contains("c=ANDROID_MUSIC") == true -> "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 14; gzip)"
+            streamUrl?.contains("c=ANDROID") == true -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+            streamUrl?.contains("c=IOS") == true -> "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"
+            streamUrl?.contains("c=TVHTML5") == true || streamUrl?.contains("c=TV") == true -> "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
+            streamUrl?.contains("c=WEB_EMBEDDED") == true || streamUrl?.contains("c=WEB") == true -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            else -> safeHeaders["User-Agent"] ?: "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+        }
+        safeHeaders["User-Agent"] = matchingUa
+        if (streamUrl?.contains("c=WEB_EMBEDDED") == true || streamUrl?.contains("c=WEB") == true) {
+            safeHeaders["Origin"] = "https://www.youtube.com"
+            safeHeaders["Referer"] = "https://www.youtube.com/"
+        }
+        return DefaultHttpDataSource.Factory()
+            .setUserAgent(matchingUa)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(8000)
-            .setReadTimeoutMs(8000)
+            .setConnectTimeoutMs(20000)
+            .setReadTimeoutMs(20000)
+            .setTransferListener(networkTransferListener)
+            .setDefaultRequestProperties(safeHeaders)
     }
 
     private fun getValidCachedStream(targetId: String): StreamingResult? {
@@ -71,11 +107,12 @@ class NativePlayerManager(private val context: Context) {
     val exoPlayer: ExoPlayer by lazy {
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                500,   // Min buffer: 0.5s
-                30000, // Max buffer: 30s
-                50,    // Buffer for playback: 50ms
-                200    // Buffer after rebuffer: 200ms
+                15000,  // Min buffer: 15s (ensures smooth playback on 4G/5G)
+                22000,  // Max buffer: 22s (tight sliding window, prevents heavy data wastage on skips)
+                1000,   // Buffer for playback: 1.0s (instant start)
+                2000    // Buffer after rebuffer: 2.0s
             )
+            .setBackBuffer(10000, false) // Retain 10s back buffer for instant tiny rewinds
             .setPrioritizeTimeOverSizeThresholds(true)
             .build()
 
@@ -271,7 +308,6 @@ class NativePlayerManager(private val context: Context) {
                     }
 
                     val streamResult = repository.resolveStreamResult(targetId)
-                        ?: YouTubeMusicApi.resolveStreamResult(context, targetId)
 
                     if (streamResult != null && streamResult.url.isNotBlank()) {
                         val entry = CachedStream(streamResult, System.currentTimeMillis())
@@ -472,21 +508,65 @@ class NativePlayerManager(private val context: Context) {
 
     private val _availableVideoQualities = MutableStateFlow<List<String>>(listOf("Auto", "1080p", "720p", "480p", "360p"))
     val availableVideoQualities: StateFlow<List<String>> = _availableVideoQualities.asStateFlow()
-
     private var lastPlayedSongId: String? = null
-
     var isVideoModeActive: Boolean = false
+    private var isVideoSuspendedForBackground = false
+
+    fun onAppBackgrounded() {
+        if (isVideoModeActive && (exoPlayer.isPlaying || exoPlayer.playbackState == Player.STATE_BUFFERING)) {
+            isVideoSuspendedForBackground = true
+            // Suspend video track rendering and network chunk requests while keeping audio continuous
+            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+                .buildUpon()
+                .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+                .build()
+            Log.d("SPASIBA_111", "[DATA_SAVER] Screen-off/Backgrounded: Video stream suspended, audio continues seamlessly at ${exoPlayer.currentPosition}ms (Saving ~80% data & battery)")
+        }
+    }
+
+    fun onAppForegrounded() {
+        if (isVideoModeActive && isVideoSuspendedForBackground) {
+            isVideoSuspendedForBackground = false
+            // Re-enable video track seamlessly at the exact current position
+            applyTrackSelectionQuality(_currentVideoQuality.value)
+            Log.d("SPASIBA_111", "[DATA_SAVER] Screen-on/Foregrounded: Video stream re-attached at ${exoPlayer.currentPosition}ms")
+        }
+    }
 
     fun disableVideoMode() {
+        Log.d("SPASIBA_111", "[MODE_SWITCH] Disabling Video Mode -> Switching to Audio Mode seamlessly")
         isVideoModeActive = false
-        val song = _currentSong.value ?: return
-        playSong(song)
+        // Instantly suspend video track downloading to save bandwidth
+        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, true)
+            .build()
+        if (exoPlayer.playbackState == Player.STATE_IDLE || exoPlayer.playbackState == Player.STATE_ENDED) {
+            val song = _currentSong.value ?: return
+            playSong(song, initialPosMs = exoPlayer.currentPosition.coerceAtLeast(0L))
+        }
     }
 
     fun setVideoQuality(quality: String) {
+        val song = _currentSong.value ?: return
+        val isAlreadyPlayingCurrentSong = (exoPlayer.playbackState == Player.STATE_READY || exoPlayer.playbackState == Player.STATE_BUFFERING)
+        val qualityUnchanged = _currentVideoQuality.value == quality
+        
         isVideoModeActive = true
         _currentVideoQuality.value = quality
-        val song = _currentSong.value ?: return
+
+        // If the current media source already has video tracks and quality is unchanged,
+        // re-apply track selection quality without reloading from network!
+        val hasVideoTracks = (0 until exoPlayer.currentTracks.groups.size).any { groupIndex ->
+            exoPlayer.currentTracks.groups[groupIndex].type == C.TRACK_TYPE_VIDEO
+        }
+
+        if (isAlreadyPlayingCurrentSong && qualityUnchanged && hasVideoTracks) {
+            applyTrackSelectionQuality(quality)
+            Log.d("SPASIBA_111", "[MODE_SWITCH] Instant 0ms transition: Video track re-rendered at ${exoPlayer.currentPosition}ms without reloading")
+            return
+        }
+
         startProgressiveVideoDownloadAndPlay(song)
     }
 
@@ -501,61 +581,62 @@ class NativePlayerManager(private val context: Context) {
             else -> Int.MAX_VALUE
         }
 
+        val builder = exoPlayer.trackSelectionParameters
+            .buildUpon()
+            .setTrackTypeDisabled(C.TRACK_TYPE_VIDEO, false)
+
         if (targetHeight == Int.MAX_VALUE) {
-            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                .buildUpon()
-                .clearVideoSizeConstraints()
-                .build()
+            builder.clearVideoSizeConstraints()
         } else {
-            exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters
-                .buildUpon()
-                .setMaxVideoSize(Int.MAX_VALUE, targetHeight)
-                .setMinVideoSize(0, targetHeight)
-                .build()
+            builder.setMaxVideoSize(Int.MAX_VALUE, targetHeight)
         }
-        Log.d(TAG, "ExoPlayer trackSelectionParameters updated: targetHeight=$targetHeight for quality=$quality")
+        exoPlayer.trackSelectionParameters = builder.build()
+        Log.d("SPASIBA_111", "[TRACK_SELECTION] Video enabled: targetHeight=$targetHeight for quality=$quality")
     }
 
     fun startProgressiveVideoDownloadAndPlay(song: Song) {
+        val callTimestamp = System.currentTimeMillis()
+        Log.d("SPASIBA_111", "[VIDEO_MODE_START] Step 1.0: startProgressiveVideoDownloadAndPlay called for title='${song.title}' author='${song.author}' id='${song.id}' targetQuality=${_currentVideoQuality.value}")
         scope.launch(Dispatchers.IO) {
             _isLoading.value = true
 
             var targetVideoId = song.id
             if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
                 runCatching {
-                    Log.d(TAG, "Resolving actual 11-char videoId for video mode '${song.title}' by ${song.author} (original id='${song.id}')")
+                    Log.d("SPASIBA_111", "[VIDEO_MODE_RESOLVE_ID] Step 1.1: Resolving 11-char canonical videoId for '${song.title}' (raw id='${song.id}')")
                     val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
                     val validTrack = searchResults.firstOrNull { it.id.length == 11 }
                     if (validTrack != null) {
                         targetVideoId = validTrack.id
-                        Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
+                        Log.d("SPASIBA_111", "[VIDEO_MODE_RESOLVE_ID] Step 1.2: Resolved canonical videoId=$targetVideoId for '${song.title}'")
                     }
                 }
             }
 
+            Log.d("SPASIBA_111", "[VIDEO_MODE_FETCH_QUALITIES] Step 2.0: Fetching available qualities for videoId=$targetVideoId")
             val fetchedQualities = YouTubeMusicApi.fetchAvailableVideoQualities(targetVideoId)
             _availableVideoQualities.value = fetchedQualities
+            Log.d("SPASIBA_111", "[VIDEO_MODE_FETCH_QUALITIES] Step 2.1: Available qualities: $fetchedQualities (currentSelection=${_currentVideoQuality.value})")
 
-            Log.d(TAG, "Resolving video stream for '${song.title}' (videoId=$targetVideoId quality=${_currentVideoQuality.value} available=$fetchedQualities)")
+            Log.d("SPASIBA_111", "[VIDEO_MODE_STREAM_RESOLVE] Step 3.0: Resolving video + audio stream URLs for videoId=$targetVideoId quality=${_currentVideoQuality.value}")
+            val resolveStart = System.currentTimeMillis()
             val result = YouTubeMusicApi.resolveVideoStreamResult(context, targetVideoId, _currentVideoQuality.value)
+            val resolveElapsed = System.currentTimeMillis() - resolveStart
+            Log.d("SPASIBA_111", "[VIDEO_MODE_STREAM_RESOLVE] Step 3.1: Resolution took ${resolveElapsed}ms -> success=${result != null && result.url.isNotBlank()}")
             
             launch(Dispatchers.Main) {
                 if (result != null && result.url.isNotBlank()) {
                     val currentPos = exoPlayer.currentPosition.coerceAtLeast(0L)
+                    Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.0: Binding streams to ExoPlayer at pos=${currentPos}ms. MainUrl=${result.url.take(60)} AudioUrl=${result.audioUrl?.take(60)}")
                     val mediaMetadata = MediaMetadata.Builder()
                         .setTitle(song.title)
                         .setArtist(song.author)
                         .setArtworkUri(Uri.parse(song.thumbnail))
                         .build()
 
-                    val headers = result.headers.toMutableMap().apply {
-                        putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                    }
-                    val dataSourceFactory = baseHttpDataSourceFactory
-                        .setDefaultRequestProperties(headers)
-
-                    val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
-                        .setDataSourceFactory(dataSourceFactory)
+                    val videoDataSourceFactory = createHttpDataSourceFactory(result.url, result.headers)
+                    val videoMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                        .setDataSourceFactory(videoDataSourceFactory)
 
                     val videoMediaItem = MediaItem.Builder()
                         .setUri(Uri.parse(result.url))
@@ -563,16 +644,22 @@ class NativePlayerManager(private val context: Context) {
                         .setMediaMetadata(mediaMetadata)
                         .build()
 
-                    val videoSource = mediaSourceFactory.createMediaSource(videoMediaItem)
+                    val videoSource = videoMediaSourceFactory.createMediaSource(videoMediaItem)
 
                     val finalSource = if (!result.audioUrl.isNullOrBlank()) {
+                        Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.1: Creating MergingMediaSource (Separate Video + Separate Audio streams)")
+                        val audioDataSourceFactory = createHttpDataSourceFactory(result.audioUrl, result.headers)
+                        val audioMediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                            .setDataSourceFactory(audioDataSourceFactory)
+
                         val audioMediaItem = MediaItem.Builder()
                             .setUri(Uri.parse(result.audioUrl))
                             .setMediaId("${song.id}_audio")
                             .build()
-                        val audioSource = mediaSourceFactory.createMediaSource(audioMediaItem)
+                        val audioSource = audioMediaSourceFactory.createMediaSource(audioMediaItem)
                         MergingMediaSource(videoSource, audioSource)
                     } else {
+                        Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.1: Playing single progressive/muxed video stream")
                         videoSource
                     }
 
@@ -583,9 +670,10 @@ class NativePlayerManager(private val context: Context) {
                     exoPlayer.playWhenReady = true
                     exoPlayer.play()
                     _isPlaying.value = true
-                    Log.d(TAG, "ExoPlayer video prepared and playing at pos=$currentPos with quality=${_currentVideoQuality.value}")
+                    val totalDuration = System.currentTimeMillis() - callTimestamp
+                    Log.d("SPASIBA_111", "[VIDEO_MODE_EXOPLAYER] Step 4.2: Video prepared & playback started! Total latency=${totalDuration}ms pos=${currentPos}ms")
                 } else {
-                    Log.e(TAG, "Failed to resolve video stream result for videoId=$targetVideoId")
+                    Log.e("SPASIBA_111", "[VIDEO_MODE_ERROR] Step 4.0: Failed to resolve video stream result for videoId=$targetVideoId")
                     android.widget.Toast.makeText(context, "Video stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
                 }
                 _isLoading.value = false
@@ -633,8 +721,10 @@ class NativePlayerManager(private val context: Context) {
     var eunoiaPlaybackActionListener: ((action: String, extraPayload: org.json.JSONObject) -> Unit)? = null
 
     fun playSong(song: Song, initialPosMs: Long = 0L) {
-        Log.d(TAG, "playSong requested for title='${song.title}' id='${song.id}' initialPosMs=$initialPosMs")
+        val playStartTimestamp = System.currentTimeMillis()
+        Log.d("SPASIBA_111", "[PLAY_START] Step 1.0: playSong requested for title='${song.title}' author='${song.author}' id='${song.id}' initialPosMs=$initialPosMs isVideoModeActive=$isVideoModeActive")
         _isLoading.value = true
+        retryAttempts.remove(song.id)
         eunoiaTrackChangeListener?.invoke(song)
         
         // Auto cleanup video files once previous song is out of picture
@@ -648,12 +738,13 @@ class NativePlayerManager(private val context: Context) {
         fetchLyricsForCurrentSong()
         app.spasiba.nativeapp2.data.analytics.SessionBrainManager.recordPlayStart(song)
         _positionMs.value = initialPosMs.coerceAtLeast(0L)
+        currentTrackBytes.set(0L)
 
         exoPlayer.stop()
         exoPlayer.clearMediaItems()
 
         if (isVideoModeActive) {
-            Log.d(TAG, "playSong called in VIDEO MODE -> Loading 720p video stream for '${song.title}'")
+            Log.d("SPASIBA_111", "[PLAY_BRANCH] Step 1.1: Redirecting to Video Mode pipeline for '${song.title}'")
             startProgressiveVideoDownloadAndPlay(song)
             return
         }
@@ -665,17 +756,17 @@ class NativePlayerManager(private val context: Context) {
                 var targetVideoId = song.id
                 if (targetVideoId.length != 11 || targetVideoId.startsWith("track_") || targetVideoId.startsWith("item_") || targetVideoId.startsWith("VL") || targetVideoId.startsWith("MP") || targetVideoId.isBlank()) {
                     runCatching {
-                        Log.d(TAG, "Resolving actual 11-char videoId for '${song.title}' by ${song.author} (original id='${song.id}')")
+                        Log.d("SPASIBA_111", "[PLAY_RESOLVE_ID] Step 1.2: Resolving canonical 11-char videoId for '${song.title}'")
                         val searchResults = YouTubeMusicApi.searchSongs("${song.title} ${song.author}")
                         val validTrack = searchResults.firstOrNull { it.id.length == 11 }
                         if (validTrack != null) {
                             targetVideoId = validTrack.id
-                            Log.d(TAG, "Resolved videoId=$targetVideoId for '${song.title}'")
+                            Log.d("SPASIBA_111", "[PLAY_RESOLVE_ID] Step 1.3: Resolved canonical videoId=$targetVideoId for '${song.title}'")
                         }
                     }
                 }
 
-                // Check if track is cached or downloaded locally first via DownloadManager and AudioCacheManager
+                // Check if track is cached or downloaded locally first
                 val downloadMgr = app.spasiba.nativeapp2.data.download.SpasibaDownloadManager(context)
                 val localFile = downloadMgr.getDownloadedFile(song.id)
                     ?: downloadMgr.getDownloadedFile(targetVideoId)
@@ -687,7 +778,7 @@ class NativePlayerManager(private val context: Context) {
                     ?: File(context.getExternalFilesDir(null), "downloads/${song.id}.mp3").takeIf { it.exists() && it.length() > 0 }
 
                 if (localFile != null && localFile.length() > 0) {
-                    Log.d(TAG, "Playing local downloaded audio file: ${localFile.absolutePath}")
+                    Log.d("SPASIBA_111", "[PLAY_LOCAL_HIT] Step 2.0: Found offline local file: ${localFile.absolutePath} (${localFile.length()} bytes)")
                     launch(Dispatchers.Main) {
                         val mediaMetadata = MediaMetadata.Builder()
                             .setTitle(song.title)
@@ -706,22 +797,33 @@ class NativePlayerManager(private val context: Context) {
                         if (initialPosMs > 0L) exoPlayer.seekTo(initialPosMs)
                         exoPlayer.play()
                         _isLoading.value = false
+                        Log.d("SPASIBA_111", "[PLAY_LOCAL_START] Step 2.1: Playing offline file! Latency=${System.currentTimeMillis() - playStartTimestamp}ms")
                     }
                     return@launch
                 }
 
-                // Check if stream URL was already pre-warmed for instant playback (with TTL validation)
-                var result = getValidCachedStream(targetVideoId)
-                    ?: repository.resolveStreamResult(targetVideoId)
-                    ?: YouTubeMusicApi.resolveStreamResult(context, targetVideoId)
+                // Check pre-resolved cache or resolve fresh stream
+                val cached = getValidCachedStream(targetVideoId)
+                if (cached != null) {
+                    Log.d("SPASIBA_111", "[PLAY_CACHE_HIT] Step 2.0: Found valid in-memory pre-resolved stream for targetVideoId=$targetVideoId")
+                } else {
+                    Log.d("SPASIBA_111", "[PLAY_CACHE_MISS] Step 2.0: No valid stream in pre-warm cache, resolving via MusicRepository for targetVideoId=$targetVideoId...")
+                }
+
+                val streamStart = System.currentTimeMillis()
+                var result = cached ?: repository.resolveStreamResult(targetVideoId)
+                val streamElapsed = System.currentTimeMillis() - streamStart
+
+                Log.d("SPASIBA_111", "[PLAY_STREAM_RESULT] Step 2.1: Stream resolution returned in ${streamElapsed}ms -> success=${result != null && result.url.isNotBlank()}")
 
                 if (result == null || result.url.isBlank()) {
-                    Log.d(TAG, "Direct stream failed for ${song.title} id=$targetVideoId, searching alternate audio track...")
+                    Log.d("SPASIBA_111", "[PLAY_STREAM_FALLBACK] Step 2.2: Direct stream failed for ${song.title}, searching alternate audio track...")
                     runCatching {
                         val fallbackSearch = YouTubeMusicApi.searchSongs("${song.title} ${song.author} audio")
                         val altId = fallbackSearch.firstOrNull { it.id != targetVideoId && it.id.length == 11 }?.id
                         if (altId != null) {
-                            result = YouTubeMusicApi.resolveStreamResult(context, altId)
+                            Log.d("SPASIBA_111", "[PLAY_STREAM_FALLBACK] Step 2.3: Found alternate audio track id=$altId. Resolving...")
+                            result = repository.resolveStreamResult(altId)
                         }
                     }
                 }
@@ -732,10 +834,10 @@ class NativePlayerManager(private val context: Context) {
 
             launch(Dispatchers.Main) {
                 if (result == null || result.url.isBlank()) {
-                    Log.e(TAG, "Stream URL resolution failed for ${song.title}")
+                    Log.e("SPASIBA_111", "[PLAY_ERROR] Step 3.0: Stream URL resolution failed completely for ${song.title}")
                     _isLoading.value = false
+                    _isPlaying.value = false
                     android.widget.Toast.makeText(context, "Playback error: Stream unavailable for ${song.title}", android.widget.Toast.LENGTH_SHORT).show()
-                    playQueueOffset(1)
                     return@launch
                 }
 
@@ -744,6 +846,8 @@ class NativePlayerManager(private val context: Context) {
                 } else {
                     Uri.parse(result.url)
                 }
+
+                Log.d("SPASIBA_111", "[PLAY_EXOPLAYER_PREPARE] Step 3.0: Preparing ExoPlayer with URI=${result.url.take(60)} (isLocal=${targetUri.scheme == "file"})")
 
                 if (targetUri.scheme == "file") {
                     val mediaMetadata = MediaMetadata.Builder()
@@ -758,12 +862,7 @@ class NativePlayerManager(private val context: Context) {
                         .build()
                     exoPlayer.setMediaItem(mediaItem)
                 } else {
-                    val headers = result.headers.toMutableMap().apply {
-                        putIfAbsent("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
-                    }
-                    val dataSourceFactory = baseHttpDataSourceFactory
-                        .setDefaultRequestProperties(headers)
-
+                    val dataSourceFactory = createHttpDataSourceFactory(result.url, result.headers)
                     val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
                         .setDataSourceFactory(dataSourceFactory)
 
@@ -790,12 +889,13 @@ class NativePlayerManager(private val context: Context) {
                 exoPlayer.playWhenReady = true
                 _isLoading.value = false
                 _isPlaying.value = true
-                Log.d(TAG, "ExoPlayer prepared and starting for '${song.title}' URI=$targetUri initialPosMs=$initialPosMs")
+                val totalElapsed = System.currentTimeMillis() - playStartTimestamp
+                Log.d("SPASIBA_111", "[PLAY_EXOPLAYER_READY] Step 3.1: Playback started successfully! Total latency=${totalElapsed}ms initialPos=${initialPosMs}ms")
 
                 maybePrefetchNextTrack()
             }
         } catch (e: Exception) {
-            Log.e(TAG, "playSong stream resolution failed for '${song.title}': ${e.message}", e)
+            Log.e("SPASIBA_111", "[PLAY_EXCEPTION] Step 3.2: Exception in playSong: ${e.message}", e)
             launch(Dispatchers.Main) {
                 _isLoading.value = false
                 _isPlaying.value = false
@@ -805,9 +905,11 @@ class NativePlayerManager(private val context: Context) {
 }
 
     fun togglePlayPause() {
+        Log.d("SPASIBA_111", "[CONTROL_TOGGLE] togglePlayPause called. Currently isPlaying=${exoPlayer.isPlaying} state=${exoPlayer.playbackState}")
         if (exoPlayer.isPlaying) {
             exoPlayer.pause()
             _isPlaying.value = false
+            Log.d("SPASIBA_111", "[CONTROL_TOGGLE] Paused playback at ${exoPlayer.currentPosition}ms")
             eunoiaPlaybackActionListener?.invoke("pause", org.json.JSONObject().apply {
                 put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
                 put("isPlaying", false)
@@ -816,16 +918,20 @@ class NativePlayerManager(private val context: Context) {
             val song = _currentSong.value
             if (song != null) {
                 if (exoPlayer.playbackState == ExoPlayer.STATE_IDLE || exoPlayer.playbackState == ExoPlayer.STATE_ENDED) {
+                    Log.d("SPASIBA_111", "[CONTROL_TOGGLE] ExoPlayer in IDLE/ENDED -> Replaying '${song.title}'")
                     playSong(song)
                 } else {
+                    Log.d("SPASIBA_111", "[CONTROL_TOGGLE] Resuming playback of '${song.title}' at ${exoPlayer.currentPosition}ms")
                     exoPlayer.play()
                     _isPlaying.value = true
                 }
             } else if (_queue.value.isNotEmpty()) {
+                Log.d("SPASIBA_111", "[CONTROL_TOGGLE] Playing first track from queue")
                 playSong(_queue.value.first())
             } else {
                 val fallbacks = YouTubeMusicApi.getFallbackTracks()
                 if (fallbacks.isNotEmpty()) {
+                    Log.d("SPASIBA_111", "[CONTROL_TOGGLE] Playing fallback queue")
                     playQueue(fallbacks, 0)
                 }
             }
@@ -837,19 +943,24 @@ class NativePlayerManager(private val context: Context) {
     }
 
     fun playNext() {
+        Log.d("SPASIBA_111", "[CONTROL_NEXT] playNext triggered. Current queue index=${_currentIndex.value} queueSize=${_queue.value.size}")
         playQueueOffset(1)
     }
 
     fun playPrevious() {
+        Log.d("SPASIBA_111", "[CONTROL_PREV] playPrevious triggered. Current pos=${_positionMs.value}ms")
         if (_positionMs.value > RESTART_PREVIOUS_AFTER_MS) {
+            Log.d("SPASIBA_111", "[CONTROL_PREV] Restarting current song from 0ms")
             seekTo(0L)
         } else {
+            Log.d("SPASIBA_111", "[CONTROL_PREV] Skipping to previous track offset -1")
             playQueueOffset(-1)
         }
     }
 
     fun seekTo(positionMs: Long) {
         val safePos = positionMs.coerceAtLeast(0L)
+        Log.d("SPASIBA_111", "[CONTROL_SEEK] Seeking to ${safePos}ms (from ${_positionMs.value}ms)")
         exoPlayer.seekTo(safePos)
         _positionMs.value = safePos
         eunoiaPlaybackActionListener?.invoke("seek", org.json.JSONObject().apply {
@@ -883,15 +994,54 @@ class NativePlayerManager(private val context: Context) {
         }
     }
 
+    private fun formatDataSize(bytes: Long): String {
+        return when {
+            bytes >= 1024 * 1024 * 1024 -> String.format(java.util.Locale.US, "%.2f GB", bytes.toDouble() / (1024.0 * 1024.0 * 1024.0))
+            bytes >= 1024 * 1024 -> String.format(java.util.Locale.US, "%.2f MB", bytes.toDouble() / (1024.0 * 1024.0))
+            bytes >= 1024 -> String.format(java.util.Locale.US, "%.1f KB", bytes.toDouble() / 1024.0)
+            else -> "$bytes B"
+        }
+    }
+
+    private fun formatSpeed(bytesPerSec: Double): String {
+        return when {
+            bytesPerSec >= 1024 * 1024 -> String.format(java.util.Locale.US, "%.2f MB/s", bytesPerSec / (1024.0 * 1024.0))
+            bytesPerSec >= 1024 -> String.format(java.util.Locale.US, "%.1f KB/s", bytesPerSec / 1024.0)
+            else -> String.format(java.util.Locale.US, "%.0f B/s", bytesPerSec)
+        }
+    }
+
     private fun startProgressTicker() {
         progressJob?.cancel()
         progressJob = scope.launch {
+            var lastLogTime = System.currentTimeMillis()
+            var lastLogBytes = currentTrackBytes.get()
+
             while (true) {
-                if (exoPlayer.isPlaying) {
+                if (exoPlayer.isPlaying || exoPlayer.playbackState == Player.STATE_BUFFERING) {
                     _positionMs.value = exoPlayer.currentPosition.coerceAtLeast(0L)
                     val dur = exoPlayer.duration
                     if (dur != C.TIME_UNSET && dur > 0L) {
                         _durationMs.value = dur
+                    }
+
+                    val now = System.currentTimeMillis()
+                    val timeDeltaMs = now - lastLogTime
+                    if (timeDeltaMs >= 1000L) {
+                        val currentBytes = currentTrackBytes.get()
+                        val sessionBytes = totalSessionBytes.get()
+                        val bytesDelta = (currentBytes - lastLogBytes).coerceAtLeast(0L)
+                        val speedBytesPerSec = if (timeDeltaMs > 0) (bytesDelta.toDouble() / (timeDeltaMs.toDouble() / 1000.0)) else 0.0
+
+                        val modeLabel = if (isVideoModeActive) "VIDEO (${_currentVideoQuality.value})" else "AUDIO"
+
+                        Log.d(
+                            "SPASIBA_111",
+                            "[LIVE_DATA_USAGE] $modeLabel | Speed: ${formatSpeed(speedBytesPerSec)} | Track: ${formatDataSize(currentBytes)} | Session Total: ${formatDataSize(sessionBytes)} | Pos: ${_positionMs.value / 1000}s/${if (_durationMs.value > 0) "${_durationMs.value / 1000}s" else "--"}"
+                        )
+
+                        lastLogTime = now
+                        lastLogBytes = currentBytes
                     }
 
                     // Check if 70% of song is reached -> trigger prefetch of next track
@@ -913,7 +1063,7 @@ class NativePlayerManager(private val context: Context) {
                 Player.STATE_IDLE -> "STATE_IDLE"
                 else -> "UNKNOWN($playbackState)"
             }
-            Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onPlaybackStateChanged: $stateName (isPlaying=${exoPlayer.isPlaying})")
+            Log.d("SPASIBA_111", "[EXOPLAYER_STATE] State=$stateName isPlaying=${exoPlayer.isPlaying} pos=${exoPlayer.currentPosition}ms bufferPos=${exoPlayer.bufferedPosition}ms dur=${exoPlayer.duration}ms")
 
             when (playbackState) {
                 Player.STATE_BUFFERING -> _isLoading.value = true
@@ -923,8 +1073,10 @@ class NativePlayerManager(private val context: Context) {
                     if (dur != C.TIME_UNSET && dur > 0L) {
                         _durationMs.value = dur
                     }
+                    Log.d("SPASIBA_111", "[EXOPLAYER_READY] Playback ready to render! Duration=${_durationMs.value}ms")
                 }
                 Player.STATE_ENDED -> {
+                    Log.d("SPASIBA_111", "[EXOPLAYER_ENDED] Track reached end of stream. RepeatState=${_repeatState.value}")
                     _isPlaying.value = false
                     if (_repeatState.value == RepeatState.ONE) {
                         seekTo(0L)
@@ -942,7 +1094,7 @@ class NativePlayerManager(private val context: Context) {
         }
 
         override fun onIsPlayingChanged(isPlaying: Boolean) {
-            Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onIsPlayingChanged: isPlaying=$isPlaying")
+            Log.d("SPASIBA_111", "[EXOPLAYER_PLAYING_CHANGE] isPlaying=$isPlaying currentPos=${exoPlayer.currentPosition}ms")
             _isPlaying.value = isPlaying
             eunoiaPlaybackActionListener?.invoke(if (isPlaying) "play" else "pause", org.json.JSONObject().apply {
                 put("positionMs", exoPlayer.currentPosition.coerceAtLeast(0L))
@@ -951,82 +1103,141 @@ class NativePlayerManager(private val context: Context) {
         }
 
         override fun onVideoSizeChanged(videoSize: androidx.media3.common.VideoSize) {
-            Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onVideoSizeChanged: width=${videoSize.width} height=${videoSize.height} unappliedRotationDegrees=${videoSize.unappliedRotationDegrees}")
+            Log.d("SPASIBA_111", "[EXOPLAYER_VIDEO_SIZE] Width=${videoSize.width} Height=${videoSize.height}")
             if (videoSize.width > 0 && videoSize.height > 0) {
                 val calculatedRatio = videoSize.width.toFloat() / videoSize.height.toFloat()
                 val safeRatio = calculatedRatio.coerceIn(0.55f, 2.2f)
                 _videoAspectRatio.value = safeRatio
-            }
-        }
-
-        override fun onPlayerError(error: PlaybackException) {
-            Log.e(TAG, "ExoPlayer playback error: ${error.message}", error)
-            val current = _currentSong.value ?: return
-            val currentPos = _positionMs.value.coerceAtLeast(0L)
-            
-            val isNetworkOrHttpError = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
-                    || error.message?.contains("403") == true
-                    || error.message?.contains("404") == true
-
-            if (isNetworkOrHttpError) {
-                Log.d(TAG, "HTTP 403/404 Stream Expiration detected for ${current.title}. Attempting silent auto-recovery...")
-                _isLoading.value = true
-                scope.launch(Dispatchers.IO) {
-                    val freshResult = YouTubeMusicApi.resolveStreamResult(context, current.id)
-                    withContext(Dispatchers.Main) {
-                        if (freshResult != null && freshResult.url.isNotBlank()) {
-                            val updatedSong = current.copy(streamUrl = freshResult.url)
-                            _currentSong.value = updatedSong
-                            val mediaItem = MediaItem.Builder()
-                                .setUri(Uri.parse(freshResult.url))
-                                .setMediaId(updatedSong.id)
-                                .build()
-                            exoPlayer.setMediaItem(mediaItem, currentPos)
-                            exoPlayer.prepare()
-                            exoPlayer.play()
-                            _isLoading.value = false
-                            Log.d(TAG, "Silent Auto-Recovery SUCCESS for ${current.title} at ${currentPos}ms!")
-                        } else {
-                            _isLoading.value = false
-                            playNext()
-                        }
-                    }
-                }
-            } else {
-                _isLoading.value = false
+                Log.d("SPASIBA_111", "[EXOPLAYER_VIDEO_ASPECT] AspectRatio=$safeRatio (calculated from ${videoSize.width}x${videoSize.height})")
             }
         }
 
         override fun onRenderedFirstFrame() {
-            Log.d("SPASIBA_VIDEO_DEBUG", "ExoPlayer onRenderedFirstFrame SUCCESS! Video frame rendered to surface!")
+            Log.d("SPASIBA_111", "[EXOPLAYER_FIRST_FRAME] SUCCESS: First video frame rendered onto SurfaceView!")
         }
 
-        override fun onPlayerError(error: androidx.media3.common.PlaybackException) {
-            Log.e("SPASIBA_VIDEO_DEBUG", "ExoPlayer ERROR: errorCode=${error.errorCodeName} message=${error.message}", error)
-            val song = _currentSong.value
-            if (song != null && (retryAttempts[song.id] ?: 0) < 1) {
-                retryAttempts[song.id] = 1
-                Log.w(TAG, "Playback failure detected on '${song.title}' (errorCode=${error.errorCodeName}). Auto-evicting cache & retrying with fresh URL...")
-                preResolvedStreamMap.remove(song.id)
+        override fun onPlayerError(error: PlaybackException) {
+            Log.e("SPASIBA_111", "[EXOPLAYER_ERROR] ErrorCode=${error.errorCode} Message='${error.message}' Cause=${error.cause?.message}", error)
+            val current = _currentSong.value ?: return
+            val currentPos = _positionMs.value.coerceAtLeast(0L)
+            
+            val isNetworkOrHttpError = error.errorCode == PlaybackException.ERROR_CODE_IO_BAD_HTTP_STATUS
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_FAILED
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_NETWORK_CONNECTION_TIMEOUT
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_INVALID_HTTP_CONTENT_TYPE
+                    || error.errorCode == PlaybackException.ERROR_CODE_IO_UNSPECIFIED
+                    || error.message?.contains("403") == true
+                    || error.message?.contains("404") == true
+                    || error.message?.contains("410") == true
+                    || error.message?.contains("Response code") == true
+                    || error.message?.contains("Source error") == true
+                    || error.message?.contains("BehindLiveWindowException") == true
+
+            if (isNetworkOrHttpError) {
+                val attempts = retryAttempts[current.id] ?: 0
+                if (attempts >= 2) {
+                    Log.w("SPASIBA_111", "[EXOPLAYER_RECOVERY_EXHAUSTED] Retry attempts exhausted for '${current.title}' (${attempts}/2)")
+                    _isLoading.value = false
+                    _isPlaying.value = false
+                    Toast.makeText(context, "Playback error: stream unavailable for ${current.title}", Toast.LENGTH_SHORT).show()
+                    return
+                }
+                retryAttempts[current.id] = attempts + 1
+                Log.d("SPASIBA_111", "[EXOPLAYER_RECOVERY_START] Initiating auto-recovery retry ${attempts + 1}/2 for '${current.title}' at ${currentPos}ms")
+                preResolvedStreamMap.remove(current.id)
                 _isLoading.value = true
+
                 scope.launch(Dispatchers.IO) {
-                    val freshResult = YouTubeMusicApi.resolveStreamResult(context, song.id)
-                    if (freshResult != null && freshResult.url.isNotBlank()) {
-                        preResolvedStreamMap[song.id] = CachedStream(freshResult, System.currentTimeMillis())
-                        launch(Dispatchers.Main) {
-                            playSong(song, exoPlayer.currentPosition.coerceAtLeast(0L))
+                    if (isVideoModeActive) {
+                        val videoResult = YouTubeMusicApi.resolveVideoStreamResult(context, current.id, _currentVideoQuality.value)
+                        withContext(Dispatchers.Main) {
+                            if (videoResult != null && videoResult.url.isNotBlank()) {
+                                val mediaMetadata = MediaMetadata.Builder()
+                                    .setTitle(current.title)
+                                    .setArtist(current.author)
+                                    .setArtworkUri(Uri.parse(current.thumbnail))
+                                    .build()
+
+                                val dataSourceFactory = createHttpDataSourceFactory(videoResult.url, videoResult.headers)
+                                val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                                    .setDataSourceFactory(dataSourceFactory)
+
+                                val videoMediaItem = MediaItem.Builder()
+                                    .setUri(Uri.parse(videoResult.url))
+                                    .setMediaId(current.id)
+                                    .setMediaMetadata(mediaMetadata)
+                                    .build()
+
+                                val videoSource = mediaSourceFactory.createMediaSource(videoMediaItem)
+                                val finalSource = if (!videoResult.audioUrl.isNullOrBlank()) {
+                                    val audioMediaItem = MediaItem.Builder()
+                                        .setUri(Uri.parse(videoResult.audioUrl))
+                                        .setMediaId("${current.id}_audio")
+                                        .build()
+                                    val audioSource = mediaSourceFactory.createMediaSource(audioMediaItem)
+                                    MergingMediaSource(videoSource, audioSource)
+                                } else {
+                                    videoSource
+                                }
+
+                                applyTrackSelectionQuality(_currentVideoQuality.value)
+                                exoPlayer.setMediaSource(finalSource)
+                                exoPlayer.prepare()
+                                if (currentPos > 0L) exoPlayer.seekTo(currentPos)
+                                exoPlayer.playWhenReady = true
+                                exoPlayer.play()
+                                _isLoading.value = false
+                                _isPlaying.value = true
+                                Log.d("SPASIBA_111", "[EXOPLAYER_RECOVERY_SUCCESS] Video recovered and playing at ${currentPos}ms")
+                            } else {
+                                Log.e("SPASIBA_111", "[EXOPLAYER_RECOVERY_FAILED] Video recovery failed to resolve new URLs")
+                                _isLoading.value = false
+                                _isPlaying.value = false
+                            }
                         }
                     } else {
-                        launch(Dispatchers.Main) {
-                            _isLoading.value = false
-                            _isPlaying.value = false
+                        val newResult = repository.resolveStreamResult(current.id, forceRefresh = true)
+                        withContext(Dispatchers.Main) {
+                            if (newResult != null && newResult.url.isNotBlank()) {
+                                val targetUri = if (newResult.url.startsWith("/")) Uri.fromFile(File(newResult.url)) else Uri.parse(newResult.url)
+                                val dataSourceFactory = createHttpDataSourceFactory(newResult.url, newResult.headers)
+                                val mediaSourceFactory = DefaultMediaSourceFactory(context, DefaultExtractorsFactory().setConstantBitrateSeekingEnabled(true))
+                                    .setDataSourceFactory(dataSourceFactory)
+
+                                val mediaMetadata = MediaMetadata.Builder()
+                                    .setTitle(current.title)
+                                    .setArtist(current.author)
+                                    .setArtworkUri(Uri.parse(current.thumbnail))
+                                    .build()
+
+                                val mediaItem = MediaItem.Builder()
+                                    .setUri(targetUri)
+                                    .setMediaId(current.id)
+                                    .setMediaMetadata(mediaMetadata)
+                                    .build()
+
+                                val mediaSource = mediaSourceFactory.createMediaSource(mediaItem)
+                                exoPlayer.setMediaSource(mediaSource)
+                                exoPlayer.prepare()
+                                if (currentPos > 0L) exoPlayer.seekTo(currentPos)
+                                exoPlayer.playWhenReady = true
+                                exoPlayer.play()
+                                _isLoading.value = false
+                                _isPlaying.value = true
+                                Log.d("SPASIBA_111", "[EXOPLAYER_RECOVERY_SUCCESS] Audio recovered and playing at ${currentPos}ms")
+                            } else {
+                                Log.e("SPASIBA_111", "[EXOPLAYER_RECOVERY_FAILED] Audio recovery failed to resolve new URLs")
+                                _isLoading.value = false
+                                _isPlaying.value = false
+                            }
                         }
                     }
                 }
-                return
+            } else {
+                Log.e("SPASIBA_111", "[EXOPLAYER_FATAL] Unrecoverable player error for '${current.title}'")
+                _isLoading.value = false
+                _isPlaying.value = false
             }
-            _isLoading.value = false
-            _isPlaying.value = false
         }
     }
 }

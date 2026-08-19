@@ -22,6 +22,7 @@ import app.spasiba.nativeapp2.MainActivity
 import app.spasiba.nativeapp2.R
 import app.spasiba.nativeapp2.SpasibaApplication
 import app.spasiba.nativeapp2.data.model.Song
+import app.spasiba.nativeapp2.data.network.HttpClientProvider
 import app.spasiba.nativeapp2.player.NativePlayerManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers

@@ -326,7 +326,10 @@ fun ExpandedPlayerSheet(
                             color = if (!isVideoModeActive) Color.White else Color.Transparent,
                             modifier = Modifier
                                 .clip(CircleShape)
-                                .clickable { isVideoModeActive = false }
+                                .clickable {
+                                    isVideoModeActive = false
+                                    playerManager.disableVideoMode()
+                                }
                         ) {
                             Text(
                                 text = "Audio",
@@ -446,43 +449,41 @@ fun ExpandedPlayerSheet(
                             modifier = Modifier.fillMaxWidth(),
                             contentAlignment = Alignment.Center
                         ) {
-                            if (isVideoModeActive) {
-                                Box(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .aspectRatio(16f / 9f)
-                                        .background(Color.Black)
-                                        .clickable { showVideoControls = !showVideoControls },
-                                    contentAlignment = Alignment.Center
-                                ) {
-                                    androidx.compose.runtime.key(isFullscreenVideoOpen) {
+                                if (isVideoModeActive) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .aspectRatio(16f / 9f)
+                                            .background(Color.Black)
+                                            .clickable { showVideoControls = !showVideoControls },
+                                        contentAlignment = Alignment.Center
+                                    ) {
                                         if (!isFullscreenVideoOpen) {
                                             androidx.compose.ui.viewinterop.AndroidView(
                                                 factory = { ctx ->
-                                                    androidx.media3.ui.PlayerView(ctx).apply {
+                                                    val inflater = android.view.LayoutInflater.from(ctx)
+                                                    (inflater.inflate(app.spasiba.nativeapp2.R.layout.spasiba_player_view, null, false) as androidx.media3.ui.PlayerView).apply {
                                                         player = playerManager.exoPlayer
-                                                        useController = false
                                                         resizeMode = if (isVideoZoomed) {
                                                             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                                                         } else {
                                                             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                                         }
-                                                        setBackgroundColor(android.graphics.Color.BLACK)
-                                                        setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                                                     }
                                                 },
                                                 update = { playerView ->
-                                                    playerView.player = playerManager.exoPlayer
+                                                    if (playerView.player != playerManager.exoPlayer) {
+                                                        playerView.player = playerManager.exoPlayer
+                                                    }
                                                     playerView.resizeMode = if (isVideoZoomed) {
                                                         androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
-                                                    } else {
+                                                      } else {
                                                         androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                                                     }
                                                 },
                                                 modifier = Modifier.fillMaxSize()
                                             )
                                         }
-                                    }
 
                                     androidx.compose.animation.AnimatedVisibility(
                                         visible = !isPlaying || isLoading || showVideoControls,
@@ -894,20 +895,20 @@ fun ExpandedPlayerSheet(
             ) {
                 androidx.compose.ui.viewinterop.AndroidView(
                     factory = { ctx ->
-                        androidx.media3.ui.PlayerView(ctx).apply {
+                        val inflater = android.view.LayoutInflater.from(ctx)
+                        (inflater.inflate(app.spasiba.nativeapp2.R.layout.spasiba_player_view, null, false) as androidx.media3.ui.PlayerView).apply {
                             player = playerManager.exoPlayer
-                            useController = false
                             resizeMode = if (isVideoZoomed) {
                                 androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                             } else {
                                 androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_FIT
                             }
-                            setBackgroundColor(android.graphics.Color.BLACK)
-                            setShutterBackgroundColor(android.graphics.Color.TRANSPARENT)
                         }
                     },
                     update = { playerView ->
-                        playerView.player = playerManager.exoPlayer
+                        if (playerView.player != playerManager.exoPlayer) {
+                            playerView.player = playerManager.exoPlayer
+                        }
                         playerView.resizeMode = if (isVideoZoomed) {
                             androidx.media3.ui.AspectRatioFrameLayout.RESIZE_MODE_ZOOM
                         } else {

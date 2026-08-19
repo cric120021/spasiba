@@ -453,6 +453,10 @@ fun LibraryScreen(
                                     ) {
                                         Text(
                                             text = "No custom playlists created yet.",
+                                            style = MaterialTheme.typography.bodyMedium.copy(color = TextMuted)
+                                        )
+                                    }
+                                }
                             } else {
                                 items(playlists, key = { it.id }) { playlist ->
                                     val playlistSongsFlow = remember(playlist.id) { repository?.getSongsForPlaylist(playlist.id) }

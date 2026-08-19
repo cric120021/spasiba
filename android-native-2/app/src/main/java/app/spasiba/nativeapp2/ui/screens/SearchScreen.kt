@@ -217,16 +217,7 @@ fun SearchScreen(
     }
 
     val processedSearchResults = remember(searchResults) {
-        searchResults.sortedWith(
-            compareByDescending<Song> { it.views }
-                .thenByDescending { song ->
-                    val t = song.title.lowercase()
-                    if (t.contains("official music video")) 3
-                    else if (t.contains("official video")) 2
-                    else if (t.contains("official audio")) 1
-                    else 0
-                }
-        )
+        searchResults.distinctBy { it.id }
     }
 
     Column(

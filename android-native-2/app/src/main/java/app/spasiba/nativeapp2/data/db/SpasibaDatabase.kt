@@ -14,7 +14,7 @@ import androidx.room.RoomDatabase
         SearchHistoryEntity::class,
         ListeningHistoryEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = false
 )
 abstract class SpasibaDatabase : RoomDatabase() {

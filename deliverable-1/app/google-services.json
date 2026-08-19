@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "77073318921",
+    "project_id": "spasiba-eunoia",
+    "storage_bucket": "spasiba-eunoia.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:77073318921:android:aa81f55246b856638e24d8",
+        "android_client_info": {
+          "package_name": "app.spasiba.nativeapp2.debug"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB_C5pG075dqXVhZGN0A0bIfyxV-o2J91E"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

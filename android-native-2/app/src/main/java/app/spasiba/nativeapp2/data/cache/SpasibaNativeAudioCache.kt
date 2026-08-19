@@ -115,12 +115,22 @@ class SpasibaNativeAudioCache(private val context: Context) {
     private val streamCacheMap = ConcurrentHashMap<String, Pair<StreamingAudio, Long>>()
     private val resolveLocks = ConcurrentHashMap<String, Any>()
 
-    fun resolveStreamingAudio(rawVideoId: String): StreamingAudio {
+    fun invalidateStreamCache(rawVideoId: String) {
+        val videoId = normalizeVideoId(rawVideoId) ?: return
+        streamCacheMap.remove(videoId)
+        Log.d(LOG_TAG, "Invalidated in-memory stream cache for videoId=$videoId")
+    }
+
+    fun resolveStreamingAudio(rawVideoId: String, forceRefresh: Boolean = false): StreamingAudio {
         val videoId = normalizeVideoId(rawVideoId) ?: throw IllegalArgumentException("Invalid YouTube video id.")
         
+        if (forceRefresh) {
+            streamCacheMap.remove(videoId)
+        }
+
         val cached = streamCacheMap[videoId]
         val now = SystemClock.elapsedRealtime()
-        if (cached != null && (now - cached.second) < STREAM_CACHE_TTL_MS) {
+        if (!forceRefresh && cached != null && (now - cached.second) < STREAM_CACHE_TTL_MS) {
             Log.d(LOG_TAG, "STREAM RESOLVE HIT IN-MEMORY CACHE VIDEO_ID=$videoId")
             return cached.first
         }
@@ -128,22 +138,23 @@ class SpasibaNativeAudioCache(private val context: Context) {
         val lock = resolveLocks.getOrPut(videoId) { Any() }
         synchronized(lock) {
             val recheck = streamCacheMap[videoId]
-            if (recheck != null && (SystemClock.elapsedRealtime() - recheck.second) < STREAM_CACHE_TTL_MS) {
-                Log.d(LOG_TAG, "STREAM RESOLVE HIT RECHECK CACHE VIDEO_ID=$videoId")
+            if (!forceRefresh && recheck != null && (SystemClock.elapsedRealtime() - recheck.second) < STREAM_CACHE_TTL_MS) {
+                Log.d("SPASIBA_111", "[AUDIO_CACHE_HIT] Found cached audio stream for videoId=$videoId (URL=${recheck.first.url.take(50)})")
                 return recheck.first
             }
 
             ensureYoutubeDlInitialized()
+            updateYoutubeDlIfNeeded()
             val startedAtMs = SystemClock.elapsedRealtime()
             val request = baseYoutubeRequest(videoId).apply {
                 addOption("-f", FORMAT_SELECTOR)
             }
 
-        Log.d(LOG_TAG, "STREAM RESOLVE START VIDEO_ID=$videoId FORMAT=$FORMAT_SELECTOR")
+        Log.d("SPASIBA_111", "[AUDIO_STREAM_RESOLVE_START] Resolving audio stream via yt-dlp for videoId=$videoId FORMAT=$FORMAT_SELECTOR")
         val info = try {
             YoutubeDL.getInstance().getInfo(request)
         } catch (error: Throwable) {
-            Log.e(LOG_TAG, "STREAM RESOLVE FAILED VIDEO_ID=$videoId ELAPSED_SECONDS=${elapsedSecondsSince(startedAtMs)}", error)
+            Log.e("SPASIBA_111", "[AUDIO_STREAM_RESOLVE_FAIL] Audio stream failed for videoId=$videoId ELAPSED_SECONDS=${elapsedSecondsSince(startedAtMs)}: ${error.message}", error)
             throw error
         }
 
@@ -152,26 +163,46 @@ class SpasibaNativeAudioCache(private val context: Context) {
             ?: selectedFormat?.url?.takeIf { it.isNotBlank() }
             ?: throw IllegalStateException("yt-dlp did not return a playable best-audio URL.")
         val extension = selectedFormat?.ext?.takeIf { it.isNotBlank() } ?: info.ext
-        val headers = selectedFormat?.httpHeaders?.takeIf { it.isNotEmpty() }
-            ?: info.httpHeaders?.takeIf { it.isNotEmpty() }
-            ?: emptyMap()
         val duration = info.duration.coerceAtLeast(0)
         val mimeType = inferMimeTypeForExtension(extension)
+
+        val rawHeaders = selectedFormat?.httpHeaders?.takeIf { it.isNotEmpty() }
+            ?: info.httpHeaders?.takeIf { it.isNotEmpty() }
+            ?: emptyMap()
+
+        val matchingUa = when {
+            streamUrl.contains("c=ANDROID_VR") -> "com.google.android.apps.youtube.vr.oculus/1.59.19 (Linux; U; Android 12)"
+            streamUrl.contains("c=ANDROID_TESTSUITE") -> "com.google.android.youtube/1.9.0 (Linux; U; Android 14)"
+            streamUrl.contains("c=ANDROID_MUSIC") -> "com.google.android.apps.youtube.music/6.42.52 (Linux; U; Android 14; gzip)"
+            streamUrl.contains("c=ANDROID") -> "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+            streamUrl.contains("c=IOS") -> "com.google.ios.youtube/19.29.1 (iPhone16,2; U; CPU iOS 17_5_1 like Mac OS X)"
+            streamUrl.contains("c=TVHTML5") || streamUrl.contains("c=TV") -> "Mozilla/5.0 (SmartHub; SMART-TV; U; Linux/SmartTV) AppleWebKit/537.42"
+            streamUrl.contains("c=WEB_EMBEDDED") || streamUrl.contains("c=WEB") -> "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36"
+            else -> rawHeaders["User-Agent"] ?: "com.google.android.youtube/19.29.37 (Linux; U; Android 14)"
+        }
+
+        val finalHeaders = rawHeaders.toMutableMap().apply {
+            put("User-Agent", matchingUa)
+            if (streamUrl.contains("c=WEB_EMBEDDED") || streamUrl.contains("c=WEB")) {
+                put("Origin", "https://www.youtube.com")
+                put("Referer", "https://www.youtube.com/")
+            }
+        }
 
         val result = StreamingAudio(
             videoId = videoId,
             url = streamUrl,
             mimeType = mimeType,
-            headers = headers,
+            headers = finalHeaders,
             durationSeconds = duration
         )
 
         streamCacheMap[videoId] = Pair(result, SystemClock.elapsedRealtime())
 
         Log.d(
-            LOG_TAG,
-            "STREAM RESOLVE FINISHED VIDEO_ID=$videoId ELAPSED_SECONDS=${elapsedSecondsSince(startedAtMs)} " +
-                "EXT=${extension.orEmpty()} MIME=${mimeType.orEmpty()} DURATION_SECONDS=$duration HEADERS=${headers.keys.joinToString(",")}"
+            "SPASIBA_111",
+            "[AUDIO_STREAM_RESOLVE_SUCCESS] Resolved audio stream for videoId=$videoId in ${elapsedSecondsSince(startedAtMs)}s " +
+                "EXT=${extension.orEmpty()} MIME=${mimeType.orEmpty()} DURATION_SECONDS=$duration UA=$matchingUa URL=${streamUrl.take(60)}"
         )
         return result
         }
@@ -262,6 +293,7 @@ class SpasibaNativeAudioCache(private val context: Context) {
 
     private fun downloadAudio(videoId: String): CachedAudio {
         ensureYoutubeDlInitialized()
+        updateYoutubeDlIfNeeded()
         deleteTrackFiles(videoId)
         val outputTemplate = File(audioDir, "$videoId.%(ext)s").absolutePath
         val request = baseYoutubeRequest(videoId).apply {
@@ -312,7 +344,7 @@ class SpasibaNativeAudioCache(private val context: Context) {
             addOption("--retries", "2")
             addOption("--fragment-retries", "2")
             addOption("--extractor-retries", "2")
-            addOption("--extractor-args", "youtube:player_client=android_vr")
+            addOption("--extractor-args", "youtube:player_client=tv,web_embedded,android,web")
         }
 
     private fun selectBestAudioFormat(info: VideoInfo): VideoFormat? {
@@ -501,7 +533,7 @@ class SpasibaNativeAudioCache(private val context: Context) {
         private const val MAX_AUDIO_FILE_BYTES = 30L * 1024L * 1024L
         private const val STREAM_CACHE_TTL_MS = 3 * 3600 * 1000L
         private const val LOG_TAG = "SpasibaNativeAudio"
-        private const val FORMAT_SELECTOR = "bestaudio"
+        private const val FORMAT_SELECTOR = "140/251/139/250/249/bestaudio[ext=m4a]/bestaudio/best"
         private val VIDEO_ID_PATTERN = Regex("^[A-Za-z0-9_-]{6,32}$")
         private val sessionLock = Any()
 
