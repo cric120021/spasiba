@@ -1650,22 +1650,22 @@ object YouTubeMusicApi {
             val formatOption = if (isVideo) {
                 when {
                     quality.contains("2160") || quality.contains("4K", ignoreCase = true) -> 
-                        "bestvideo[height<=2160]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=2160]+bestaudio/best[height<=2160]/bestvideo+bestaudio/best"
                     quality.contains("1440") || quality.contains("2K", ignoreCase = true) -> 
-                        "bestvideo[height<=1440]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=1440]+bestaudio/best[height<=1440]/bestvideo+bestaudio/best"
                     quality.contains("1080") -> 
-                        "bestvideo[height<=1080]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=1080]+bestaudio/best[height<=1080]/bestvideo+bestaudio/22/best"
                     quality.contains("720") -> 
-                        "bestvideo[height<=720]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=720]+bestaudio/best[height<=720]/22/bestvideo+bestaudio/18/best"
                     quality.contains("480") -> 
-                        "bestvideo[height<=480]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=480]+bestaudio/best[height<=480]/bestvideo+bestaudio/18/best"
                     quality.contains("360") -> 
-                        "bestvideo[height<=360]+bestaudio/bestvideo+bestaudio"
+                        "bestvideo[height<=360]+bestaudio/best[height<=360]/18/best"
                     else -> 
-                        "bestvideo+bestaudio"
+                        "bestvideo[height<=720]+bestaudio/best[height<=720]/22/bestvideo+bestaudio/18/best"
                 }
             } else {
-                "140/139/bestaudio[ext=m4a]/bestaudio/best"
+                "140/251/139/250/249/bestaudio[ext=m4a]/bestaudio/best"
             }
 
             val extractorArgs = "youtube:player_client=$playerClient"
