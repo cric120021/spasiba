@@ -7,7 +7,7 @@ public struct ContentView: View {
         ZStack {
             // Keep the audio bridge rendering in the view hierarchy behind the opaque UI
             // so WebKit does not throttle or suspend audio playback.
-            HeadlessAudioBridgeRepresentable()
+            BackgroundAudioBridgeRepresentable()
                 .frame(width: 200, height: 200)
                 .allowsHitTesting(false)
 

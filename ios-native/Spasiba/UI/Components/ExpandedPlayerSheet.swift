@@ -379,15 +379,23 @@ public struct ExpandedPlayerSheet: View {
             if isVideoModeActive {
                 // Video Mode View (16:9)
                 ZStack {
-                    if let player = playerManager.avPlayer {
-                        VideoPlayer(player: player)
-                            .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
-                            .frame(maxWidth: .infinity)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
+                    if !isFullscreenVideoOpen {
+                        if let player = playerManager.avPlayer {
+                            VideoPlayer(player: player)
+                                .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        } else {
+                            ActiveVideoRepresentable()
+                                .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
+                                .frame(maxWidth: .infinity)
+                                .clipShape(RoundedRectangle(cornerRadius: 12))
+                        }
                     } else {
                         Rectangle()
                             .fill(Color.black)
                             .aspectRatio(16 / 9, contentMode: .fit)
+                            .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
 
                     // Video overlay controls
@@ -895,10 +903,16 @@ public struct ExpandedPlayerSheet: View {
         ZStack {
             Color.black.ignoresSafeArea()
 
-            if let player = playerManager.avPlayer {
-                VideoPlayer(player: player)
-                    .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
-                    .ignoresSafeArea()
+            if isFullscreenVideoOpen {
+                if let player = playerManager.avPlayer {
+                    VideoPlayer(player: player)
+                        .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
+                        .ignoresSafeArea()
+                } else {
+                    ActiveVideoRepresentable()
+                        .aspectRatio(16 / 9, contentMode: isVideoZoomed ? .fill : .fit)
+                        .ignoresSafeArea()
+                }
             }
 
             // Controls overlay

@@ -86,9 +86,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         }
         let configuration = createConfiguration()
         let wv = WKWebView(frame: CGRect(x: 0, y: 0, width: 320, height: 240), configuration: configuration)
-        wv.isOpaque = false
-        wv.backgroundColor = .clear
-        wv.scrollView.backgroundColor = .clear
+        wv.isOpaque = true
+        wv.backgroundColor = .black
+        wv.scrollView.backgroundColor = .black
+        wv.scrollView.isScrollEnabled = false
+        wv.scrollView.bounces = false
+        wv.scrollView.showsVerticalScrollIndicator = false
+        wv.scrollView.showsHorizontalScrollIndicator = false
+        wv.isUserInteractionEnabled = false
         wv.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
         wv.navigationDelegate = self
         self.webView = wv
@@ -569,16 +574,104 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
     public func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
         NSLog("[HeadlessAudioBridge] Headless bridge webView failed navigation: %@", error.localizedDescription)
     }
+    // MARK: - View Hosting & Active Video Container Management
+    private weak var backgroundHost: UIView?
+    private weak var activeVideoContainer: UIView?
+
+    public func setupBackgroundHost(_ host: UIView) {
+        self.backgroundHost = host
+        if activeVideoContainer == nil {
+            let wv = getOrCreateWebView()
+            if wv.superview != host {
+                wv.removeFromSuperview()
+                wv.frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+                wv.autoresizingMask = []
+                host.addSubview(wv)
+                NSLog("[HeadlessAudioBridge] webView assigned to Background Host")
+            }
+        }
+    }
+
+    public func attachVideo(to container: UIView) {
+        self.activeVideoContainer = container
+        let wv = getOrCreateWebView()
+        if wv.superview != container {
+            wv.removeFromSuperview()
+            wv.frame = container.bounds
+            wv.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            container.addSubview(wv)
+            NSLog("[HeadlessAudioBridge] webView attached to Active Video Container")
+        } else {
+            wv.frame = container.bounds
+        }
+    }
+
+    public func detachVideo(from container: UIView? = nil) {
+        if container == nil || self.activeVideoContainer === container {
+            self.activeVideoContainer = nil
+            let wv = getOrCreateWebView()
+            wv.removeFromSuperview()
+            if let host = backgroundHost {
+                wv.frame = CGRect(x: 0, y: 0, width: 200, height: 200)
+                wv.autoresizingMask = []
+                host.addSubview(wv)
+                NSLog("[HeadlessAudioBridge] webView returned to Background Host")
+            }
+        }
+    }
+}
+
+// MARK: - SwiftUI Representables
+
+public struct BackgroundAudioBridgeRepresentable: UIViewRepresentable {
+    public init() {}
+
+    public func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .clear
+        container.isUserInteractionEnabled = false
+        HeadlessAudioBridge.shared.setupBackgroundHost(container)
+        return container
+    }
+
+    public func updateUIView(_ uiView: UIView, context: Context) {
+        HeadlessAudioBridge.shared.setupBackgroundHost(uiView)
+    }
+}
+
+public struct ActiveVideoRepresentable: UIViewRepresentable {
+    public init() {}
+
+    public func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .black
+        container.clipsToBounds = true
+        container.isUserInteractionEnabled = false
+        HeadlessAudioBridge.shared.attachVideo(to: container)
+        return container
+    }
+
+    public func updateUIView(_ uiView: UIView, context: Context) {
+        HeadlessAudioBridge.shared.attachVideo(to: uiView)
+    }
+
+    public static func dismantleUIView(_ uiView: UIView, coordinator: ()) {
+        HeadlessAudioBridge.shared.detachVideo(from: uiView)
+    }
 }
 
 public struct HeadlessAudioBridgeRepresentable: UIViewRepresentable {
     public init() {}
 
-    public func makeUIView(context: Context) -> WKWebView {
-        return HeadlessAudioBridge.shared.getOrCreateWebView()
+    public func makeUIView(context: Context) -> UIView {
+        let container = UIView()
+        container.backgroundColor = .clear
+        container.isUserInteractionEnabled = false
+        HeadlessAudioBridge.shared.setupBackgroundHost(container)
+        return container
     }
 
-    public func updateUIView(_ uiView: WKWebView, context: Context) {
-        // Maintained by HeadlessAudioBridge singleton
+    public func updateUIView(_ uiView: UIView, context: Context) {
+        HeadlessAudioBridge.shared.setupBackgroundHost(uiView)
     }
 }
