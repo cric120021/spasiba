@@ -379,14 +379,17 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
     public func play() {
         self.userWantsPlayback = true
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript("playVideo();", completionHandler: nil)
+            guard let self = self else { return }
+            self.webView?.evaluateJavaScript("playVideo();", completionHandler: nil)
         }
     }
 
     public func pause() {
         self.userWantsPlayback = false
         DispatchQueue.main.async { [weak self] in
-            self?.webView?.evaluateJavaScript("pauseVideo();", completionHandler: nil)
+            guard let self = self else { return }
+            self.webView?.pauseAllMediaPlayback()
+            self.webView?.evaluateJavaScript("pauseVideo();", completionHandler: nil)
         }
     }
 

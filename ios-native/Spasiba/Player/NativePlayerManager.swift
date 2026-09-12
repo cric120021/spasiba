@@ -406,37 +406,57 @@ public final class NativePlayerManager: ObservableObject {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
+        // Disable skip interval commands so iOS shows Next/Previous track buttons instead
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.seekForwardCommand.isEnabled = false
+        commandCenter.seekBackwardCommand.isEnabled = false
+
+        commandCenter.playCommand.isEnabled = true
         commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
+            NSLog("[NativePlayerManager] Remote command: playCommand")
             if !self.isPlaying {
                 self.togglePlayPause()
             }
             return .success
         }
 
+        commandCenter.pauseCommand.isEnabled = true
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
+            NSLog("[NativePlayerManager] Remote command: pauseCommand")
             if self.isPlaying {
                 self.togglePlayPause()
             }
             return .success
         }
 
+        commandCenter.togglePlayPauseCommand.isEnabled = true
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
-            self?.togglePlayPause()
+            guard let self = self else { return .commandFailed }
+            NSLog("[NativePlayerManager] Remote command: togglePlayPauseCommand")
+            self.togglePlayPause()
             return .success
         }
 
+        commandCenter.nextTrackCommand.isEnabled = true
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
-            self?.playNext()
+            guard let self = self else { return .commandFailed }
+            NSLog("[NativePlayerManager] Remote command: nextTrackCommand")
+            self.playNext()
             return .success
         }
 
+        commandCenter.previousTrackCommand.isEnabled = true
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
-            self?.playPrevious()
+            guard let self = self else { return .commandFailed }
+            NSLog("[NativePlayerManager] Remote command: previousTrackCommand")
+            self.playPrevious()
             return .success
         }
 
+        commandCenter.changePlaybackPositionCommand.isEnabled = true
         commandCenter.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self = self, let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
@@ -458,6 +478,10 @@ public final class NativePlayerManager: ObservableObject {
         nowPlayingInfo[MPMediaItemPropertyPlaybackDuration] = duration
         nowPlayingInfo[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackSpeed) : 0.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
+        nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = max(0, queueEngine.currentIndex)
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = max(1, queueEngine.queue.count)
 
         // Cached artwork attachment
         if let artwork = currentArtwork, currentArtworkSongId == song.id {
