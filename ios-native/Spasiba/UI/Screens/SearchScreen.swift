@@ -802,24 +802,21 @@ public struct SearchScreen: View {
                         }
                     }
 
-                    // 3. Search Results List (SongTiles)
+                    // 3. Search Results List (SongTiles - clean non-slidable rows)
                     let remainingList = detectedArtist != nil ? searchResults : Array(searchResults.dropFirst())
                     ForEach(Array(remainingList.enumerated()), id: \.element.id) { index, song in
                         SongTile(
                             song: song,
                             isPlaying: song.id == player.currentSong?.id,
                             isLiked: repository.isLiked(songId: song.id),
-                            enableSwipe: true,
+                            enableSwipe: false,
                             onSongClick: {
                                 let globalIdx = searchResults.firstIndex(where: { $0.id == song.id }) ?? index
                                 player.playQueue(searchResults, startIndex: globalIdx)
                                 historyManager.addPlayedSong(song)
                             },
                             onLikeClick: { player.toggleLike(song) },
-                            onOptionsClick: { selectedSongForOptions = song },
-                            onSwipeToQueue: {
-                                player.playNextInQueue(song)
-                            }
+                            onOptionsClick: { selectedSongForOptions = song }
                         )
                         .padding(.horizontal, 16)
                     }
