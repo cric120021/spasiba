@@ -18,6 +18,8 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
     public var onTimeUpdate: ((_ currentTime: Double, _ duration: Double) -> Void)?
     public var onTrackEnded: (() -> Void)?
     public var onError: ((_ errorCode: Int) -> Void)?
+    public var onNextTrack: (() -> Void)?
+    public var onPreviousTrack: (() -> Void)?
 
     @Published public private(set) var isPlaying: Bool = false
     @Published public private(set) var isBuffering: Bool = false
@@ -133,6 +135,31 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             if (navigator.audioSession) {
                 navigator.audioSession.type = 'playback';
             }
+            if (navigator.mediaSession) {
+                var origSetActionHandler = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
+                navigator.mediaSession.setActionHandler = function(action, handler) {
+                    if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') {
+                        return origSetActionHandler(action, null);
+                    }
+                    return origSetActionHandler(action, handler);
+                };
+                navigator.mediaSession.setActionHandler('nexttrack', function() {
+                    if (window.__spasibaBridge) {
+                        window.__spasibaBridge.postMessage({ type: 'nextTrack' });
+                    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.spasibaBridge) {
+                        window.webkit.messageHandlers.spasibaBridge.postMessage({ type: 'nextTrack' });
+                    }
+                });
+                navigator.mediaSession.setActionHandler('previoustrack', function() {
+                    if (window.__spasibaBridge) {
+                        window.__spasibaBridge.postMessage({ type: 'prevTrack' });
+                    } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.spasibaBridge) {
+                        window.webkit.messageHandlers.spasibaBridge.postMessage({ type: 'prevTrack' });
+                    }
+                });
+                navigator.mediaSession.setActionHandler('seekforward', null);
+                navigator.mediaSession.setActionHandler('seekbackward', null);
+            }
         } catch (e) {}
         """
         let webkitHiderScript = WKUserScript(
@@ -173,6 +200,23 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             try {
               if (navigator.audioSession) {
                 navigator.audioSession.type = 'playback';
+              }
+              if (navigator.mediaSession) {
+                var origSetActionHandler = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
+                navigator.mediaSession.setActionHandler = function(action, handler) {
+                  if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') {
+                    return origSetActionHandler(action, null);
+                  }
+                  return origSetActionHandler(action, handler);
+                };
+                navigator.mediaSession.setActionHandler('nexttrack', function() {
+                  postBridge({ type: 'nextTrack' });
+                });
+                navigator.mediaSession.setActionHandler('previoustrack', function() {
+                  postBridge({ type: 'prevTrack' });
+                });
+                navigator.mediaSession.setActionHandler('seekforward', null);
+                navigator.mediaSession.setActionHandler('seekbackward', null);
               }
             } catch (e) {}
           </script>
@@ -485,6 +529,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                     self.duration = dur
                 }
                 self.onTimeUpdate?(self.currentTime, self.duration)
+
+            case "nextTrack":
+                NSLog("[HeadlessAudioBridge] Received nextTrack from MediaSession")
+                self.onNextTrack?()
+
+            case "prevTrack":
+                NSLog("[HeadlessAudioBridge] Received prevTrack from MediaSession")
+                self.onPreviousTrack?()
 
             case "error":
                 let code = dict["code"] as? Int ?? -1

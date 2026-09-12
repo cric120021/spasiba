@@ -103,6 +103,22 @@ public final class NativePlayerManager: ObservableObject {
             guard let self = self else { return }
             self.handlePlaybackError(code: code)
         }
+
+        bridge.onNextTrack = { [weak self] in
+            guard let self = self else { return }
+            NSLog("[NativePlayerManager] Bridge received nextTrack event")
+            DispatchQueue.main.async {
+                self.playNext()
+            }
+        }
+
+        bridge.onPreviousTrack = { [weak self] in
+            guard let self = self else { return }
+            NSLog("[NativePlayerManager] Bridge received prevTrack event")
+            DispatchQueue.main.async {
+                self.playPrevious()
+            }
+        }
     }
 
     private func handlePlaybackError(code: Int) {
@@ -528,6 +544,14 @@ public final class NativePlayerManager: ObservableObject {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackSpeed) : 0.0
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+
+        let commandCenter = MPRemoteCommandCenter.shared()
+        commandCenter.skipForwardCommand.preferredIntervals = []
+        commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.preferredIntervals = []
+        commandCenter.skipBackwardCommand.isEnabled = false
+        commandCenter.nextTrackCommand.isEnabled = true
+        commandCenter.previousTrackCommand.isEnabled = true
 
         // Cached artwork attachment
         if let artwork = currentArtwork, currentArtworkSongId == song.id {
