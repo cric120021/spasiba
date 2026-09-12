@@ -16,14 +16,14 @@ public struct HomeScreen: View {
     @State private var selectedCategory: CategoryChip? = nil
     @State private var categorySearchSongs: [Song] = []
     @State private var categoryShelvesState: [HomeShelf] = []
-    @State private var liveHomeShelves: [HomeShelf] = [
+    @State private var liveHomeShelves: [HomeShelf] = YouTubeMusicApi.shared.cachedHomeShelves.isEmpty ? [
         HomeShelf(
             title: "Quick picks",
             subtitle: "Listen again",
             style: .quickPicksGrid,
             songs: YouTubeMusicApi.getFallbackTracks()
         )
-    ]
+    ] : YouTubeMusicApi.shared.cachedHomeShelves
 
     @State private var topChartsState: [Song] = YouTubeMusicApi.getFallbackTracks()
     @State private var punjabiSongsState: [Song] = []
@@ -968,6 +968,10 @@ private struct QuickPickColumn: Identifiable {
     }
 
     private func initialLoad() async {
+        if liveHomeShelves.count > 1 && !punjabiSongsState.isEmpty {
+            return // Data already loaded; skip redundant network refetches!
+        }
+
         Task {
             let chips = await YouTubeMusicApi.shared.fetchCategoryChips()
             if !chips.isEmpty {
@@ -1032,7 +1036,51 @@ private struct QuickPickColumn: Identifiable {
     }
 
     private func reloadAllData() async {
-        await initialLoad()
+        Task {
+            let chips = await YouTubeMusicApi.shared.fetchCategoryChips()
+            if !chips.isEmpty {
+                await MainActor.run { self.categoryChipsState = chips }
+            }
+        }
+
+        Task {
+            let shelves = await YouTubeMusicApi.shared.fetchYouTubeMusicHomeShelves(forceRefresh: true)
+            if !shelves.isEmpty {
+                await MainActor.run {
+                    self.liveHomeShelves = shelves
+                    self.isShelvesLoading = false
+                }
+            }
+        }
+
+        Task {
+            let charts = await YouTubeMusicApi.shared.searchSongs(query: "latest release songs 2026 official")
+            if !charts.isEmpty {
+                await MainActor.run { self.topChartsState = charts }
+            }
+        }
+
+        Task {
+            let punjabi = await YouTubeMusicApi.shared.searchSongs(query: "latest punjabi songs 2026 official")
+            if !punjabi.isEmpty {
+                await MainActor.run { self.punjabiSongsState = punjabi }
+            }
+        }
+
+        Task {
+            let hindi = await YouTubeMusicApi.shared.searchSongs(query: "latest hindi songs 2026 official")
+            if !hindi.isEmpty {
+                await MainActor.run { self.hindiSongsState = hindi }
+            }
+        }
+
+        Task {
+            let english = await YouTubeMusicApi.shared.searchSongs(query: "latest english pop songs 2026 official")
+            if !english.isEmpty {
+                await MainActor.run { self.englishSongsState = english }
+            }
+        }
+
         if let currentCat = selectedCategory {
             loadCategoryShelves(currentCat)
         }

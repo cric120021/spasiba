@@ -105,8 +105,9 @@ public struct SpasibaAppShell: View {
                         }
                     )
                 } else {
-                    switch currentScreen {
-                    case 0:
+                    // 1. Core Primary Navigation Tabs (0: Home, 1: Search, 2: Eunoia, 3: Library)
+                    // Retained permanently in memory to prevent view destruction, re-fetching, and artwork reloading.
+                    ZStack {
                         HomeScreen(
                             onSearchClick: { navigateTo(1) },
                             onLibraryClick: { navigateTo(3) },
@@ -128,110 +129,120 @@ public struct SpasibaAppShell: View {
                                 selectedOptionsMenuSong = song
                             }
                         )
+                        .opacity(currentScreen == 0 ? 1 : 0)
+                        .allowsHitTesting(currentScreen == 0)
 
-                    case 1:
                         SearchScreen(
                             onArtistClick: { artist in
                                 selectedArtistName = artist
                                 navigateTo(9)
                             }
                         )
+                        .opacity(currentScreen == 1 ? 1 : 0)
+                        .allowsHitTesting(currentScreen == 1)
 
-                    case 2:
                         EunoiaScreen()
+                            .opacity(currentScreen == 2 ? 1 : 0)
+                            .allowsHitTesting(currentScreen == 2)
 
-                    case 3:
                         LibraryScreen()
+                            .opacity(currentScreen == 3 ? 1 : 0)
+                            .allowsHitTesting(currentScreen == 3)
+                    }
 
-                    case 4:
-                        ProfileScreen()
+                    // 2. Secondary & Detail Screens (Screen Index >= 4)
+                    if currentScreen >= 4 {
+                        switch currentScreen {
+                        case 4:
+                            ProfileScreen()
 
-                    case 5:
-                        PlaylistOperationsScreen(
-                            playerManager: player,
-                            onBackClick: { navigateBack() }
-                        )
+                        case 5:
+                            PlaylistOperationsScreen(
+                                playerManager: player,
+                                onBackClick: { navigateBack() }
+                            )
 
-                    case 6:
-                        FriendsListScreen(
-                            onBackClick: { navigateBack() },
-                            onQuickInviteFriend: { friend in
-                                EunoiaSessionManager.shared.quickInvite(friend: friend)
-                                navigateTo(2)
-                            },
-                            onOpenFriendChat: { friend in
-                                activeChatFriend = friend
-                                navigateTo(7)
-                            }
-                        )
-
-                    case 7:
-                        if let friend = activeChatFriend {
-                            FriendChatScreen(
-                                friendId: friend.friendId,
-                                friendName: friend.name,
+                        case 6:
+                            FriendsListScreen(
                                 onBackClick: { navigateBack() },
-                                onOpenDetails: { navigateTo(8) },
-                                onRemoveFriend: { targetId in
-                                    EunoiaSessionManager.shared.removeFriendSignal(friendId: targetId)
-                                },
-                                onQuickInvite: { targetFriend in
-                                    EunoiaSessionManager.shared.sendInvite(friendId: targetFriend.friendId, friendName: targetFriend.name)
+                                onQuickInviteFriend: { friend in
+                                    EunoiaSessionManager.shared.quickInvite(friend: friend)
                                     navigateTo(2)
+                                },
+                                onOpenFriendChat: { friend in
+                                    activeChatFriend = friend
+                                    navigateTo(7)
                                 }
                             )
-                        } else {
-                            HomeScreen()
-                        }
 
-                    case 8:
-                        if let friend = activeChatFriend {
-                            FriendProfileDetailsScreen(
-                                friendId: friend.friendId,
-                                friendName: friend.name,
+                        case 7:
+                            if let friend = activeChatFriend {
+                                FriendChatScreen(
+                                    friendId: friend.friendId,
+                                    friendName: friend.name,
+                                    onBackClick: { navigateBack() },
+                                    onOpenDetails: { navigateTo(8) },
+                                    onRemoveFriend: { targetId in
+                                        EunoiaSessionManager.shared.removeFriendSignal(friendId: targetId)
+                                    },
+                                    onQuickInvite: { targetFriend in
+                                        EunoiaSessionManager.shared.sendInvite(friendId: targetFriend.friendId, friendName: targetFriend.name)
+                                        navigateTo(2)
+                                    }
+                                )
+                            } else {
+                                EmptyView()
+                            }
+
+                        case 8:
+                            if let friend = activeChatFriend {
+                                FriendProfileDetailsScreen(
+                                    friendId: friend.friendId,
+                                    friendName: friend.name,
+                                    onBackClick: { navigateBack() },
+                                    onOpenChat: { navigateBack() },
+                                    onRemoveFriend: { targetId in
+                                        EunoiaSessionManager.shared.removeFriendSignal(friendId: targetId)
+                                    },
+                                    onQuickInvite: { targetFriend in
+                                        EunoiaSessionManager.shared.sendInvite(friendId: targetFriend.friendId, friendName: targetFriend.name)
+                                        navigateTo(2)
+                                    }
+                                )
+                            } else {
+                                EmptyView()
+                            }
+
+                        case 9:
+                            ArtistDetailsScreen(
+                                artistName: selectedArtistName ?? "Artist",
+                                currentSong: player.currentSong,
+                                likedSongs: player.likedSongIds,
                                 onBackClick: { navigateBack() },
-                                onOpenChat: { navigateBack() },
-                                onRemoveFriend: { targetId in
-                                    EunoiaSessionManager.shared.removeFriendSignal(friendId: targetId)
+                                onSongClick: { song, list, idx in
+                                    player.playQueue(list, startIndex: idx, sourceLabel: "Artist: \(selectedArtistName ?? "")")
                                 },
-                                onQuickInvite: { targetFriend in
-                                    EunoiaSessionManager.shared.sendInvite(friendId: targetFriend.friendId, friendName: targetFriend.name)
-                                    navigateTo(2)
+                                onLikeClick: { songId in
+                                    if let s = (player.queue).first(where: { $0.id == songId }) ?? player.currentSong {
+                                        player.toggleLike(s)
+                                    }
+                                },
+                                onOptionsClick: { song in
+                                    selectedOptionsMenuSong = song
                                 }
                             )
-                        } else {
-                            HomeScreen()
+
+                        case 10:
+                            NotificationsScreen(
+                                onBackClick: { navigateBack() },
+                                onNavigateToRoom: { _ in navigateTo(2) },
+                                onNavigateToEunoia: { navigateTo(2) },
+                                onProfileClick: { navigateTo(4) }
+                            )
+
+                        default:
+                            EmptyView()
                         }
-
-                    case 9:
-                        ArtistDetailsScreen(
-                            artistName: selectedArtistName ?? "Artist",
-                            currentSong: player.currentSong,
-                            likedSongs: player.likedSongIds,
-                            onBackClick: { navigateBack() },
-                            onSongClick: { song, list, idx in
-                                player.playQueue(list, startIndex: idx, sourceLabel: "Artist: \(selectedArtistName ?? "")")
-                            },
-                            onLikeClick: { songId in
-                                if let s = (player.queue).first(where: { $0.id == songId }) ?? player.currentSong {
-                                    player.toggleLike(s)
-                                }
-                            },
-                            onOptionsClick: { song in
-                                selectedOptionsMenuSong = song
-                            }
-                        )
-
-                    case 10:
-                        NotificationsScreen(
-                            onBackClick: { navigateBack() },
-                            onNavigateToRoom: { _ in navigateTo(2) },
-                            onNavigateToEunoia: { navigateTo(2) },
-                            onProfileClick: { navigateTo(4) }
-                        )
-
-                    default:
-                        HomeScreen()
                     }
                 }
             }

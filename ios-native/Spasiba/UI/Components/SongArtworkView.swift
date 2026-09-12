@@ -1,10 +1,38 @@
 import SwiftUI
 
+// MARK: - In-Memory Thread-Safe Image Cache (0ms Instant Display)
+public final class SpasibaImageCache: @unchecked Sendable {
+    public static let shared = SpasibaImageCache()
+
+    private let memoryCache = NSCache<NSURL, UIImage>()
+
+    private init() {
+        memoryCache.countLimit = 600
+        memoryCache.totalCostLimit = 150 * 1024 * 1024 // 150 MB memory limit
+    }
+
+    public func image(for url: URL) -> UIImage? {
+        return memoryCache.object(forKey: url as NSURL)
+    }
+
+    public func insert(_ image: UIImage, for url: URL) {
+        let cost = Int(image.size.width * image.size.height * 4)
+        memoryCache.setObject(image, forKey: url as NSURL, cost: cost)
+    }
+
+    public func remove(for url: URL) {
+        memoryCache.removeObject(forKey: url as NSURL)
+    }
+}
+
 public struct SongArtworkView: View {
     public let song: Song?
     public let directUrl: String?
     public let directFallbackId: String?
     public var cornerRadius: CGFloat = 8
+
+    @State private var loadedImage: UIImage? = nil
+    @State private var hasFailedTarget: Bool = false
 
     public init(song: Song, cornerRadius: CGFloat = 8) {
         self.song = song
@@ -47,54 +75,72 @@ public struct SongArtworkView: View {
         return URL(string: "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500")
     }
 
+    private var activeUrl: URL? {
+        if !hasFailedTarget, let t = targetUrl {
+            return t
+        }
+        return fallbackUrl
+    }
+
     public var body: some View {
+        let url = activeUrl
+        let cached = url.flatMap { SpasibaImageCache.shared.image(for: $0) }
+            ?? targetUrl.flatMap { SpasibaImageCache.shared.image(for: $0) }
+            ?? fallbackUrl.flatMap { SpasibaImageCache.shared.image(for: $0) }
+
         ZStack {
             Color(hex: 0x222222)
 
-            if let url = targetUrl {
-                AsyncImage(url: url) { phase in
-                    switch phase {
-                    case .success(let image):
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                    case .failure:
-                        // Automatic fallback to direct YouTube CDN
-                        if let fb = fallbackUrl, fb != url {
-                            AsyncImage(url: fb) { p2 in
-                                if let img2 = p2.image {
-                                    img2.resizable().aspectRatio(contentMode: .fill)
-                                } else {
-                                    placeholderView
-                                }
-                            }
-                        } else {
-                            placeholderView
-                        }
-                    case .empty:
-                        ZStack {
-                            Color(hex: 0x242426)
-                            ProgressView()
-                                .scaleEffect(0.6)
-                                .progressViewStyle(CircularProgressViewStyle(tint: .white.opacity(0.4)))
-                        }
-                    @unknown default:
-                        placeholderView
+            if let img = loadedImage ?? cached {
+                Image(uiImage: img)
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else if let loadUrl = url {
+                placeholderView
+                    .task(id: loadUrl) {
+                        await fetchImage(url: loadUrl)
                     }
-                }
-            } else if let fb = fallbackUrl {
-                AsyncImage(url: fb) { phase in
-                    if let image = phase.image {
-                        image.resizable().aspectRatio(contentMode: .fill)
-                    } else {
-                        placeholderView
-                    }
-                }
             } else {
                 placeholderView
             }
         }
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+    }
+
+    private func fetchImage(url: URL) async {
+        if let existing = SpasibaImageCache.shared.image(for: url) {
+            await MainActor.run { self.loadedImage = existing }
+            return
+        }
+
+        var request = URLRequest(url: url)
+        request.cachePolicy = .returnCacheDataElseLoad
+        request.timeoutInterval = 10.0
+
+        do {
+            let (data, response) = try await HttpClientProvider.shared.session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse,
+                  httpResponse.statusCode == 200,
+                  let image = UIImage(data: data) else {
+                handleFetchFailure(failedUrl: url)
+                return
+            }
+
+            SpasibaImageCache.shared.insert(image, for: url)
+            await MainActor.run {
+                self.loadedImage = image
+            }
+        } catch {
+            handleFetchFailure(failedUrl: url)
+        }
+    }
+
+    private func handleFetchFailure(failedUrl: URL) {
+        Task { @MainActor in
+            if !hasFailedTarget, let fb = fallbackUrl, fb != failedUrl {
+                self.hasFailedTarget = true
+            }
+        }
     }
 
     private var placeholderView: some View {

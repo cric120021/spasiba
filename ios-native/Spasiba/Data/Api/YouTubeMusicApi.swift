@@ -52,11 +52,14 @@ public final class YouTubeMusicApi {
         return dynamicCategoryChips.isEmpty ? YouTubeMusicApi.defaultCategories : dynamicCategoryChips
     }
 
-    public func fetchYouTubeMusicHomeShelves() async -> [HomeShelf] {
-        return await fetchYouTubeMusicBrowseShelves(browseId: "FEmusic_home")
+    public func fetchYouTubeMusicHomeShelves(forceRefresh: Bool = false) async -> [HomeShelf] {
+        return await fetchYouTubeMusicBrowseShelves(browseId: "FEmusic_home", forceRefresh: forceRefresh)
     }
 
-    public func fetchYouTubeMusicBrowseShelves(browseId: String = "FEmusic_home", params: String? = nil) async -> [HomeShelf] {
+    public func fetchYouTubeMusicBrowseShelves(browseId: String = "FEmusic_home", params: String? = nil, forceRefresh: Bool = false) async -> [HomeShelf] {
+        if browseId == "FEmusic_home" && (params == nil || params?.isEmpty == true) && !forceRefresh && !cachedHomeShelves.isEmpty {
+            return cachedHomeShelves
+        }
         guard let url = URL(string: "https://music.youtube.com/youtubei/v1/browse") else { return [] }
 
         var payload: [String: Any] = [
@@ -186,17 +189,13 @@ public final class YouTubeMusicApi {
         return shelves
     }
 
-    public func searchSongs(query: String) async -> [Song] {
-        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+    public func fetchYouTubeMusicSearch(query: String, params: String? = nil) async -> [Song] {
+        let cleanQuery = query.replacingOccurrences(of: "%20", with: " ").trimmingCharacters(in: .whitespacesAndNewlines)
         guard !cleanQuery.isEmpty else { return [] }
-
-        if let cached = searchCache[cleanQuery.lowercased()] {
-            return cached
-        }
 
         guard let url = URL(string: "https://music.youtube.com/youtubei/v1/search") else { return [] }
 
-        let payload: [String: Any] = [
+        var payload: [String: Any] = [
             "query": cleanQuery,
             "context": [
                 "client": [
@@ -207,6 +206,14 @@ public final class YouTubeMusicApi {
                 ]
             ]
         ]
+        if let params = params, !params.isEmpty {
+            payload["params"] = params
+        }
+        if let visitor = visitorData, var ctx = payload["context"] as? [String: Any], var client = ctx["client"] as? [String: Any] {
+            client["visitorData"] = visitor
+            ctx["client"] = client
+            payload["context"] = ctx
+        }
 
         guard let httpBody = try? JSONSerialization.data(withJSONObject: payload) else { return [] }
 
@@ -223,15 +230,154 @@ public final class YouTubeMusicApi {
             guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200 else { return [] }
 
             guard let json = try JSONSerialization.jsonObject(with: data) as? [String: Any] else { return [] }
-            let songs = parseSearchContents(json)
-
-            if !songs.isEmpty {
-                searchCache[cleanQuery.lowercased()] = songs
+            if let respCtx = json["responseContext"] as? [String: Any], let vData = respCtx["visitorData"] as? String {
+                self.visitorData = vData
             }
+            return parseSearchContents(json)
+        } catch {
+            return []
+        }
+    }
+
+    public func fetchHtmlYoutubeSearch(query: String) async -> [Song] {
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanQuery.isEmpty else { return [] }
+
+        guard let encoded = cleanQuery.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let url = URL(string: "https://www.youtube.com/results?search_query=\(encoded)") else { return [] }
+
+        var request = URLRequest(url: url)
+        request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/127.0.0.0 Safari/537.36", forHTTPHeaderField: "User-Agent")
+        request.timeoutInterval = 8.0
+
+        do {
+            let (data, response) = try await HttpClientProvider.shared.session.data(for: request)
+            guard let httpResponse = response as? HTTPURLResponse, httpResponse.statusCode == 200,
+                  let html = String(data: data, encoding: .utf8) else { return [] }
+
+            var songs: [Song] = []
+            let initialMarker = "var ytInitialData = "
+            if let startRange = html.range(of: initialMarker) {
+                let jsonStart = html[startRange.upperBound...]
+                if let endRange = jsonStart.range(of: ";</script>") {
+                    let jsonString = String(jsonStart[..<endRange.lowerBound])
+                    if let jsonData = jsonString.data(using: .utf8),
+                       let rootObj = try? JSONSerialization.jsonObject(with: jsonData) as? [String: Any],
+                       let contents = rootObj["contents"] as? [String: Any],
+                       let twoCol = contents["twoColumnSearchResultsRenderer"] as? [String: Any],
+                       let primary = twoCol["primaryContents"] as? [String: Any],
+                       let sectionList = primary["sectionListRenderer"] as? [String: Any],
+                       let secContents = sectionList["contents"] as? [[String: Any]] {
+                        for sec in secContents {
+                            guard let itemSection = sec["itemSectionRenderer"] as? [String: Any],
+                                  let items = itemSection["contents"] as? [[String: Any]] else { continue }
+                            for item in items {
+                                guard let videoRenderer = item["videoRenderer"] as? [String: Any],
+                                      let videoId = videoRenderer["videoId"] as? String,
+                                      videoId.count == 11,
+                                      !songs.contains(where: { $0.id == videoId }) else { continue }
+
+                                let titleRuns = (videoRenderer["title"] as? [String: Any])?["runs"] as? [[String: Any]]
+                                guard let title = titleRuns?.first?["text"] as? String,
+                                      !title.isEmpty,
+                                      title.range(of: #"^\d+:\d+(:\d+)?$"#, options: .regularExpression) == nil,
+                                      !title.hasSuffix("views") else { continue }
+
+                                let ownerRuns = ((videoRenderer["ownerText"] as? [String: Any])?["runs"] as? [[String: Any]]) ??
+                                    ((videoRenderer["longBylineText"] as? [String: Any])?["runs"] as? [[String: Any]])
+                                let author = ownerRuns?.first?["text"] as? String ?? "Artist"
+                                let thumb = "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg"
+
+                                songs.append(Song(id: videoId, title: title, author: author, thumbnail: thumb, durationSeconds: 210))
+                                if songs.count >= 15 { break }
+                            }
+                            if songs.count >= 15 { break }
+                        }
+                    }
+                }
+            }
+
+            // Fallback regex if initial data didn't extract songs
+            if songs.isEmpty {
+                let pattern = #""videoId":"([a-zA-Z0-9_-]{11})".*?"title":\{"runs":\[\{"text":"([^"]+)"\}\]\}.*?"ownerText":\{"runs":\[\{"text":"([^"]+)"\}\]\}"#
+                if let regex = try? NSRegularExpression(pattern: pattern, options: []) {
+                    let nsString = html as NSString
+                    let matches = regex.matches(in: html, options: [], range: NSRange(location: 0, length: nsString.length))
+                    for match in matches {
+                        if songs.count >= 15 { break }
+                        guard match.numberOfRanges >= 4 else { continue }
+                        let vId = nsString.substring(with: match.range(at: 1))
+                        let t = nsString.substring(with: match.range(at: 2))
+                        let a = nsString.substring(with: match.range(at: 3))
+
+                        if vId.count == 11 && !songs.contains(where: { $0.id == vId }) &&
+                           !t.isEmpty && t.range(of: #"^\d+:\d+(:\d+)?$"#, options: .regularExpression) == nil &&
+                           !t.hasSuffix("views") && !t.contains("ago") {
+                            songs.append(Song(id: vId, title: t, author: a.isEmpty ? "Artist" : a, thumbnail: "https://i.ytimg.com/vi/\(vId)/hqdefault.jpg", durationSeconds: 210))
+                        }
+                    }
+                }
+            }
+
             return songs
         } catch {
             return []
         }
+    }
+
+    public func searchSongs(query: String) async -> [Song] {
+        let cleanQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleanQuery.isEmpty else { return [] }
+
+        let cacheKey = cleanQuery.lowercased()
+        if let cached = searchCache[cacheKey], !cached.isEmpty {
+            return cached
+        }
+
+        // Tier 0: Direct YouTube Music InnerTube Search (Filtered by Songs: "egWKAQI=")
+        let ytMusicSongs = await fetchYouTubeMusicSearch(query: cleanQuery, params: "egWKAQI=")
+        if ytMusicSongs.count >= 3 {
+            let ytMusicGeneral = await fetchYouTubeMusicSearch(query: cleanQuery, params: nil)
+            let topCard = ytMusicGeneral.first(where: { generalSong in
+                !ytMusicSongs.contains(where: { $0.id == generalSong.id })
+            })
+            var finalSongs = ytMusicSongs
+            if let topCard = topCard {
+                finalSongs.insert(topCard, at: 0)
+            }
+            var seen = Set<String>()
+            let result = finalSongs.filter { seen.insert($0.id).inserted }
+            searchCache[cacheKey] = result
+            return result
+        }
+
+        // Tier 1: YouTube Music General Search (Unfiltered fallback)
+        let ytMusicGeneral = await fetchYouTubeMusicSearch(query: cleanQuery, params: nil)
+        if !ytMusicGeneral.isEmpty {
+            let combined = (ytMusicGeneral + ytMusicSongs)
+            var seen = Set<String>()
+            let result = combined.filter { seen.insert($0.id).inserted }
+            if result.count >= 3 {
+                searchCache[cacheKey] = result
+                return result
+            }
+        }
+
+        // Tier 2: HTML Scrape Fallback
+        let htmlResults = await fetchHtmlYoutubeSearch(query: cleanQuery)
+        if !htmlResults.isEmpty {
+            let combined = (ytMusicSongs + htmlResults)
+            var seen = Set<String>()
+            let result = combined.filter { seen.insert($0.id).inserted }
+            searchCache[cacheKey] = result
+            return result
+        }
+
+        let fallback = ytMusicSongs.isEmpty ? ytMusicGeneral : ytMusicSongs
+        if !fallback.isEmpty {
+            searchCache[cacheKey] = fallback
+        }
+        return fallback
     }
 
     private func parseBrowseContents(_ json: [String: Any]) -> [HomeShelf] {
@@ -327,6 +473,18 @@ public final class YouTubeMusicApi {
            let vId = watchEnd["videoId"] as? String {
             videoId = vId
         }
+        if videoId.count != 11 {
+            let thumbUrl = extractThumbnail(itemRenderer)
+            if thumbUrl.contains("/vi/") {
+                let parts = thumbUrl.components(separatedBy: "/vi/")
+                if parts.count > 1 {
+                    let cand = String(parts[1].prefix(11))
+                    if cand.count == 11 && !cand.contains("/") && !cand.contains("?") {
+                        videoId = cand
+                    }
+                }
+            }
+        }
 
         let titleObj = itemRenderer["title"] as? [String: Any]
         let titleRuns = titleObj?["runs"] as? [[String: Any]]
@@ -356,7 +514,7 @@ public final class YouTubeMusicApi {
     }
 
     private func parseSearchContents(_ json: [String: Any]) -> [Song] {
-        var results: [Song] = []
+        var songs: [Song] = []
 
         guard let contents = json["contents"] as? [String: Any],
               let tabbedResults = contents["tabbedSearchResultsRenderer"] as? [String: Any],
@@ -370,67 +528,171 @@ public final class YouTubeMusicApi {
         }
 
         for section in sectionContents {
+            // 1. YouTube Music Official Top Result Card (musicCardShelfRenderer)
+            if let cardShelf = section["musicCardShelfRenderer"] as? [String: Any] {
+                let cardTitleRuns = (cardShelf["title"] as? [String: Any])?["runs"] as? [[String: Any]]
+                let cardTitle = cardTitleRuns?.first?["text"] as? String ?? ""
+
+                var cardVideoId = ""
+                let onTap = cardShelf["onTap"] as? [String: Any]
+                let buttons = cardShelf["buttons"] as? [[String: Any]]
+                let firstBtn = buttons?.first?["buttonRenderer"] as? [String: Any]
+                let cmd = firstBtn?["command"] as? [String: Any]
+                let watchEndpoint = (onTap?["watchEndpoint"] as? [String: Any]) ?? (cmd?["watchEndpoint"] as? [String: Any])
+                if let vId = watchEndpoint?["videoId"] as? String, vId.count == 11 {
+                    cardVideoId = vId
+                }
+
+                let cardSubtitleRuns = (cardShelf["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]]
+                let cardAuthor = cardSubtitleRuns?.compactMap { $0["text"] as? String }.joined() ?? "Artist"
+                var cardThumb = extractThumbnail(cardShelf)
+                if cardThumb.isEmpty && cardVideoId.count == 11 {
+                    cardThumb = "https://i.ytimg.com/vi/\(cardVideoId)/hqdefault.jpg"
+                }
+
+                if cardVideoId.count == 11 && !cardTitle.trimmingCharacters(in: .whitespaces).isEmpty && !songs.contains(where: { $0.id == cardVideoId }) {
+                    songs.append(Song(id: cardVideoId, title: cardTitle, author: cardAuthor, thumbnail: cardThumb, durationSeconds: 210))
+                }
+            }
+
+            // 2. YouTube Music Categorized Shelves (musicShelfRenderer)
             if let musicShelf = section["musicShelfRenderer"] as? [String: Any],
                let items = musicShelf["contents"] as? [[String: Any]] {
                 for item in items {
                     if let song = parseSongItem(item) {
-                        results.append(song)
+                        if !songs.contains(where: { $0.id == song.id }) {
+                            songs.append(song)
+                        }
                     }
                 }
-            } else if let cardShelf = section["musicCardShelfRenderer"] as? [String: Any],
-                      let titleRuns = (cardShelf["title"] as? [String: Any])?["runs"] as? [[String: Any]],
-                      let titleText = titleRuns.first?["text"] as? String {
-                let author = ((cardShelf["subtitle"] as? [String: Any])?["runs"] as? [[String: Any]])?.compactMap { $0["text"] as? String }.joined() ?? "Artist"
-                let thumb = extractThumbnail(cardShelf)
-                results.append(Song(id: "card_\(abs(titleText.hashValue))", title: titleText, author: author, thumbnail: thumb, durationSeconds: 210))
             }
         }
 
-        return results
+        return songs
     }
 
     private func parseSongItem(_ item: [String: Any]) -> Song? {
         guard let itemRenderer = item["musicResponsiveListItemRenderer"] as? [String: Any] else { return nil }
 
-        var videoId = ""
-        if let playlistItemData = itemRenderer["playlistItemData"] as? [String: Any],
-           let vId = playlistItemData["videoId"] as? String {
-            videoId = vId
-        }
-
         guard let flexColumns = itemRenderer["flexColumns"] as? [[String: Any]], !flexColumns.isEmpty else { return nil }
-        
+
         let titleColumn = flexColumns[0]
-        guard let titleRuns = ((titleColumn["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any])?["text"] as? [String: Any])?["runs"] as? [[String: Any]],
-              let titleText = titleRuns.first?["text"] as? String else {
+        guard let titleFlex = titleColumn["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any],
+              let titleTextObj = titleFlex["text"] as? [String: Any],
+              let titleRuns = titleTextObj["runs"] as? [[String: Any]],
+              let title = titleRuns.first?["text"] as? String,
+              !title.trimmingCharacters(in: .whitespaces).isEmpty else {
             return nil
         }
 
-        var authorText = "YouTube Music"
-        if flexColumns.count > 1 {
-            let authorColumn = flexColumns[1]
-            if let authorRuns = ((authorColumn["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any])?["text"] as? [String: Any])?["runs"] as? [[String: Any]] {
-                authorText = authorRuns.compactMap { $0["text"] as? String }.joined()
+        var videoId = ""
+
+        // A. Check playlistItemData
+        if let playlistItemData = itemRenderer["playlistItemData"] as? [String: Any],
+           let vId = playlistItemData["videoId"] as? String, vId.count == 11 {
+            videoId = vId
+        }
+
+        // B. Check overlay playNavigationEndpoint
+        if videoId.count != 11 {
+            if let overlay = itemRenderer["overlay"] as? [String: Any],
+               let thumbOverlay = overlay["musicItemThumbnailOverlayRenderer"] as? [String: Any],
+               let content = thumbOverlay["content"] as? [String: Any],
+               let playBtn = content["musicPlayButtonRenderer"] as? [String: Any],
+               let playNav = playBtn["playNavigationEndpoint"] as? [String: Any],
+               let watchEnd = playNav["watchEndpoint"] as? [String: Any],
+               let vId = watchEnd["videoId"] as? String, vId.count == 11 {
+                videoId = vId
             }
         }
 
-        var thumb = extractThumbnail(itemRenderer)
-        let finalId = videoId.count == 11 ? videoId : "yt_\(abs(titleText.hashValue))"
-        if thumb.isEmpty {
-            if videoId.count == 11 {
-                thumb = "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg"
-            } else {
-                thumb = "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500"
+        // C. Check navigationEndpoint or hover overlay
+        if videoId.count != 11 {
+            let nav = (itemRenderer["navigationEndpoint"] as? [String: Any]) ??
+                ((itemRenderer["overlay"] as? [String: Any])?["musicItemHoverOverlayRenderer"] as? [String: Any])?["content"] as? [String: Any]
+            if let navEndpoint = nav?["watchEndpoint"] as? [String: Any],
+               let vId = navEndpoint["videoId"] as? String, vId.count == 11 {
+                videoId = vId
             }
+        }
+
+        // D. Check title runs navigationEndpoint
+        if videoId.count != 11 {
+            for run in titleRuns {
+                if let runNav = run["navigationEndpoint"] as? [String: Any],
+                   let watchEnd = runNav["watchEndpoint"] as? [String: Any],
+                   let vId = watchEnd["videoId"] as? String, vId.count == 11 {
+                    videoId = vId
+                    break
+                }
+            }
+        }
+
+        // E. Check thumbnail URL fallback for /vi/{id}/
+        if videoId.count != 11 {
+            let thumbUrl = extractThumbnail(itemRenderer)
+            if thumbUrl.contains("/vi/") {
+                let parts = thumbUrl.components(separatedBy: "/vi/")
+                if parts.count > 1 {
+                    let cand = String(parts[1].prefix(11))
+                    if cand.count == 11 && !cand.contains("/") && !cand.contains("?") {
+                        videoId = cand
+                    }
+                }
+            }
+        }
+
+        guard videoId.count == 11 else { return nil }
+
+        var author = "Artist"
+        var parsedViews: Int64 = 0
+        if flexColumns.count > 1 {
+            let authorColumn = flexColumns[1]
+            if let authorFlex = authorColumn["musicResponsiveListItemFlexColumnRenderer"] as? [String: Any],
+               let authorTextObj = authorFlex["text"] as? [String: Any],
+               let authorRuns = authorTextObj["runs"] as? [[String: Any]] {
+                for run in authorRuns {
+                    guard let t = (run["text"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines), !t.isEmpty else { continue }
+                    let tLower = t.lowercased()
+                    if tLower.contains("views") || tLower.contains("plays") {
+                        parsedViews = parseViewCount(t)
+                    } else if t != "•" && t != "Song" && t != "Video" && t != "Explicit" && t.range(of: #"^\d+:\d+(:\d+)?$"#, options: .regularExpression) == nil {
+                        if author == "Artist" {
+                            author = t
+                        }
+                    }
+                }
+            }
+        }
+
+        var thumbnail = extractThumbnail(itemRenderer)
+        if thumbnail.isEmpty {
+            thumbnail = "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg"
         }
 
         return Song(
-            id: finalId,
-            title: titleText,
-            author: authorText,
-            thumbnail: thumb,
-            durationSeconds: 215
+            id: videoId,
+            title: title,
+            author: author,
+            thumbnail: thumbnail,
+            durationSeconds: 210,
+            views: parsedViews
         )
+    }
+
+    private func parseViewCount(_ text: String) -> Int64 {
+        let cleaned = text.replacingOccurrences(of: "[^0-9.KkMmBb]", with: "", options: .regularExpression)
+        if cleaned.hasSuffix("K") || cleaned.hasSuffix("k") {
+            let num = Double(cleaned.dropLast()) ?? 0
+            return Int64(num * 1_000)
+        } else if cleaned.hasSuffix("M") || cleaned.hasSuffix("m") {
+            let num = Double(cleaned.dropLast()) ?? 0
+            return Int64(num * 1_000_000)
+        } else if cleaned.hasSuffix("B") || cleaned.hasSuffix("b") {
+            let num = Double(cleaned.dropLast()) ?? 0
+            return Int64(num * 1_000_000_000)
+        }
+        return Int64(cleaned) ?? 0
     }
 
     private func extractThumbnail(_ container: [String: Any]) -> String {
