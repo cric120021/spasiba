@@ -111,9 +111,13 @@ public struct ExpandedPlayerSheet: View {
         }
         .ignoresSafeArea()
         .onAppear {
+            isVideoModeActive = playerManager.isVideoMode
             if activeTab == "LYRICS" {
                 playerManager.fetchLyricsForCurrentSong()
             }
+        }
+        .onChange(of: playerManager.isVideoMode) { isVideo in
+            isVideoModeActive = isVideo
         }
         .onChange(of: activeTab) { tab in
             if tab == "LYRICS" {

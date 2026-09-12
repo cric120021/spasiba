@@ -11,6 +11,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
     private var webView: WKWebView?
     private var isReady: Bool = false
     private var pendingVideoId: String? = nil
+    private var pendingStartSeconds: Double = 0
     private var userWantsPlayback: Bool = false
 
     // Callbacks for NativePlayerManager
@@ -174,11 +175,59 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             }
         } catch (e) {}
 
+        var removeYtJunk = function() {
+            try {
+                var captions = document.querySelectorAll(
+                    '.ytp-caption-window-container, .caption-window, .ytp-caption-segment, ' +
+                    '.ytp-subtitles-player-content, .ytp-subtitles-button, .ytp-modern-caption, ' +
+                    '.ytp-caption-window-rollup'
+                );
+                for (var i = 0; i < captions.length; i++) {
+                    captions[i].style.setProperty('display', 'none', 'important');
+                    captions[i].style.setProperty('opacity', '0', 'important');
+                    captions[i].style.setProperty('visibility', 'hidden', 'important');
+                }
+
+                var chrome = document.querySelectorAll(
+                    '.ytp-chrome-top, .ytp-chrome-bottom, .ytp-watermark, a.ytp-watermark, ' +
+                    '.ytp-pause-overlay, .ytp-pause-overlay-container, .ytp-youtube-button, ' +
+                    '.ytp-show-cards-title, .ytp-gradient-top, .ytp-gradient-bottom, ' +
+                    '.ytp-ce-element, .ytp-ce-covering-overlay, .ytp-contextmenu, ' +
+                    '.ytp-scroll-min, .ytp-cards-teaser, .ytp-paid-content-overlay, ' +
+                    '.branding-img-container, .branding-context-container, .ytp-impression-link, ' +
+                    '.ytp-unmute, .ytp-spinner, .ytp-large-play-button, .ytp-title, ' +
+                    '.ytp-title-link, .ytp-title-channel, .ytp-title-text, .ytp-share-button, ' +
+                    '.ytp-watch-later-button, .ytp-cards-button, a[href*="youtube.com"]'
+                );
+                for (var j = 0; j < chrome.length; j++) {
+                    chrome[j].style.setProperty('display', 'none', 'important');
+                    chrome[j].style.setProperty('opacity', '0', 'important');
+                    chrome[j].style.setProperty('pointer-events', 'none', 'important');
+                    chrome[j].style.setProperty('visibility', 'hidden', 'important');
+                }
+
+                var videos = document.querySelectorAll('video.video-stream.html5-main-video');
+                for (var k = 0; k < videos.length; k++) {
+                    videos[k].style.setProperty('width', '100%', 'important');
+                    videos[k].style.setProperty('height', '100%', 'important');
+                    videos[k].style.setProperty('object-fit', 'contain', 'important');
+                }
+            } catch (e) {}
+        };
+
         var injectCleanStyles = function() {
             var css = `
+                .ytp-caption-window-container,
+                .caption-window,
+                .ytp-caption-segment,
+                .ytp-subtitles-player-content,
+                .ytp-subtitles-button,
+                .ytp-modern-caption,
+                .ytp-caption-window-rollup,
                 .ytp-chrome-top,
                 .ytp-chrome-bottom,
                 .ytp-watermark,
+                a.ytp-watermark,
                 .ytp-pause-overlay,
                 .ytp-pause-overlay-container,
                 .ytp-youtube-button,
@@ -186,6 +235,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                 .ytp-gradient-top,
                 .ytp-gradient-bottom,
                 .ytp-ce-element,
+                .ytp-ce-covering-overlay,
                 .ytp-contextmenu,
                 .ytp-scroll-min,
                 .ytp-cards-teaser,
@@ -196,6 +246,13 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                 .ytp-unmute,
                 .ytp-spinner,
                 .ytp-large-play-button,
+                .ytp-title,
+                .ytp-title-link,
+                .ytp-title-channel,
+                .ytp-title-text,
+                .ytp-share-button,
+                .ytp-watch-later-button,
+                .ytp-cards-button,
                 a[href*="youtube.com"] {
                     display: none !important;
                     opacity: 0 !important;
@@ -208,16 +265,18 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                     object-fit: contain !important;
                 }
             `;
-            if (document.getElementById('spasiba-clean-style')) return;
-            var style = document.createElement('style');
-            style.id = 'spasiba-clean-style';
-            style.type = 'text/css';
-            style.appendChild(document.createTextNode(css));
-            if (document.head) {
-                document.head.appendChild(style);
-            } else if (document.documentElement) {
-                document.documentElement.appendChild(style);
+            if (!document.getElementById('spasiba-clean-style')) {
+                var style = document.createElement('style');
+                style.id = 'spasiba-clean-style';
+                style.type = 'text/css';
+                style.appendChild(document.createTextNode(css));
+                if (document.head) {
+                    document.head.appendChild(style);
+                } else if (document.documentElement) {
+                    document.documentElement.appendChild(style);
+                }
             }
+            removeYtJunk();
         };
 
         if (document.readyState === 'loading') {
@@ -225,7 +284,17 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         } else {
             injectCleanStyles();
         }
-        setInterval(injectCleanStyles, 1000);
+
+        try {
+            var obs = new MutationObserver(function() {
+                removeYtJunk();
+            });
+            if (document.documentElement) {
+                obs.observe(document.documentElement, { childList: true, subtree: true });
+            }
+        } catch (e) {}
+
+        setInterval(injectCleanStyles, 250);
         """
         let webkitHiderScript = WKUserScript(
             source: webkitHiderSource,
@@ -291,12 +360,43 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             } catch (e) {}
           </script>
           <style>
-            html, body { margin:0; padding:0; width:100%; height:100%; overflow:hidden; background-color:#000; }
-            #player { width:100%; height:100%; position:absolute; top:0; left:0; }
+            html, body {
+              margin: 0;
+              padding: 0;
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+              background-color: #000;
+              -webkit-user-select: none;
+              user-select: none;
+            }
+            #wrapper {
+              position: relative;
+              width: 100%;
+              height: 100%;
+              overflow: hidden;
+              background: #000;
+            }
+            #player {
+              position: absolute;
+              top: 0;
+              left: 0;
+              width: 100%;
+              height: 100%;
+              pointer-events: none;
+            }
+            iframe {
+              width: 100% !important;
+              height: 100% !important;
+              border: 0 !important;
+              pointer-events: none !important;
+            }
           </style>
         </head>
         <body>
-          <div id="player"></div>
+          <div id="wrapper">
+            <div id="player"></div>
+          </div>
           <script>
             function postBridge(data) {
               if (window.__spasibaBridge) {
@@ -340,6 +440,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             var player = null;
             var isReady = false;
             var pendingId = null;
+            var pendingStartSec = 0;
             var userWantsPlayback = false;
 
             function onYouTubeIframeAPIReady() {
@@ -357,6 +458,8 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   'rel': 0,
                   'modestbranding': 1,
                   'iv_load_policy': 3,
+                  'cc_load_policy': 0,
+                  'cc_lang_pref': 'none',
                   'enablejsapi': 1,
                   'origin': 'https://spasiba.vercel.app'
                 },
@@ -372,10 +475,20 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
               isReady = true;
               postBridge({ type: 'log', message: 'onPlayerReady fired' });
               postBridge({ type: 'ready' });
+              if (typeof player.unloadModule === 'function') {
+                try { player.unloadModule('captions'); } catch(e) {}
+                try { player.unloadModule('cc'); } catch(e) {}
+              }
+              if (typeof player.setOption === 'function') {
+                try { player.setOption('captions', 'track', {}); } catch(e) {}
+                try { player.setOption('cc', 'track', {}); } catch(e) {}
+              }
               if (pendingId) {
                 var target = pendingId;
+                var targetSec = pendingStartSec || 0;
                 pendingId = null;
-                loadVideo(target);
+                pendingStartSec = 0;
+                loadVideo(target, targetSec);
               }
             }
 
@@ -410,12 +523,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
               });
             }
 
-            function loadVideo(videoId) {
-              postBridge({ type: 'log', message: 'loadVideo called with: ' + videoId });
+            function loadVideo(videoId, startSeconds) {
+              postBridge({ type: 'log', message: 'loadVideo called with: ' + videoId + ' at: ' + startSeconds });
               userWantsPlayback = true;
+              var startSec = (typeof startSeconds === 'number' && startSeconds > 0) ? startSeconds : 0;
               if (!isReady || !player) {
                 postBridge({ type: 'log', message: 'Player not ready, pendingId set: ' + videoId });
                 pendingId = videoId;
+                pendingStartSec = startSec;
                 return;
               }
               try {
@@ -426,15 +541,23 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   player.setVolume(100);
                 }
                 if (typeof player.loadVideoById === 'function') {
-                  player.loadVideoById({ videoId: videoId, startSeconds: 0 });
+                  player.loadVideoById({ videoId: videoId, startSeconds: startSec });
                   player.playVideo();
-                  postBridge({ type: 'log', message: 'player.loadVideoById executed for: ' + videoId });
+                  postBridge({ type: 'log', message: 'player.loadVideoById executed for: ' + videoId + ' at ' + startSec });
                 } else if (typeof player.cueVideoById === 'function') {
-                  player.cueVideoById({ videoId: videoId });
+                  player.cueVideoById({ videoId: videoId, startSeconds: startSec });
                   player.playVideo();
                   postBridge({ type: 'log', message: 'player.cueVideoById + play executed for: ' + videoId });
                 } else {
                   postBridge({ type: 'log', message: 'No loadVideoById method found on player' });
+                }
+                if (typeof player.unloadModule === 'function') {
+                  try { player.unloadModule('captions'); } catch(e) {}
+                  try { player.unloadModule('cc'); } catch(e) {}
+                }
+                if (typeof player.setOption === 'function') {
+                  try { player.setOption('captions', 'track', {}); } catch(e) {}
+                  try { player.setOption('cc', 'track', {}); } catch(e) {}
                 }
               } catch (e) {
                 postBridge({ type: 'log', message: 'loadVideo exception: ' + e.toString() });
@@ -487,23 +610,24 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
     }
 
     // MARK: - Public Playback Control API
-    public func loadAndPlay(videoId: String) {
+    public func loadAndPlay(videoId: String, startSeconds: Double = 0) {
         self.userWantsPlayback = true
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
             _ = self.getOrCreateWebView()
             if self.isReady {
-                let js = "loadVideo('\(videoId)');"
+                let js = "loadVideo('\(videoId)', \(startSeconds));"
                 self.webView?.evaluateJavaScript(js) { _, error in
                     if let error = error {
                         NSLog("[HeadlessAudioBridge] evaluateJavaScript error: %@", error.localizedDescription)
                     } else {
-                        NSLog("[HeadlessAudioBridge] evaluateJavaScript dispatched for: %@", videoId)
+                        NSLog("[HeadlessAudioBridge] evaluateJavaScript dispatched for: %@ at %.1fs", videoId, startSeconds)
                     }
                 }
             } else {
                 self.pendingVideoId = videoId
-                NSLog("[HeadlessAudioBridge] Queued pending videoId: %@", videoId)
+                self.pendingStartSeconds = startSeconds
+                NSLog("[HeadlessAudioBridge] Queued pending videoId: %@ at %.1fs", videoId, startSeconds)
             }
         }
     }

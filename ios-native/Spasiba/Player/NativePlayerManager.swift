@@ -76,6 +76,8 @@ public final class NativePlayerManager: ObservableObject {
 
     private var failedVideoIds = Set<String>()
     private var isResolvingFallback: Bool = false
+    private var musicVideoCache: [String: String] = [:]
+    public private(set) var currentlyLoadedVideoId: String? = nil
 
     private func setupAudioBridge() {
         let bridge = HeadlessAudioBridge.shared
@@ -324,7 +326,29 @@ public final class NativePlayerManager: ObservableObject {
             player?.pause()
             player = nil
         }
-        HeadlessAudioBridge.shared.loadAndPlay(videoId: song.id)
+
+        if isVideoMode {
+            if let cachedMvId = musicVideoCache[song.id] {
+                self.currentlyLoadedVideoId = cachedMvId
+                HeadlessAudioBridge.shared.loadAndPlay(videoId: cachedMvId, startSeconds: 0)
+            } else {
+                self.currentlyLoadedVideoId = song.id
+                HeadlessAudioBridge.shared.loadAndPlay(videoId: song.id, startSeconds: 0)
+                switchToVideoMode(for: song)
+            }
+        } else {
+            self.currentlyLoadedVideoId = song.id
+            HeadlessAudioBridge.shared.loadAndPlay(videoId: song.id, startSeconds: 0)
+            // Pre-warm official music video in background for instant 0s switch
+            Task {
+                if let mvSong = await YouTubeMusicApi.shared.resolveOfficialMusicVideo(title: song.title, artist: song.author) {
+                    await MainActor.run {
+                        self.musicVideoCache[song.id] = mvSong.id
+                        NSLog("[NativePlayerManager] Pre-warmed official music video: %@ for: %@", mvSong.id, song.title)
+                    }
+                }
+            }
+        }
         self.updateNowPlayingInfo()
     }
 
@@ -453,10 +477,38 @@ public final class NativePlayerManager: ObservableObject {
 
     public func disableVideoMode() {
         self.isVideoMode = false
+        // Audio continues uninterrupted
     }
 
     public func enableVideoMode() {
         self.isVideoMode = true
+        guard let song = currentSong else { return }
+        switchToVideoMode(for: song)
+    }
+
+    public func switchToVideoMode(for song: Song) {
+        let currentPos = self.currentTime
+        if let cachedMvId = musicVideoCache[song.id] {
+            if self.currentlyLoadedVideoId != cachedMvId {
+                self.currentlyLoadedVideoId = cachedMvId
+                HeadlessAudioBridge.shared.loadAndPlay(videoId: cachedMvId, startSeconds: currentPos)
+            }
+            return
+        }
+
+        Task {
+            if let mvSong = await YouTubeMusicApi.shared.resolveOfficialMusicVideo(title: song.title, artist: song.author) {
+                await MainActor.run {
+                    self.musicVideoCache[song.id] = mvSong.id
+                    if self.isVideoMode && self.currentSong?.id == song.id {
+                        if self.currentlyLoadedVideoId != mvSong.id {
+                            self.currentlyLoadedVideoId = mvSong.id
+                            HeadlessAudioBridge.shared.loadAndPlay(videoId: mvSong.id, startSeconds: self.currentTime)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     public func fetchLyricsForCurrentSong() {

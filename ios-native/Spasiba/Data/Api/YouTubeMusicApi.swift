@@ -1182,4 +1182,43 @@ extension YouTubeMusicApi {
             songs: songs
         )
     }
+
+    // MARK: - Official Music Video Resolution
+    public func resolveOfficialMusicVideo(title: String, artist: String) async -> Song? {
+        let cleanTitle = title
+            .replacingOccurrences(of: #"(?i)\b(official|audio|video|lyric|lyrics|remix|hd|4k|song|track)\b"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        let cleanArtist = artist
+            .replacingOccurrences(of: #"(?i)\b(official|topic|vevo)\b"#, with: "", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+
+        let searchQueries = [
+            "\(cleanTitle) \(cleanArtist) official music video",
+            "\(cleanTitle) \(cleanArtist) official video",
+            "\(cleanTitle) official music video"
+        ]
+
+        // 1. YouTube Music Videos filter ("EgWKAQIQAWoKEAkQBRAKEAMQBA==")
+        for query in searchQueries {
+            let candidates = await fetchYouTubeMusicSearch(query: query, params: "EgWKAQIQAWoKEAkQBRAKEAMQBA==")
+            if let match = candidates.first(where: { $0.id.count == 11 }) {
+                return match
+            }
+        }
+
+        // 2. Fallback: YouTube HTML Search
+        for query in searchQueries {
+            let candidates = await fetchHtmlYoutubeSearch(query: query)
+            if let match = candidates.first(where: { $0.id.count == 11 }) {
+                return match
+            }
+        }
+
+        return nil
+    }
+
+    public static func resolveOfficialMusicVideo(title: String, artist: String) async -> Song? {
+        return await shared.resolveOfficialMusicVideo(title: title, artist: artist)
+    }
 }
+
