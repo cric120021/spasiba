@@ -195,6 +195,8 @@ public struct SearchScreen: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
+                .frame(maxWidth: 780)
+                .frame(maxWidth: .infinity)
 
                 // 2. Main Search Content Area
                 ZStack {
@@ -206,6 +208,8 @@ public struct SearchScreen: View {
                         searchResultsView
                     }
                 }
+                .frame(maxWidth: 880)
+                .frame(maxWidth: .infinity)
             }
 
             // 3. Voice Search Modal Overlay (matching SearchScreen.kt lines 1300-1430)

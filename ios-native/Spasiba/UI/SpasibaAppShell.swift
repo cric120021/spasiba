@@ -334,6 +334,7 @@ public struct SpasibaAppShell: View {
                         player.playNext()
                     }
                 )
+                .frame(maxWidth: 680)
                 .padding(.bottom, 6)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -365,10 +366,10 @@ public struct SpasibaAppShell: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .frame(maxWidth: .infinity)
+            .frame(maxWidth: 680)
             .frame(height: 52)
-            .background(Color.black)
         }
+        .frame(maxWidth: .infinity)
         .background(Color.black)
     }
 }

@@ -126,6 +126,8 @@ public struct CategoryFeedScreen: View {
                         }
                     }
                 }
+                .frame(maxWidth: 1280)
+                .frame(maxWidth: .infinity)
                 .padding(.bottom, 140)
             }
         }

@@ -214,6 +214,8 @@ private struct QuickPickColumn: Identifiable {
 
                         Spacer().frame(height: 120) // Clearance for mini player dock
                     }
+                    .frame(maxWidth: 1280)
+                    .frame(maxWidth: .infinity)
                 }
                 .refreshable {
                     await reloadAllData()
@@ -777,64 +779,45 @@ private struct QuickPickColumn: Identifiable {
 
     private var spotifyShortcutsGrid: some View {
         let displayTracks = Array(filteredSongs.prefix(5))
-        return VStack(spacing: 8) {
-            // Row 1: Liked Songs & Track 1
-            HStack(spacing: 8) {
-                // Liked Songs Shortcut Card
-                Button(action: {
-                    onLibraryClick()
-                }) {
-                    HStack(spacing: 0) {
-                        LinearGradient(
-                            colors: [Color(hex: 0x450AF5), Color(hex: 0xC4EFD9)],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                        .frame(width: 56, height: 56)
-                        .overlay(
-                            Image(systemName: "heart.fill")
-                                .font(.system(size: 20))
-                                .foregroundColor(.white)
-                        )
+        let columns = [
+            GridItem(.adaptive(minimum: 165, maximum: 360), spacing: 8)
+        ]
 
-                        Text("Liked Songs (\(db.likedSongs.count))")
-                            .font(.system(size: 12, weight: .bold))
+        return LazyVGrid(columns: columns, spacing: 8) {
+            // Liked Songs Shortcut Card
+            Button(action: {
+                onLibraryClick()
+            }) {
+                HStack(spacing: 0) {
+                    LinearGradient(
+                        colors: [Color(hex: 0x450AF5), Color(hex: 0xC4EFD9)],
+                        startPoint: .topLeading,
+                        endPoint: .bottomTrailing
+                    )
+                    .frame(width: 56, height: 56)
+                    .overlay(
+                        Image(systemName: "heart.fill")
+                            .font(.system(size: 20))
                             .foregroundColor(.white)
-                            .lineLimit(2)
-                            .padding(.horizontal, 10)
+                    )
 
-                        Spacer()
-                    }
-                    .frame(height: 56)
-                    .background(spotifyCardSurface)
-                    .clipShape(RoundedRectangle(cornerRadius: 8))
-                }
-                .buttonStyle(PlainButtonStyle())
+                    Text("Liked Songs (\(db.likedSongs.count))")
+                        .font(.system(size: 12, weight: .bold))
+                        .foregroundColor(.white)
+                        .lineLimit(2)
+                        .padding(.horizontal, 10)
 
-                if let track = displayTracks.first {
-                    let isPlaying = track.id == player.currentSong?.id
-                    shortcutTrackCard(track: track, isPlaying: isPlaying)
-                } else {
                     Spacer()
                 }
+                .frame(height: 56)
+                .background(spotifyCardSurface)
+                .clipShape(RoundedRectangle(cornerRadius: 8))
             }
+            .buttonStyle(PlainButtonStyle())
 
-            // Rows 2 & 3: Remaining 4 tracks
-            let remainingTracks = Array(displayTracks.dropFirst())
-            ForEach(0..<((remainingTracks.count + 1) / 2), id: \.self) { rowIdx in
-                let startIndex = rowIdx * 2
-                HStack(spacing: 8) {
-                    if startIndex < remainingTracks.count {
-                        let track = remainingTracks[startIndex]
-                        shortcutTrackCard(track: track, isPlaying: track.id == player.currentSong?.id)
-                    }
-                    if startIndex + 1 < remainingTracks.count {
-                        let track = remainingTracks[startIndex + 1]
-                        shortcutTrackCard(track: track, isPlaying: track.id == player.currentSong?.id)
-                    } else if remainingTracks.count % 2 != 0 {
-                        Spacer()
-                    }
-                }
+            ForEach(displayTracks) { track in
+                let isPlaying = track.id == player.currentSong?.id
+                shortcutTrackCard(track: track, isPlaying: isPlaying)
             }
         }
         .padding(.horizontal, 16)

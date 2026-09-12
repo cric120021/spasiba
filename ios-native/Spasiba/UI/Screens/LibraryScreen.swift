@@ -116,6 +116,8 @@ public struct LibraryScreen: View {
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
         }
+        .frame(maxWidth: 960)
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Tab 0: Playlists

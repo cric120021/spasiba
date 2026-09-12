@@ -46,6 +46,7 @@ public struct ExpandedPlayerSheet: View {
     public var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
+            let isTabletLayout = geometry.size.width >= 640 && geometry.size.height >= 480
 
             ZStack {
                 // Background
@@ -58,8 +59,10 @@ public struct ExpandedPlayerSheet: View {
                 // Main Content
                 if isLandscape && isVideoModeActive {
                     landscapeVideoLayout
+                } else if isTabletLayout && !isVideoModeActive {
+                    tabletDualPaneLayout(geometry: geometry)
                 } else {
-                    portraitLayout
+                    portraitLayout(geometry: geometry)
                 }
 
                 // Landscape Fullscreen Video Modal Overlay
@@ -170,9 +173,90 @@ public struct ExpandedPlayerSheet: View {
         }
     }
 
-    // MARK: - Portrait Layout
-    private var portraitLayout: some View {
+    // MARK: - Tablet Dual-Pane Layout (iPad Portrait / Landscape & Wide Displays)
+    private func tabletDualPaneLayout(geometry: GeometryProxy) -> some View {
         VStack(spacing: 0) {
+            // Top Navigation Bar
+            topNavigationBar
+                .padding(.horizontal, 28)
+                .padding(.top, 12)
+                .padding(.bottom, 8)
+
+            HStack(alignment: .top, spacing: 32) {
+                // Left Column: Artwork/Turntable + Metadata + Seeker + Controls
+                VStack(spacing: 0) {
+                    Spacer(minLength: 6)
+
+                    // Dynamic proportional artwork / turntable size
+                    let leftColumnMax = geometry.size.width * 0.44
+                    let availableHeight = max(220, geometry.size.height - 250)
+                    let artSize = max(220, min(leftColumnMax, min(availableHeight, 380)))
+
+                    mediaDisplayBox(size: artSize)
+
+                    Spacer(minLength: 14)
+
+                    trackMetadataRow
+                        .padding(.horizontal, 8)
+
+                    seekerBarSection
+                        .padding(.horizontal, 8)
+                        .padding(.top, 10)
+
+                    playbackControlsRow
+                        .padding(.horizontal, 8)
+                        .padding(.top, 14)
+
+                    Spacer(minLength: 12)
+                }
+                .frame(maxWidth: min(480, geometry.size.width * 0.46))
+
+                // Right Column: Lyrics / Up Next Queue Panel
+                VStack(spacing: 12) {
+                    tabsHeader
+                        .padding(.horizontal, 4)
+
+                    ZStack {
+                        RoundedRectangle(cornerRadius: 24)
+                            .fill(Color.white.opacity(0.05))
+                            .overlay(
+                                RoundedRectangle(cornerRadius: 24)
+                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                            )
+
+                        if activeTab == "UP NEXT" {
+                            ScrollView(showsIndicators: true) {
+                                upNextQueueView
+                                    .padding(.horizontal, 16)
+                                    .padding(.vertical, 14)
+                            }
+                        } else {
+                            KaraokeLyricsView(
+                                syncedLines: playerManager.syncedLyrics,
+                                positionMs: positionMs,
+                                isLoading: playerManager.isLyricsLoading,
+                                isExpandedTablet: true,
+                                onSeekTo: { timestampMs in
+                                    playerManager.seekTo(timestampMs)
+                                }
+                            )
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+            .padding(.horizontal, 28)
+            .padding(.bottom, 24)
+        }
+    }
+
+    // MARK: - Portrait Layout (Compact / iPhone / Narrow Split View)
+    private func portraitLayout(geometry: GeometryProxy) -> some View {
+        let artSize = min(geometry.size.width - 48, min(geometry.size.height * 0.36, 330))
+
+        return VStack(spacing: 0) {
             // 1. Top Navigation Bar
             topNavigationBar
                 .padding(.horizontal, 16)
@@ -183,7 +267,7 @@ public struct ExpandedPlayerSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .center, spacing: 0) {
                     // 2. Artwork or Video Display Box
-                    mediaDisplayBox
+                    mediaDisplayBox(size: artSize)
                         .padding(.top, 10)
 
                     // 3. Track Title, Author & Action Buttons
@@ -216,6 +300,7 @@ public struct ExpandedPlayerSheet: View {
                             syncedLines: playerManager.syncedLyrics,
                             positionMs: positionMs,
                             isLoading: playerManager.isLyricsLoading,
+                            isExpandedTablet: false,
                             onSeekTo: { timestampMs in
                                 playerManager.seekTo(timestampMs)
                             }
@@ -226,6 +311,8 @@ public struct ExpandedPlayerSheet: View {
 
                     Spacer().frame(height: 40)
                 }
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
             }
         }
     }
@@ -331,7 +418,7 @@ public struct ExpandedPlayerSheet: View {
     }
 
     // MARK: - Media Display Box (Artwork / Vinyl / Video)
-    private var mediaDisplayBox: some View {
+    private func mediaDisplayBox(size: CGFloat) -> some View {
         Group {
             if isVideoModeActive {
                 // Video Mode View (16:9)
@@ -434,48 +521,53 @@ public struct ExpandedPlayerSheet: View {
                 .padding(.horizontal, 16)
             } else if showVinylMode {
                 // Vinyl Spin Mode with Needle Drop Animation
-                vinylTurntableSection
+                vinylTurntableSection(size: size)
             } else {
                 // Standard Album Artwork with horizontal drag-to-skip
                 if let song = song {
-                    SongArtworkView(song: song, cornerRadius: 24)
-                        .frame(maxWidth: 320, maxHeight: 320)
-                        .shadow(color: Color.black.opacity(0.5), radius: 20, x: 0, y: 10)
+                    SongArtworkView(song: song, cornerRadius: max(14, size * 0.075))
+                        .frame(width: size, height: size)
+                        .shadow(color: Color.black.opacity(0.55), radius: 22, x: 0, y: 10)
                         .offset(x: artDragOffset)
-                    .gesture(
-                        DragGesture()
-                            .onChanged { val in
-                                artDragOffset = val.translation.width
-                            }
-                            .onEnded { val in
-                                if artDragOffset > 80 {
-                                    playerManager.playPrevious()
-                                } else if artDragOffset < -80 {
-                                    playerManager.playNext()
+                        .gesture(
+                            DragGesture()
+                                .onChanged { val in
+                                    artDragOffset = val.translation.width
                                 }
-                                withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
-                                    artDragOffset = 0
+                                .onEnded { val in
+                                    if artDragOffset > 80 {
+                                        playerManager.playPrevious()
+                                    } else if artDragOffset < -80 {
+                                        playerManager.playNext()
+                                    }
+                                    withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
+                                        artDragOffset = 0
+                                    }
                                 }
-                            }
-                    )
+                        )
                 }
             }
         }
     }
 
     // MARK: - Vinyl Turntable with Spinning Disc and Needle Drop
-    private var vinylTurntableSection: some View {
-        ZStack(alignment: .topTrailing) {
+    private func vinylTurntableSection(size: CGFloat) -> some View {
+        let baseSize = size
+        let discSize = baseSize * 0.85
+        let centerLabelSize = discSize * 0.33
+        let scale = baseSize / 320.0
+
+        return ZStack(alignment: .topTrailing) {
             // Turntable Platter Base
-            RoundedRectangle(cornerRadius: 20)
+            RoundedRectangle(cornerRadius: baseSize * 0.0625)
                 .fill(Color(hex: 0x121214))
-                .frame(width: 320, height: 320)
+                .frame(width: baseSize, height: baseSize)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 20)
+                    RoundedRectangle(cornerRadius: baseSize * 0.0625)
                         .stroke(Color.white.opacity(0.08), lineWidth: 1)
                 )
 
-            // Spinning Vinyl Disc
+            // Spinning Vinyl Disc - centered with slight left offset for tonearm
             TimelineView(.animation) { timeline in
                 let rotation = isPlaying ? timeline.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 2.0) * 180.0 : 0.0
 
@@ -493,40 +585,41 @@ public struct ExpandedPlayerSheet: View {
                                     Color(hex: 0x050505)
                                 ]),
                                 center: .center,
-                                startRadius: 40,
-                                endRadius: 130
+                                startRadius: discSize * 0.15,
+                                endRadius: discSize * 0.5
                             )
                         )
-                        .frame(width: 270, height: 270)
+                        .frame(width: discSize, height: discSize)
                         .shadow(color: Color.black.opacity(0.7), radius: 12, x: 0, y: 6)
 
                     // Concentric vinyl grooves
                     ForEach(0..<6) { i in
+                        let grooveFraction = 0.34 + Double(i) * 0.10
                         Circle()
                             .stroke(Color.white.opacity(0.04), lineWidth: 1)
-                            .frame(width: CGFloat(90 + i * 28), height: CGFloat(90 + i * 28))
+                            .frame(width: discSize * CGFloat(grooveFraction), height: discSize * CGFloat(grooveFraction))
                     }
 
                     // Center Album Art Label
                     if let song = song {
-                        SongArtworkView(song: song, cornerRadius: 45)
-                            .frame(width: 90, height: 90)
+                        SongArtworkView(song: song, cornerRadius: centerLabelSize / 2)
+                            .frame(width: centerLabelSize, height: centerLabelSize)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.black, lineWidth: 3))
 
                         // Spindle Hole
                         Circle()
                             .fill(Color(hex: 0x202025))
-                            .frame(width: 14, height: 14)
+                            .frame(width: discSize * 0.05, height: discSize * 0.05)
                             .overlay(Circle().stroke(Color(hex: 0x444444), lineWidth: 1.5))
                     }
                 }
                 .rotationEffect(.degrees(rotation))
             }
-            .frame(width: 280, height: 280)
-            .position(x: 150, y: 160)
+            .frame(width: discSize, height: discSize)
+            .offset(x: -baseSize * 0.04, y: 0)
 
-            // Turntable Tonearm / Needle
+            // Turntable Tonearm / Needle (scales proportionally with platter)
             ZStack(alignment: .topTrailing) {
                 // Pivot Base
                 Circle()
@@ -566,12 +659,13 @@ public struct ExpandedPlayerSheet: View {
                 }
                 .offset(x: -12, y: 16)
             }
+            .scaleEffect(scale, anchor: .topTrailing)
             .rotationEffect(.degrees(isPlaying ? 12 : -22), anchor: .topTrailing)
             .animation(.spring(response: 0.6, dampingFraction: 0.7), value: isPlaying)
-            .padding(.top, 14)
-            .padding(.trailing, 18)
+            .padding(.top, 14 * scale)
+            .padding(.trailing, 18 * scale)
         }
-        .frame(width: 320, height: 320)
+        .frame(width: baseSize, height: baseSize)
     }
 
     // MARK: - Track Metadata Row
@@ -963,17 +1057,19 @@ public struct ExpandedPlayerSheet: View {
 
     // MARK: - Landscape Video Layout
     private var landscapeVideoLayout: some View {
-        HStack(spacing: 0) {
-            mediaDisplayBox
+        HStack(spacing: 24) {
+            mediaDisplayBox(size: 340)
                 .frame(maxWidth: .infinity)
 
-            VStack {
+            VStack(spacing: 16) {
+                Spacer()
                 trackMetadataRow
                 seekerBarSection
                 playbackControlsRow
+                Spacer()
             }
-            .frame(width: 320)
-            .padding(16)
+            .frame(maxWidth: 380)
+            .padding(20)
         }
     }
 
@@ -1127,17 +1223,20 @@ public struct KaraokeLyricsView: View {
     public let syncedLines: [LyricsLine]
     public let positionMs: Int64
     public let isLoading: Bool
+    public var isExpandedTablet: Bool = false
     public let onSeekTo: (Int64) -> Void
 
     public init(
         syncedLines: [LyricsLine],
         positionMs: Int64,
         isLoading: Bool,
+        isExpandedTablet: Bool = false,
         onSeekTo: @escaping (Int64) -> Void
     ) {
         self.syncedLines = syncedLines
         self.positionMs = positionMs
         self.isLoading = isLoading
+        self.isExpandedTablet = isExpandedTablet
         self.onSeekTo = onSeekTo
     }
 
@@ -1150,29 +1249,40 @@ public struct KaraokeLyricsView: View {
     public var body: some View {
         Group {
             if isLoading {
-                Box(height: 260) {
+                VStack {
+                    Spacer()
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
+                    Spacer()
                 }
+                .frame(height: isExpandedTablet ? nil : 260)
+                .frame(maxWidth: .infinity, maxHeight: isExpandedTablet ? .infinity : nil)
             } else if syncedLines.isEmpty {
-                Box(height: 200) {
+                VStack {
+                    Spacer()
                     Text("No lyrics available for this track.")
                         .font(.system(size: 16))
                         .foregroundColor(Color.white.opacity(0.6))
+                    Spacer()
                 }
+                .frame(height: isExpandedTablet ? nil : 200)
+                .frame(maxWidth: .infinity, maxHeight: isExpandedTablet ? .infinity : nil)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 18) {
+                        LazyVStack(alignment: .leading, spacing: isExpandedTablet ? 24 : 18) {
                             ForEach(0..<syncedLines.count, id: \.self) { index in
                                 let line = syncedLines[index]
                                 let isActive = index == activeIndex
 
                                 Text(line.text)
-                                    .font(.system(size: isActive ? 23 : 17, weight: isActive ? .bold : .medium))
+                                    .font(.system(
+                                        size: isActive ? (isExpandedTablet ? 26 : 23) : (isExpandedTablet ? 19 : 17),
+                                        weight: isActive ? .bold : .medium
+                                    ))
                                     .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.45))
-                                    .lineSpacing(6)
-                                    .scaleEffect(isActive ? 1.05 : 1.0, anchor: .leading)
+                                    .lineSpacing(isExpandedTablet ? 8 : 6)
+                                    .scaleEffect(isActive ? (isExpandedTablet ? 1.04 : 1.05) : 1.0, anchor: .leading)
                                     .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isActive)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -1182,13 +1292,14 @@ public struct KaraokeLyricsView: View {
                                     .id(index)
                             }
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, isExpandedTablet ? 20 : 16)
+                        .padding(.vertical, 16)
                     }
-                    .frame(height: 380)
+                    .frame(height: isExpandedTablet ? nil : 380)
+                    .frame(maxHeight: isExpandedTablet ? .infinity : nil)
                     .onChange(of: activeIndex) { newIndex in
                         withAnimation {
-                            proxy.scrollTo(max(0, newIndex - 1), anchor: .top)
+                            proxy.scrollTo(max(0, newIndex - 1), anchor: isExpandedTablet ? .center : .top)
                         }
                     }
                 }
