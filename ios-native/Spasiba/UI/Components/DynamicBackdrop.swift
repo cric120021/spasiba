@@ -10,32 +10,41 @@ public struct DynamicBackdrop<Content: View>: View {
     }
 
     public var body: some View {
-        ZStack {
-            if let imageUrl = imageUrl, let url = URL(string: imageUrl) {
-                AsyncImage(url: url) { phase in
-                    if let image = phase.image {
-                        image
-                            .resizable()
-                            .aspectRatio(contentMode: .fill)
-                            .blur(radius: 50)
-                            .opacity(0.35)
+        GeometryReader { geo in
+            ZStack {
+                if let imageUrl = imageUrl, let url = URL(string: imageUrl) {
+                    AsyncImage(url: url) { phase in
+                        if let image = phase.image {
+                            image
+                                .resizable()
+                                .aspectRatio(contentMode: .fill)
+                                .frame(width: geo.size.width, height: geo.size.height)
+                                .clipped()
+                                .blur(radius: 50)
+                                .opacity(0.35)
+                        }
                     }
+                    .frame(width: geo.size.width, height: geo.size.height)
+                    .clipped()
                 }
-                .ignoresSafeArea()
+
+                LinearGradient(
+                    colors: [
+                        Color(hex: 0x121212).opacity(0.85),
+                        Color(hex: 0x080808).opacity(0.90),
+                        Color.black
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+                .frame(width: geo.size.width, height: geo.size.height)
+
+                content()
+                    .frame(width: geo.size.width, height: geo.size.height)
             }
-
-            LinearGradient(
-                colors: [
-                    Color(hex: 0x121212).opacity(0.85),
-                    Color(hex: 0x080808).opacity(0.90),
-                    Color.black
-                ],
-                startPoint: .top,
-                endPoint: .bottom
-            )
-            .ignoresSafeArea()
-
-            content()
+            .frame(width: geo.size.width, height: geo.size.height)
+            .clipped()
         }
+        .ignoresSafeArea()
     }
 }

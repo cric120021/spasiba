@@ -50,9 +50,9 @@ public struct ExpandedPlayerSheet: View {
             ZStack {
                 // Background
                 if isVideoModeActive {
-                    Color.black.ignoresSafeArea()
+                    Color.black
                 } else {
-                    ambientBackground
+                    ambientBackground(width: geometry.size.width, height: geometry.size.height)
                 }
 
                 // Main Content
@@ -79,6 +79,8 @@ public struct ExpandedPlayerSheet: View {
                         .transition(.scale.combined(with: .opacity))
                 }
             }
+            .frame(width: geometry.size.width, height: geometry.size.height)
+            .clipped()
             .offset(y: max(0, sheetDragOffset))
             .sheet(isPresented: $isQualityDialogOpen) {
                 videoQualityDialog
@@ -107,6 +109,7 @@ public struct ExpandedPlayerSheet: View {
                 .presentationDetents([.height(320)])
             }
         }
+        .ignoresSafeArea()
         .onAppear {
             if activeTab == "LYRICS" {
                 playerManager.fetchLyricsForCurrentSong()
@@ -125,7 +128,7 @@ public struct ExpandedPlayerSheet: View {
     }
 
     // MARK: - Ambient Dynamic Backdrop
-    private var ambientBackground: some View {
+    private func ambientBackground(width: CGFloat, height: CGFloat) -> some View {
         ZStack {
             if let song = song, let url = song.resolvedThumbnailUrl {
                 AsyncImage(url: url) { phase in
@@ -133,11 +136,14 @@ public struct ExpandedPlayerSheet: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .frame(width: width, height: height)
+                            .clipped()
                             .blur(radius: 60)
                             .opacity(0.35)
                     }
                 }
-                .ignoresSafeArea()
+                .frame(width: width, height: height)
+                .clipped()
             }
 
             LinearGradient(
@@ -150,17 +156,20 @@ public struct ExpandedPlayerSheet: View {
                 startPoint: .top,
                 endPoint: .bottom
             )
-            .ignoresSafeArea()
+            .frame(width: width, height: height)
         }
+        .frame(width: width, height: height)
+        .clipped()
     }
 
     // MARK: - Main Player Layout (Universal for iPhone, iPad portrait & landscape)
     private func playerMainLayout(geometry: GeometryProxy) -> some View {
-        VStack(spacing: 0) {
+        let contentWidth = min(geometry.size.width, 540)
+        return VStack(spacing: 0) {
             // 1. Top Navigation Bar (pinned at top)
             topNavigationBar
                 .padding(.horizontal, 20)
-                .padding(.top, 6)
+                .padding(.top, max(geometry.safeAreaInsets.top, 8))
                 .padding(.bottom, 6)
 
             // 2. Center Dynamic Content Area (fills remaining viewport space)
@@ -170,9 +179,9 @@ public struct ExpandedPlayerSheet: View {
             // 3. Pinned Bottom Player Controls Section (always accessible, never scrolls off)
             bottomControlsSection
                 .padding(.horizontal, 20)
-                .padding(.bottom, 16)
+                .padding(.bottom, max(geometry.safeAreaInsets.bottom, 16))
         }
-        .frame(maxWidth: 540)
+        .frame(width: contentWidth)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -188,7 +197,7 @@ public struct ExpandedPlayerSheet: View {
                 case "NOW PLAYING":
                     VStack {
                         Spacer(minLength: 0)
-                        let artSize = max(160, min(w - 32, min(h - 20, 360)))
+                        let artSize = max(140, min(w - 40, min(h - 20, 360)))
                         mediaDisplayBox(size: artSize)
                         Spacer(minLength: 0)
                     }
@@ -1351,7 +1360,7 @@ public struct YouTubeMusicSeekerBar: View {
                     // Played Track Fill
                     RoundedRectangle(cornerRadius: 3)
                         .fill(Color.white)
-                        .frame(width: width * displayFraction, height: barHeight)
+                        .frame(width: max(0, min(width, width * displayFraction)), height: barHeight)
 
                     // Glowing Seeking Pin Thumb (visible while seeking)
                     if isSeeking {
