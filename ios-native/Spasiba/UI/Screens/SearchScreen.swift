@@ -115,15 +115,28 @@ public struct SearchScreen: View {
     @State private var pulseScale: CGFloat = 1.0
     @State private var showClearHistoryAlert: Bool = false
 
+    @FocusState private var isSearchFieldFocused: Bool
+    @State private var isProgrammaticQueryChange: Bool = false
+
     public var onArtistClick: (String) -> Void
 
     public init(onArtistClick: @escaping (String) -> Void = { _ in }) {
         self.onArtistClick = onArtistClick
     }
 
+    private func dismissKeyboard() {
+        isSearchFieldFocused = false
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+    }
+
     public var body: some View {
         ZStack {
-            Color(hex: 0x0D0D0F).ignoresSafeArea()
+            Color.black
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismissKeyboard()
+                }
 
             VStack(spacing: 0) {
                 // 1. YouTube/Spotify style Search Input Bar (Matching Android SearchScreen.kt lines 228-325)
@@ -149,7 +162,12 @@ public struct SearchScreen: View {
                                 .font(.system(size: 16))
                                 .foregroundColor(SpasibaTheme.textStrong)
                                 .accentColor(.white)
+                                .focused($isSearchFieldFocused)
                                 .onChange(of: query) { newQ in
+                                    if isProgrammaticQueryChange {
+                                        isProgrammaticQueryChange = false
+                                        return
+                                    }
                                     isSearchSubmitted = false
                                     fetchSuggestions(for: newQ)
                                 }
@@ -160,6 +178,7 @@ public struct SearchScreen: View {
 
                         if !query.isEmpty {
                             Button(action: {
+                                isProgrammaticQueryChange = true
                                 query = ""
                                 isSearchSubmitted = false
                                 suggestions = []
@@ -172,7 +191,7 @@ public struct SearchScreen: View {
                     }
                     .padding(.horizontal, 16)
                     .frame(height: 58)
-                    .background(SpasibaTheme.surfaceElevated)
+                    .background(Color(hex: 0x181818))
                     .cornerRadius(29)
                     .overlay(
                         RoundedRectangle(cornerRadius: 29)
@@ -181,13 +200,14 @@ public struct SearchScreen: View {
 
                     // Voice / Mic Button (Matching Android 58dp circle with UiSurfaceElevated & border)
                     Button(action: {
+                        dismissKeyboard()
                         startVoiceSearch()
                     }) {
                         Image(systemName: "mic.fill")
                             .font(.system(size: 20))
                             .foregroundColor(.white)
                             .frame(width: 58, height: 58)
-                            .background(SpasibaTheme.surfaceElevated)
+                            .background(Color(hex: 0x181818))
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
@@ -296,6 +316,7 @@ public struct SearchScreen: View {
                                         .frame(width: 105)
                                         .contentShape(Rectangle())
                                         .onTapGesture {
+                                            dismissKeyboard()
                                             player.play(song: track)
                                         }
                                         .contextMenu {
@@ -352,6 +373,7 @@ public struct SearchScreen: View {
                                 .padding(.vertical, 6)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
+                                    dismissKeyboard()
                                     onArtistClick(artistItem.artistName)
                                 }
                                 .contextMenu {
@@ -379,7 +401,9 @@ public struct SearchScreen: View {
                                     Spacer()
 
                                     Button(action: {
+                                        isProgrammaticQueryChange = false
                                         query = historyQuery
+                                        isSearchFieldFocused = true
                                     }) {
                                         Image(systemName: "arrow.up.backward")
                                             .font(.system(size: 16))
@@ -405,6 +429,8 @@ public struct SearchScreen: View {
                     }
                     .padding(.bottom, 120)
                 }
+                .scrollDismissesKeyboard(.immediately)
+                .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
             } else {
                 VStack(spacing: 12) {
                     Spacer()
@@ -449,7 +475,11 @@ public struct SearchScreen: View {
 
                                 Spacer()
 
-                                Button(action: { query = q }) {
+                                Button(action: {
+                                    isProgrammaticQueryChange = false
+                                    query = q
+                                    isSearchFieldFocused = true
+                                }) {
                                     Image(systemName: "arrow.up.backward")
                                         .font(.system(size: 16))
                                         .foregroundColor(Color.white.opacity(0.5))
@@ -493,6 +523,7 @@ public struct SearchScreen: View {
                             .padding(.vertical, 8)
                             .contentShape(Rectangle())
                             .onTapGesture {
+                                dismissKeyboard()
                                 player.play(song: s)
                                 historyManager.addPlayedSong(s)
                             }
@@ -526,6 +557,7 @@ public struct SearchScreen: View {
                             .padding(.vertical, 8)
                             .contentShape(Rectangle())
                             .onTapGesture {
+                                dismissKeyboard()
                                 historyManager.addRecentArtist(artistName: name, avatarUrl: avatar, subtitle: sub)
                                 onArtistClick(name)
                             }
@@ -535,6 +567,15 @@ public struct SearchScreen: View {
             }
             .padding(.bottom, 140)
         }
+        .scrollDismissesKeyboard(.immediately)
+        .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
+        .background(
+            Color.black
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismissKeyboard()
+                }
+        )
     }
 
     // MARK: - Mode 3: Executed Search Results View
@@ -588,12 +629,14 @@ public struct SearchScreen: View {
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
+                                dismissKeyboard()
                                 onArtistClick(artist.artistName)
                             }
 
                             // Shuffle & Mix Radio Action Buttons
                             HStack(spacing: 10) {
                                 Button(action: {
+                                    dismissKeyboard()
                                     let tracks = artist.topSongs
                                     if !tracks.isEmpty {
                                         let shuffled = tracks.shuffled()
@@ -617,6 +660,7 @@ public struct SearchScreen: View {
                                 .buttonStyle(PlainButtonStyle())
 
                                 Button(action: {
+                                    dismissKeyboard()
                                     let tracks = artist.topSongs
                                     if let f = tracks.first {
                                         player.playQueue(tracks, startIndex: 0, sourceLabel: "Radio: \(artist.artistName)")
@@ -677,6 +721,7 @@ public struct SearchScreen: View {
                                 .padding(.vertical, 6)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
+                                    dismissKeyboard()
                                     let tracks = artist.topSongs
                                     player.playQueue(tracks, startIndex: idx, sourceLabel: "Artist: \(artist.artistName)")
                                     db.addToHistory(song: song)
@@ -684,7 +729,7 @@ public struct SearchScreen: View {
                             }
                         }
                         .padding(16)
-                        .background(Color(hex: 0x1E1E22))
+                        .background(Color(hex: 0x181818))
                         .cornerRadius(20)
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
@@ -728,6 +773,7 @@ public struct SearchScreen: View {
                             }
                             .contentShape(Rectangle())
                             .onTapGesture {
+                                dismissKeyboard()
                                 player.playQueue(searchResults, startIndex: 0)
                                 db.addToHistory(song: topSong)
                             }
@@ -736,6 +782,7 @@ public struct SearchScreen: View {
                             HStack(spacing: 10) {
                                 // Solid White Play Pill Button
                                 Button(action: {
+                                    dismissKeyboard()
                                     player.playQueue(searchResults, startIndex: 0)
                                     db.addToHistory(song: topSong)
                                 }) {
@@ -779,7 +826,7 @@ public struct SearchScreen: View {
                             }
                         }
                         .padding(14)
-                        .background(Color(hex: 0x1E1E22))
+                        .background(Color(hex: 0x181818))
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18)
@@ -811,6 +858,7 @@ public struct SearchScreen: View {
                             isLiked: repository.isLiked(songId: song.id),
                             enableSwipe: false,
                             onSongClick: {
+                                dismissKeyboard()
                                 let globalIdx = searchResults.firstIndex(where: { $0.id == song.id }) ?? index
                                 player.playQueue(searchResults, startIndex: globalIdx)
                                 historyManager.addPlayedSong(song)
@@ -824,6 +872,18 @@ public struct SearchScreen: View {
             }
             .padding(.bottom, 140)
         }
+        .scrollDismissesKeyboard(.immediately)
+        .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
+        .onAppear {
+            dismissKeyboard()
+        }
+        .background(
+            Color.black
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    dismissKeyboard()
+                }
+        )
     }
 
     // MARK: - Voice Search Modal Overlay (matching SearchScreen.kt lines 1300-1430)
@@ -903,11 +963,11 @@ public struct SearchScreen: View {
                 Spacer().frame(height: 10)
             }
             .padding(24)
-            .background(Color(hex: 0x16161A))
+            .background(Color(hex: 0x141414))
             .cornerRadius(28)
             .overlay(
                 RoundedRectangle(cornerRadius: 28)
-                    .stroke(Color(hex: 0x282830), lineWidth: 1)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
             .padding(.horizontal, 24)
         }
@@ -920,6 +980,7 @@ public struct SearchScreen: View {
 
     // MARK: - Actions
     private func startVoiceSearch() {
+        dismissKeyboard()
         liveSpokenText = ""
         isVoiceListeningModalOpen = true
         voiceManager.startRecording(
@@ -928,7 +989,6 @@ public struct SearchScreen: View {
             },
             onFinished: { text in
                 self.closeVoiceSearch()
-                self.query = text
                 self.performSearch(text)
             }
         )
@@ -960,6 +1020,8 @@ public struct SearchScreen: View {
         let trimmed = q.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return }
 
+        dismissKeyboard()
+        isProgrammaticQueryChange = true
         self.query = trimmed
         self.isSearchSubmitted = true
         self.isSearching = true

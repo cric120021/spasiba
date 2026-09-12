@@ -26,8 +26,8 @@ public struct DynamicBackdrop<Content: View>: View {
 
             LinearGradient(
                 colors: [
-                    Color(hex: 0x1E1C1A).opacity(0.85),
-                    Color(hex: 0x0F0E0C).opacity(0.90),
+                    Color(hex: 0x121212).opacity(0.85),
+                    Color(hex: 0x080808).opacity(0.90),
                     Color.black
                 ],
                 startPoint: .top,

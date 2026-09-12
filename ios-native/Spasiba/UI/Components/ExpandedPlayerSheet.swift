@@ -50,7 +50,7 @@ public struct ExpandedPlayerSheet: View {
             ZStack {
                 // Background
                 if isVideoModeActive {
-                    Color(hex: 0x020203).ignoresSafeArea()
+                    Color.black.ignoresSafeArea()
                 } else {
                     ambientBackground
                 }
@@ -142,9 +142,9 @@ public struct ExpandedPlayerSheet: View {
 
             LinearGradient(
                 stops: [
-                    .init(color: Color(hex: 0x1E1C1A), location: 0.0),
-                    .init(color: Color(hex: 0x1E1C1A).opacity(0.90), location: 0.45),
-                    .init(color: Color(hex: 0x0F0E0C), location: 0.80),
+                    .init(color: Color(hex: 0x121212), location: 0.0),
+                    .init(color: Color(hex: 0x0A0A0A).opacity(0.95), location: 0.45),
+                    .init(color: Color.black, location: 0.80),
                     .init(color: Color.black, location: 1.0)
                 ],
                 startPoint: .top,

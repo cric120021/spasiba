@@ -18,11 +18,11 @@ public enum UiThemeMode: String, CaseIterable {
 }
 
 // Colors for default Modern Glass
-public let UiBackground = Color(hex: 0x040712)
-public let UiBackgroundMid = Color(hex: 0x081325)
-public let UiBackgroundEnd = Color(hex: 0x02030A)
-public let UiSurface = Color(hex: 0x0C0C0E)
-public let UiSurfaceElevated = Color(hex: 0x141418)
+public let UiBackground = Color.black
+public let UiBackgroundMid = Color(hex: 0x0A0A0A)
+public let UiBackgroundEnd = Color.black
+public let UiSurface = Color(hex: 0x121212)
+public let UiSurfaceElevated = Color(hex: 0x181818)
 public let UiBorder = Color.white.opacity(0.11)
 
 public let AccentTeal = Color.white
