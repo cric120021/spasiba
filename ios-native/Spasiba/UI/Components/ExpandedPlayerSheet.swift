@@ -286,17 +286,14 @@ public struct ExpandedPlayerSheet: View {
                 .buttonStyle(PlainButtonStyle())
 
                 Button(action: {
-                    withAnimation {
-                        isVideoModeActive = true
-                        playerManager.enableVideoMode()
-                    }
+                    // No-op per user request: clicking Video does nothing
                 }) {
                     Text("Video")
                         .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(isVideoModeActive ? .black : .white)
+                        .foregroundColor(.white.opacity(0.6))
                         .padding(.horizontal, 14)
                         .padding(.vertical, 6)
-                        .background(isVideoModeActive ? Color.white : Color.clear)
+                        .background(Color.clear)
                         .clipShape(Capsule())
                 }
                 .buttonStyle(PlainButtonStyle())
