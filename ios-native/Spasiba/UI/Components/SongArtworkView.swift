@@ -72,7 +72,7 @@ public struct SongArtworkView: View {
         if vid.count == 11 && !vid.hasPrefix("yt_") && !vid.hasPrefix("card_") {
             return URL(string: "https://i.ytimg.com/vi/\(vid)/hqdefault.jpg")
         }
-        return URL(string: "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500")
+        return nil
     }
 
     private var activeUrl: URL? {
@@ -85,8 +85,6 @@ public struct SongArtworkView: View {
     public var body: some View {
         let url = activeUrl
         let cached = url.flatMap { SpasibaImageCache.shared.image(for: $0) }
-            ?? targetUrl.flatMap { SpasibaImageCache.shared.image(for: $0) }
-            ?? fallbackUrl.flatMap { SpasibaImageCache.shared.image(for: $0) }
 
         ZStack {
             Color(hex: 0x222222)

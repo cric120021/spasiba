@@ -83,22 +83,6 @@ public struct ExpandedPlayerSheet: View {
                 }
             }
             .offset(y: max(0, sheetDragOffset))
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        if value.translation.height > 0 {
-                            sheetDragOffset = value.translation.height
-                        }
-                    }
-                    .onEnded { value in
-                        if value.translation.height > 180 {
-                            dismiss()
-                        }
-                        withAnimation(.easeOut(duration: 0.25)) {
-                            sheetDragOffset = 0
-                        }
-                    }
-            )
             .sheet(isPresented: $isQualityDialogOpen) {
                 videoQualityDialog
                     .presentationDetents([.height(280)])
@@ -175,26 +159,28 @@ public struct ExpandedPlayerSheet: View {
 
     // MARK: - Tablet Dual-Pane Layout (iPad Portrait / Landscape & Wide Displays)
     private func tabletDualPaneLayout(geometry: GeometryProxy) -> some View {
-        VStack(spacing: 0) {
+        let contentHeight = max(340, geometry.size.height - 96)
+        let leftWidth = min(420, geometry.size.width * 0.44)
+
+        return VStack(spacing: 0) {
             // Top Navigation Bar
             topNavigationBar
                 .padding(.horizontal, 28)
                 .padding(.top, 12)
                 .padding(.bottom, 8)
 
-            HStack(alignment: .top, spacing: 32) {
+            HStack(alignment: .top, spacing: 28) {
                 // Left Column: Artwork/Turntable + Metadata + Seeker + Controls
                 VStack(spacing: 0) {
-                    Spacer(minLength: 6)
+                    Spacer(minLength: 4)
 
                     // Dynamic proportional artwork / turntable size
-                    let leftColumnMax = geometry.size.width * 0.44
-                    let availableHeight = max(220, geometry.size.height - 250)
-                    let artSize = max(220, min(leftColumnMax, min(availableHeight, 380)))
+                    let maxArtHeight = contentHeight - 220
+                    let artSize = max(180, min(leftWidth - 16, min(maxArtHeight, 360)))
 
                     mediaDisplayBox(size: artSize)
 
-                    Spacer(minLength: 14)
+                    Spacer(minLength: 12)
 
                     trackMetadataRow
                         .padding(.horizontal, 8)
@@ -207,9 +193,9 @@ public struct ExpandedPlayerSheet: View {
                         .padding(.horizontal, 8)
                         .padding(.top, 14)
 
-                    Spacer(minLength: 12)
+                    Spacer(minLength: 10)
                 }
-                .frame(maxWidth: min(480, geometry.size.width * 0.46))
+                .frame(width: leftWidth, height: contentHeight)
 
                 // Right Column: Lyrics / Up Next Queue Panel
                 VStack(spacing: 12) {
@@ -244,12 +230,15 @@ public struct ExpandedPlayerSheet: View {
                             .padding(.vertical, 8)
                         }
                     }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .clipShape(RoundedRectangle(cornerRadius: 24))
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: contentHeight)
             }
             .padding(.horizontal, 28)
-            .padding(.bottom, 24)
+            .padding(.bottom, 16)
         }
+        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
     }
 
     // MARK: - Portrait Layout (Compact / iPhone / Narrow Split View)
@@ -296,17 +285,29 @@ public struct ExpandedPlayerSheet: View {
                             .padding(.horizontal, 20)
                             .padding(.top, 8)
                     } else {
-                        KaraokeLyricsView(
-                            syncedLines: playerManager.syncedLyrics,
-                            positionMs: positionMs,
-                            isLoading: playerManager.isLyricsLoading,
-                            isExpandedTablet: false,
-                            onSeekTo: { timestampMs in
-                                playerManager.seekTo(timestampMs)
-                            }
-                        )
+                        ZStack {
+                            RoundedRectangle(cornerRadius: 20)
+                                .fill(Color.white.opacity(0.05))
+                                .overlay(
+                                    RoundedRectangle(cornerRadius: 20)
+                                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
+                                )
+
+                            KaraokeLyricsView(
+                                syncedLines: playerManager.syncedLyrics,
+                                positionMs: positionMs,
+                                isLoading: playerManager.isLyricsLoading,
+                                isExpandedTablet: false,
+                                onSeekTo: { timestampMs in
+                                    playerManager.seekTo(timestampMs)
+                                }
+                            )
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 8)
+                        }
                         .padding(.horizontal, 16)
                         .padding(.top, 8)
+                        .clipShape(RoundedRectangle(cornerRadius: 20))
                     }
 
                     Spacer().frame(height: 40)
@@ -415,6 +416,25 @@ public struct ExpandedPlayerSheet: View {
                     )
             }
         }
+        .contentShape(Rectangle())
+        .gesture(dismissDragGesture)
+    }
+
+    private var dismissDragGesture: some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { value in
+                if value.translation.height > 0 {
+                    sheetDragOffset = value.translation.height
+                }
+            }
+            .onEnded { value in
+                if value.translation.height > 150 {
+                    dismiss()
+                }
+                withAnimation(.easeOut(duration: 0.25)) {
+                    sheetDragOffset = 0
+                }
+            }
     }
 
     // MARK: - Media Display Box (Artwork / Vinyl / Video)
@@ -1269,21 +1289,20 @@ public struct KaraokeLyricsView: View {
                 .frame(maxWidth: .infinity, maxHeight: isExpandedTablet ? .infinity : nil)
             } else {
                 ScrollViewReader { proxy in
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: isExpandedTablet ? 24 : 18) {
+                    ScrollView(showsIndicators: false) {
+                        LazyVStack(alignment: .leading, spacing: isExpandedTablet ? 18 : 14) {
                             ForEach(0..<syncedLines.count, id: \.self) { index in
                                 let line = syncedLines[index]
                                 let isActive = index == activeIndex
 
                                 Text(line.text)
                                     .font(.system(
-                                        size: isActive ? (isExpandedTablet ? 26 : 23) : (isExpandedTablet ? 19 : 17),
+                                        size: isActive ? (isExpandedTablet ? 22 : 19) : (isExpandedTablet ? 16 : 15),
                                         weight: isActive ? .bold : .medium
                                     ))
-                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.45))
-                                    .lineSpacing(isExpandedTablet ? 8 : 6)
-                                    .scaleEffect(isActive ? (isExpandedTablet ? 1.04 : 1.05) : 1.0, anchor: .leading)
-                                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isActive)
+                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.40))
+                                    .lineSpacing(isExpandedTablet ? 6 : 4)
+                                    .animation(.easeInOut(duration: 0.25), value: isActive)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         let targetMs = Int64(line.timestampSeconds * 1000)
@@ -1293,13 +1312,25 @@ public struct KaraokeLyricsView: View {
                             }
                         }
                         .padding(.horizontal, isExpandedTablet ? 20 : 16)
-                        .padding(.vertical, 16)
+                        .padding(.vertical, 20)
                     }
-                    .frame(height: isExpandedTablet ? nil : 380)
+                    .frame(height: isExpandedTablet ? nil : 320)
                     .frame(maxHeight: isExpandedTablet ? .infinity : nil)
+                    .mask(
+                        LinearGradient(
+                            stops: [
+                                .init(color: .clear, location: 0.0),
+                                .init(color: .white, location: 0.08),
+                                .init(color: .white, location: 0.92),
+                                .init(color: .clear, location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
                     .onChange(of: activeIndex) { newIndex in
-                        withAnimation {
-                            proxy.scrollTo(max(0, newIndex - 1), anchor: isExpandedTablet ? .center : .top)
+                        withAnimation(.easeInOut(duration: 0.3)) {
+                            proxy.scrollTo(max(0, newIndex - 1), anchor: .center)
                         }
                     }
                 }

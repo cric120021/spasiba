@@ -499,8 +499,6 @@ public final class YouTubeMusicApi {
         if thumb.isEmpty {
             if videoId.count == 11 {
                 thumb = "https://i.ytimg.com/vi/\(videoId)/hqdefault.jpg"
-            } else {
-                thumb = "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500"
             }
         }
 

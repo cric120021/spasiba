@@ -59,7 +59,7 @@ public struct Song: Identifiable, Codable, Equatable, Hashable {
             if id.count == 11 && !id.hasPrefix("yt_") && !id.hasPrefix("card_") {
                 str = "https://i.ytimg.com/vi/\(id)/hqdefault.jpg"
             } else {
-                str = "https://lh3.googleusercontent.com/9_qmVOvLuS7mCYj7nw6Zgy01K3NKSaI8YvLu_spdTL6i1goKHEVoMZGVCetG7RzlI2M4e4gjM6DquZ3L=w500"
+                return nil
             }
         }
         if str.contains("w120-h120") || str.contains("w60-h60") {
