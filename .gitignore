@@ -25,3 +25,14 @@ local.properties
 .DS_Store
 *.log
 *.textClipping
+
+# Archives & Temporary files
+*.zip
+*.tar.gz
+
+# Xcode
+*.xcuserstate
+project.xcworkspace/xcuserdata/
+xcuserdata/
+DerivedData/
+

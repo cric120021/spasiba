@@ -1,0 +1,28 @@
+name: Spasiba
+options:
+  bundleIdPrefix: app.spasiba
+  deploymentTarget:
+    iOS: "16.0"
+  xcodeVersion: "16.0"
+
+settings:
+  SWIFT_VERSION: "5.0"
+  DEVELOPMENT_TEAM: "H6JD3WVN26"
+  CODE_SIGN_STYLE: Automatic
+  CODE_SIGN_IDENTITY: "Apple Development"
+  ENABLE_DEBUG_DYLIB: NO
+
+targets:
+  Spasiba:
+    type: application
+    platform: iOS
+    sources:
+      - path: Spasiba
+    settings:
+      PRODUCT_BUNDLE_IDENTIFIER: com.commerceos.customer
+      PRODUCT_NAME: Spasiba
+      INFOPLIST_FILE: Spasiba/Info.plist
+      GENERATE_INFOPLIST_FILE: NO
+      ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+      ENABLE_PREVIEWS: NO
+      ENABLE_DEBUG_DYLIB: NO

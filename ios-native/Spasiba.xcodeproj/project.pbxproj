@@ -1,0 +1,734 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0113372BC7AE22DF70BF822D /* EqualizerSleepTimerModal.swift in Sources */ = {isa = PBXBuildFile; fileRef = EF9C154B8C6CDC95E43B2285 /* EqualizerSleepTimerModal.swift */; };
+		02D51E8C196384F5BB5EDDF6 /* SkeletonLoaders.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77C8EA3E9635098F33599076 /* SkeletonLoaders.swift */; };
+		0449DF7705E89349FB45A89B /* FcmTokenManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = B72856FBF886D6552B29DC68 /* FcmTokenManager.swift */; };
+		057D8FF891C1DACCF97C22C3 /* SpasibaNativeExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D770AC4FC5F800D1C95B57 /* SpasibaNativeExtractor.swift */; };
+		07440000AFFD89C5F2709465 /* ArtistDetailsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE663FD3FBDEA941D9714D39 /* ArtistDetailsScreen.swift */; };
+		09CD37393BD9CB55DD511F76 /* SongArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */; };
+		16A084095264BDA7B800FE79 /* Daos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B63B92BB6D99C68D902CBC /* Daos.swift */; };
+		1CA52C9013C73D5D863CEB27 /* FriendsListScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9FFB5FACEC8CE067683384F /* FriendsListScreen.swift */; };
+		1D3235E9A4BF43A3838FC770 /* EqualizerWaveformAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BEBCC3655A675E2AB392729 /* EqualizerWaveformAnimation.swift */; };
+		231D74997F001F51251D73CD /* ArtistOptionsMenuSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 624CD0CBBEA60E78D73676DF /* ArtistOptionsMenuSheet.swift */; };
+		2DE8F440E83C4EAF441288A6 /* EunoiaSyncController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 161404EDB23C900B12DF3EDF /* EunoiaSyncController.swift */; };
+		2E2162B8FA03C4A6D0202835 /* ShareUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B1D1D25A2E5C0DCE308C13C /* ShareUtils.swift */; };
+		392420DC7C8ECF69B14A78B6 /* CategoryFeedScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 956EBF842B19979D2CCBC51C /* CategoryFeedScreen.swift */; };
+		3D1F4EE0C477D38A33421A6F /* EunoiaInviteReceiver.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B74777B017AAEE45EBB5D43 /* EunoiaInviteReceiver.swift */; };
+		3D9FEFEC18C64660AF15CADC /* SpasibaNativeAppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5A72F39A51A0F87DBD4C7C06 /* SpasibaNativeAppShell.swift */; };
+		4046368733B5E0B61BE6B0DE /* SpasibaApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97309E41EB85F4EE3BB2E436 /* SpasibaApplication.swift */; };
+		42CE7C175419FD4270B970D7 /* LibraryScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62A83036BDB7BEE369C80E2C /* LibraryScreen.swift */; };
+		43CAF63518E5EBD8C70613F0 /* SmartQueueEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 896C1667E4F5EF27BC12454E /* SmartQueueEngine.swift */; };
+		443A5D8A028C945B20414CAC /* SpasibaNativeAudioCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F11ECE8E8F28DE26E638CC5 /* SpasibaNativeAudioCache.swift */; };
+		4646672205044A3377C6AF1A /* YouTubeMusicApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BFF7EECB6E5668003F3B636 /* YouTubeMusicApi.swift */; };
+		492EF9D29AABE2B3119B2764 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0D3D4079ACA9D4182BF39E0D /* ContentView.swift */; };
+		4A3F40ECA3FBD3EE1A0BDF7D /* EunoiaFriendManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073A860488FE64A568A1C7A6 /* EunoiaFriendManager.swift */; };
+		4C28731F0AEE338BBB2AD665 /* EunoiaNotificationHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0F6E2832411EEF3290F4B0A8 /* EunoiaNotificationHelper.swift */; };
+		5675ABDF14A640F5D5A809F9 /* PlaylistOperationsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1C57FF91389513D0CC6FB7FC /* PlaylistOperationsScreen.swift */; };
+		5BF468FD291FC4C4DE12FDC8 /* SearchHistoryManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = F2E758E3213028ED09E89974 /* SearchHistoryManager.swift */; };
+		5E700448EDEC45A7F6A07F02 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE9528EAEEC6110058363D83 /* Theme.swift */; };
+		5F1AD51F7F7E3BB4E62D36BF /* SpasibaFcmService.swift in Sources */ = {isa = PBXBuildFile; fileRef = C115ECDC9B2F167762703FD7 /* SpasibaFcmService.swift */; };
+		640495AD898B74B75B89C976 /* SpasibaApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 690EFA722038C3E82FCE527D /* SpasibaApp.swift */; };
+		69B4B74987A1BC987CA1C6E0 /* QueueSnapshotCache.swift in Sources */ = {isa = PBXBuildFile; fileRef = BFA46F7471C37A9D041EDA0F /* QueueSnapshotCache.swift */; };
+		6B8F3522E323C85D9267D3B1 /* NativePlayerManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = C4D916A830CBEC579E0505F2 /* NativePlayerManager.swift */; };
+		BB0102030405060708090B01 /* HeadlessAudioBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0102030405060708090A01 /* HeadlessAudioBridge.swift */; };
+		6FA2DF25C928D0F8DE7FAC58 /* TenorGifApi.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D3D8F03800B928B3D9FC4FA /* TenorGifApi.swift */; };
+		6FBEAE3460EB0A18BD650004 /* SpasibaMediaService.swift in Sources */ = {isa = PBXBuildFile; fileRef = F06DA56141D4F0B49BD191A8 /* SpasibaMediaService.swift */; };
+		80DF56DCC14FBB2020FE02E5 /* EunoiaScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A947AC22F75165D0BD859739 /* EunoiaScreen.swift */; };
+		8C49EDD2EF54A71C5B79DF18 /* NavigationUtils.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1AE5C58525C8C406DDC9ABA /* NavigationUtils.swift */; };
+		8C6CE09A19CBC5A13E1F2C2F /* EunoiaWebRtcManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6F91863A4F37CDAF51B6378B /* EunoiaWebRtcManager.swift */; };
+		93D2A9CA025EADE065F77F11 /* SpasibaAppShell.swift in Sources */ = {isa = PBXBuildFile; fileRef = EABD80F675DB2B0D240343A8 /* SpasibaAppShell.swift */; };
+		98AF8ED883C8DCF562D8DF17 /* HomeScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0763ACE81003F7F8F946419F /* HomeScreen.swift */; };
+		9AE770B733942020156EB6FA /* NotificationsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 802842D984AF0D17655C4B9D /* NotificationsScreen.swift */; };
+		A3CDA9E7501D5B67EE30C2FF /* HeroBanner.swift in Sources */ = {isa = PBXBuildFile; fileRef = 788E9F75689C82988704E4FF /* HeroBanner.swift */; };
+		A817D3B4C7ADE3E9A2698B0D /* DynamicBackdrop.swift in Sources */ = {isa = PBXBuildFile; fileRef = 920744633BC03377FD69EEFD /* DynamicBackdrop.swift */; };
+		B09A7712CE83ECB26F4C5027 /* CreatePlaylistDialog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BCE2D50E06A3B3048FE2B2B /* CreatePlaylistDialog.swift */; };
+		B2B2E67C278C5D881BB0265D /* HttpClientProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 08C6B2E01E89AC3E3C241332 /* HttpClientProvider.swift */; };
+		B49CFAC42DC547EC5FD764D2 /* SpasibaDatabase.swift in Sources */ = {isa = PBXBuildFile; fileRef = 78FCDAF6F5CDCFB9C79BDA26 /* SpasibaDatabase.swift */; };
+		B65DD6FE5B4C5DDE1AF2170D /* MiniPlayerDock.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0C89106856828B85BE6C4126 /* MiniPlayerDock.swift */; };
+		B6E8B7EA8936122F6015DDDE /* MainActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 09F0EAB03BE570B30B1E2597 /* MainActivity.swift */; };
+		BA3B97AF4AE63A42777510C4 /* LrcLyricsFetcher.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B8AD4244E91B011EDF94BFE /* LrcLyricsFetcher.swift */; };
+		BAEAE8770BA2A152863014E2 /* SpasibaDownloadManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 38EFB1DD5AE298A627AFA958 /* SpasibaDownloadManager.swift */; };
+		BB68809736772365B78DDDB5 /* FriendChatScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = B61D743ED26A092D50DD20BE /* FriendChatScreen.swift */; };
+		C08D2CF34854EEDDB1C503BF /* Entities.swift in Sources */ = {isa = PBXBuildFile; fileRef = A404E6D9FECC89C1B919FF6D /* Entities.swift */; };
+		C1298B0409723974B33AD729 /* SpasibaAudioCacheManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBB4CD77306918FD14D6BD71 /* SpasibaAudioCacheManager.swift */; };
+		C2E7C24BA36D60C05B91F8F7 /* SessionBrainManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7101DA2EF2A257DF7254B25F /* SessionBrainManager.swift */; };
+		CDB3C001543F32378FA3C955 /* EunoiaSessionManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 69F4BAFE4D7B00EA06C6714F /* EunoiaSessionManager.swift */; };
+		CDFF5966F471F61B2A60D64C /* SaveToPlaylistSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = B825444314FB43CC3F3FA969 /* SaveToPlaylistSheet.swift */; };
+		D70165C3B0F1427D8611049F /* TrackOptionsMenu.swift in Sources */ = {isa = PBXBuildFile; fileRef = B90D1C9B4C11A4426AEDF789 /* TrackOptionsMenu.swift */; };
+		D7F1B1E90F57C75A57838163 /* ProfileScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D17A5E95194A957C9E696B1 /* ProfileScreen.swift */; };
+		D899567E29A7B7A7FD757DD2 /* ListenerProfileEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4C084768ABE119A0BE4ACB5C /* ListenerProfileEngine.swift */; };
+		DB77D90F74F7C37D2BF6D8B5 /* FriendProfileDetailsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9A6FBAFFC418AB7A2C1F58DC /* FriendProfileDetailsScreen.swift */; };
+		DE81AD1C93FC7AFEC4B60BFA /* AudioVisualizer.swift in Sources */ = {isa = PBXBuildFile; fileRef = A745D03CC324B5469ABBF5C9 /* AudioVisualizer.swift */; };
+		E54569BDA28A074C4D884D71 /* Song.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6907E22F7916AD0782B556E /* Song.swift */; };
+		E64C1899DE39CADB5277D4E2 /* SongTile.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9658B955B58EE7E7352E6745 /* SongTile.swift */; };
+		E81B4D76A081D2D5BB442983 /* MusicRepository.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6D6F863AA0EC98D82B84EF5C /* MusicRepository.swift */; };
+		EB77C5DD0B373AB91CEAD265 /* SilverBrandHeader.swift in Sources */ = {isa = PBXBuildFile; fileRef = DBDE6707AA9E4644EDC1E6F0 /* SilverBrandHeader.swift */; };
+		F0FFE8D68CAA817F6CBFCB81 /* QuickPicksEngine.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E12AF3B97489E6717DAEB9 /* QuickPicksEngine.swift */; };
+		F546A4E110ABEEFD2B923B15 /* EunoiaSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F6EFB0FAD2A2B73CC724BC /* EunoiaSocketClient.swift */; };
+		FAD73324C8B8429ECC228FB2 /* ExpandedPlayerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B933502D4BEF036EAF7F1B9 /* ExpandedPlayerSheet.swift */; };
+		FF5417E46B8B3AE598F5C4C3 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564105F9BBE26056E7ACAC63 /* SearchScreen.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		073A860488FE64A568A1C7A6 /* EunoiaFriendManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaFriendManager.swift; sourceTree = "<group>"; };
+		0763ACE81003F7F8F946419F /* HomeScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeScreen.swift; sourceTree = "<group>"; };
+		08C6B2E01E89AC3E3C241332 /* HttpClientProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HttpClientProvider.swift; sourceTree = "<group>"; };
+		09F0EAB03BE570B30B1E2597 /* MainActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainActivity.swift; sourceTree = "<group>"; };
+		0B933502D4BEF036EAF7F1B9 /* ExpandedPlayerSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExpandedPlayerSheet.swift; sourceTree = "<group>"; };
+		0C89106856828B85BE6C4126 /* MiniPlayerDock.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MiniPlayerDock.swift; sourceTree = "<group>"; };
+		0D3D4079ACA9D4182BF39E0D /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		0F11ECE8E8F28DE26E638CC5 /* SpasibaNativeAudioCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaNativeAudioCache.swift; sourceTree = "<group>"; };
+		0F6E2832411EEF3290F4B0A8 /* EunoiaNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaNotificationHelper.swift; sourceTree = "<group>"; };
+		161404EDB23C900B12DF3EDF /* EunoiaSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaSyncController.swift; sourceTree = "<group>"; };
+		183F738C275DAA4512D1D0B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		1BFF7EECB6E5668003F3B636 /* YouTubeMusicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeMusicApi.swift; sourceTree = "<group>"; };
+		1C57FF91389513D0CC6FB7FC /* PlaylistOperationsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistOperationsScreen.swift; sourceTree = "<group>"; };
+		2BCE2D50E06A3B3048FE2B2B /* CreatePlaylistDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePlaylistDialog.swift; sourceTree = "<group>"; };
+		2BEBCC3655A675E2AB392729 /* EqualizerWaveformAnimation.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualizerWaveformAnimation.swift; sourceTree = "<group>"; };
+		38EFB1DD5AE298A627AFA958 /* SpasibaDownloadManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaDownloadManager.swift; sourceTree = "<group>"; };
+		3D17A5E95194A957C9E696B1 /* ProfileScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileScreen.swift; sourceTree = "<group>"; };
+		4C084768ABE119A0BE4ACB5C /* ListenerProfileEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ListenerProfileEngine.swift; sourceTree = "<group>"; };
+		564105F9BBE26056E7ACAC63 /* SearchScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchScreen.swift; sourceTree = "<group>"; };
+		5A72F39A51A0F87DBD4C7C06 /* SpasibaNativeAppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaNativeAppShell.swift; sourceTree = "<group>"; };
+		624CD0CBBEA60E78D73676DF /* ArtistOptionsMenuSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistOptionsMenuSheet.swift; sourceTree = "<group>"; };
+		62A83036BDB7BEE369C80E2C /* LibraryScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LibraryScreen.swift; sourceTree = "<group>"; };
+		62B63B92BB6D99C68D902CBC /* Daos.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Daos.swift; sourceTree = "<group>"; };
+		690EFA722038C3E82FCE527D /* SpasibaApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaApp.swift; sourceTree = "<group>"; };
+		69F4BAFE4D7B00EA06C6714F /* EunoiaSessionManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaSessionManager.swift; sourceTree = "<group>"; };
+		6B74777B017AAEE45EBB5D43 /* EunoiaInviteReceiver.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaInviteReceiver.swift; sourceTree = "<group>"; };
+		6D6F863AA0EC98D82B84EF5C /* MusicRepository.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MusicRepository.swift; sourceTree = "<group>"; };
+		6F91863A4F37CDAF51B6378B /* EunoiaWebRtcManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaWebRtcManager.swift; sourceTree = "<group>"; };
+		7101DA2EF2A257DF7254B25F /* SessionBrainManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SessionBrainManager.swift; sourceTree = "<group>"; };
+		76F6EFB0FAD2A2B73CC724BC /* EunoiaSocketClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaSocketClient.swift; sourceTree = "<group>"; };
+		77C8EA3E9635098F33599076 /* SkeletonLoaders.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SkeletonLoaders.swift; sourceTree = "<group>"; };
+		788E9F75689C82988704E4FF /* HeroBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeroBanner.swift; sourceTree = "<group>"; };
+		78FCDAF6F5CDCFB9C79BDA26 /* SpasibaDatabase.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaDatabase.swift; sourceTree = "<group>"; };
+		7D3D8F03800B928B3D9FC4FA /* TenorGifApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TenorGifApi.swift; sourceTree = "<group>"; };
+		802842D984AF0D17655C4B9D /* NotificationsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsScreen.swift; sourceTree = "<group>"; };
+		896C1667E4F5EF27BC12454E /* SmartQueueEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SmartQueueEngine.swift; sourceTree = "<group>"; };
+		8B1D1D25A2E5C0DCE308C13C /* ShareUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareUtils.swift; sourceTree = "<group>"; };
+		8B8AD4244E91B011EDF94BFE /* LrcLyricsFetcher.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LrcLyricsFetcher.swift; sourceTree = "<group>"; };
+		920744633BC03377FD69EEFD /* DynamicBackdrop.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DynamicBackdrop.swift; sourceTree = "<group>"; };
+		94D770AC4FC5F800D1C95B57 /* SpasibaNativeExtractor.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaNativeExtractor.swift; sourceTree = "<group>"; };
+		956EBF842B19979D2CCBC51C /* CategoryFeedScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CategoryFeedScreen.swift; sourceTree = "<group>"; };
+		9658B955B58EE7E7352E6745 /* SongTile.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongTile.swift; sourceTree = "<group>"; };
+		97309E41EB85F4EE3BB2E436 /* SpasibaApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaApplication.swift; sourceTree = "<group>"; };
+		9A6FBAFFC418AB7A2C1F58DC /* FriendProfileDetailsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendProfileDetailsScreen.swift; sourceTree = "<group>"; };
+		A1AE5C58525C8C406DDC9ABA /* NavigationUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationUtils.swift; sourceTree = "<group>"; };
+		A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArtworkView.swift; sourceTree = "<group>"; };
+		A404E6D9FECC89C1B919FF6D /* Entities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entities.swift; sourceTree = "<group>"; };
+		A745D03CC324B5469ABBF5C9 /* AudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizer.swift; sourceTree = "<group>"; };
+		A947AC22F75165D0BD859739 /* EunoiaScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaScreen.swift; sourceTree = "<group>"; };
+		A9FFB5FACEC8CE067683384F /* FriendsListScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendsListScreen.swift; sourceTree = "<group>"; };
+		AE663FD3FBDEA941D9714D39 /* ArtistDetailsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ArtistDetailsScreen.swift; sourceTree = "<group>"; };
+		B61D743ED26A092D50DD20BE /* FriendChatScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendChatScreen.swift; sourceTree = "<group>"; };
+		B72856FBF886D6552B29DC68 /* FcmTokenManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FcmTokenManager.swift; sourceTree = "<group>"; };
+		B825444314FB43CC3F3FA969 /* SaveToPlaylistSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SaveToPlaylistSheet.swift; sourceTree = "<group>"; };
+		B90D1C9B4C11A4426AEDF789 /* TrackOptionsMenu.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackOptionsMenu.swift; sourceTree = "<group>"; };
+		BFA46F7471C37A9D041EDA0F /* QueueSnapshotCache.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QueueSnapshotCache.swift; sourceTree = "<group>"; };
+		C115ECDC9B2F167762703FD7 /* SpasibaFcmService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaFcmService.swift; sourceTree = "<group>"; };
+		C1E12AF3B97489E6717DAEB9 /* QuickPicksEngine.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickPicksEngine.swift; sourceTree = "<group>"; };
+		C4D916A830CBEC579E0505F2 /* NativePlayerManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NativePlayerManager.swift; sourceTree = "<group>"; };
+		AA0102030405060708090A01 /* HeadlessAudioBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeadlessAudioBridge.swift; sourceTree = "<group>"; };
+		CBB4CD77306918FD14D6BD71 /* SpasibaAudioCacheManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaAudioCacheManager.swift; sourceTree = "<group>"; };
+		D6907E22F7916AD0782B556E /* Song.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Song.swift; sourceTree = "<group>"; };
+		D7C8CA5249F0173C2A9FA9C8 /* Spasiba.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Spasiba.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		DBDE6707AA9E4644EDC1E6F0 /* SilverBrandHeader.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SilverBrandHeader.swift; sourceTree = "<group>"; };
+		EABD80F675DB2B0D240343A8 /* SpasibaAppShell.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaAppShell.swift; sourceTree = "<group>"; };
+		EF9C154B8C6CDC95E43B2285 /* EqualizerSleepTimerModal.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EqualizerSleepTimerModal.swift; sourceTree = "<group>"; };
+		F06DA56141D4F0B49BD191A8 /* SpasibaMediaService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpasibaMediaService.swift; sourceTree = "<group>"; };
+		F2E758E3213028ED09E89974 /* SearchHistoryManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SearchHistoryManager.swift; sourceTree = "<group>"; };
+		FE9528EAEEC6110058363D83 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0607E4591E5F9700446A95D4 /* Data */ = {
+			isa = PBXGroup;
+			children = (
+				826FED713D12BA757CF80BF5 /* Analytics */,
+				7301B3067519334F7F3856B2 /* Api */,
+				B290B363C80ED0E773C04E74 /* Cache */,
+				47940FE3B1B44E3D1A63EC59 /* Database */,
+				3ADDC622E06D38AC7CA35DC2 /* Download */,
+				45118A189598E7B5860A7952 /* Engine */,
+				6F4A37C91F11B3650D76A3CC /* Extractor */,
+				74ABF7CF2EB6F1D92D56F5FA /* Models */,
+				992E7EAC6638DCA50C25BA3B /* Repository */,
+			);
+			path = Data;
+			sourceTree = "<group>";
+		};
+		2BCF5259A06DE2A9A656D347 /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				8B1D1D25A2E5C0DCE308C13C /* ShareUtils.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		3ADDC622E06D38AC7CA35DC2 /* Download */ = {
+			isa = PBXGroup;
+			children = (
+				38EFB1DD5AE298A627AFA958 /* SpasibaDownloadManager.swift */,
+			);
+			path = Download;
+			sourceTree = "<group>";
+		};
+		45118A189598E7B5860A7952 /* Engine */ = {
+			isa = PBXGroup;
+			children = (
+				073A860488FE64A568A1C7A6 /* EunoiaFriendManager.swift */,
+				0F6E2832411EEF3290F4B0A8 /* EunoiaNotificationHelper.swift */,
+				69F4BAFE4D7B00EA06C6714F /* EunoiaSessionManager.swift */,
+				76F6EFB0FAD2A2B73CC724BC /* EunoiaSocketClient.swift */,
+				161404EDB23C900B12DF3EDF /* EunoiaSyncController.swift */,
+				6F91863A4F37CDAF51B6378B /* EunoiaWebRtcManager.swift */,
+				B72856FBF886D6552B29DC68 /* FcmTokenManager.swift */,
+				C1E12AF3B97489E6717DAEB9 /* QuickPicksEngine.swift */,
+			);
+			path = Engine;
+			sourceTree = "<group>";
+		};
+		47940FE3B1B44E3D1A63EC59 /* Database */ = {
+			isa = PBXGroup;
+			children = (
+				62B63B92BB6D99C68D902CBC /* Daos.swift */,
+				A404E6D9FECC89C1B919FF6D /* Entities.swift */,
+				78FCDAF6F5CDCFB9C79BDA26 /* SpasibaDatabase.swift */,
+			);
+			path = Database;
+			sourceTree = "<group>";
+		};
+		4C996847086C52A0F4F46985 /* Player */ = {
+			isa = PBXGroup;
+			children = (
+				C4D916A830CBEC579E0505F2 /* NativePlayerManager.swift */,
+				AA0102030405060708090A01 /* HeadlessAudioBridge.swift */,
+				896C1667E4F5EF27BC12454E /* SmartQueueEngine.swift */,
+			);
+			path = Player;
+			sourceTree = "<group>";
+		};
+		6F4A37C91F11B3650D76A3CC /* Extractor */ = {
+			isa = PBXGroup;
+			children = (
+				94D770AC4FC5F800D1C95B57 /* SpasibaNativeExtractor.swift */,
+			);
+			path = Extractor;
+			sourceTree = "<group>";
+		};
+		7301B3067519334F7F3856B2 /* Api */ = {
+			isa = PBXGroup;
+			children = (
+				7D3D8F03800B928B3D9FC4FA /* TenorGifApi.swift */,
+				1BFF7EECB6E5668003F3B636 /* YouTubeMusicApi.swift */,
+			);
+			path = Api;
+			sourceTree = "<group>";
+		};
+		74ABF7CF2EB6F1D92D56F5FA /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D6907E22F7916AD0782B556E /* Song.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		75A3D947E55DEE0C117FDA7C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				6B74777B017AAEE45EBB5D43 /* EunoiaInviteReceiver.swift */,
+				C115ECDC9B2F167762703FD7 /* SpasibaFcmService.swift */,
+				F06DA56141D4F0B49BD191A8 /* SpasibaMediaService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		7AB75C81C8FB58C1FF9F26EC /* Screens */ = {
+			isa = PBXGroup;
+			children = (
+				AE663FD3FBDEA941D9714D39 /* ArtistDetailsScreen.swift */,
+				956EBF842B19979D2CCBC51C /* CategoryFeedScreen.swift */,
+				A947AC22F75165D0BD859739 /* EunoiaScreen.swift */,
+				B61D743ED26A092D50DD20BE /* FriendChatScreen.swift */,
+				9A6FBAFFC418AB7A2C1F58DC /* FriendProfileDetailsScreen.swift */,
+				A9FFB5FACEC8CE067683384F /* FriendsListScreen.swift */,
+				0763ACE81003F7F8F946419F /* HomeScreen.swift */,
+				62A83036BDB7BEE369C80E2C /* LibraryScreen.swift */,
+				802842D984AF0D17655C4B9D /* NotificationsScreen.swift */,
+				1C57FF91389513D0CC6FB7FC /* PlaylistOperationsScreen.swift */,
+				3D17A5E95194A957C9E696B1 /* ProfileScreen.swift */,
+				564105F9BBE26056E7ACAC63 /* SearchScreen.swift */,
+			);
+			path = Screens;
+			sourceTree = "<group>";
+		};
+		826FED713D12BA757CF80BF5 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				4C084768ABE119A0BE4ACB5C /* ListenerProfileEngine.swift */,
+				7101DA2EF2A257DF7254B25F /* SessionBrainManager.swift */,
+			);
+			path = Analytics;
+			sourceTree = "<group>";
+		};
+		832B21A6043BC2C5E006BAD1 = {
+			isa = PBXGroup;
+			children = (
+				9530FC32C55F7F14663C77F5 /* Spasiba */,
+				BB31C62F8AA75A60A3674133 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		89CCE6C76C68AECA2CECA481 /* Components */ = {
+			isa = PBXGroup;
+			children = (
+				624CD0CBBEA60E78D73676DF /* ArtistOptionsMenuSheet.swift */,
+				A745D03CC324B5469ABBF5C9 /* AudioVisualizer.swift */,
+				2BCE2D50E06A3B3048FE2B2B /* CreatePlaylistDialog.swift */,
+				920744633BC03377FD69EEFD /* DynamicBackdrop.swift */,
+				EF9C154B8C6CDC95E43B2285 /* EqualizerSleepTimerModal.swift */,
+				2BEBCC3655A675E2AB392729 /* EqualizerWaveformAnimation.swift */,
+				0B933502D4BEF036EAF7F1B9 /* ExpandedPlayerSheet.swift */,
+				788E9F75689C82988704E4FF /* HeroBanner.swift */,
+				0C89106856828B85BE6C4126 /* MiniPlayerDock.swift */,
+				B825444314FB43CC3F3FA969 /* SaveToPlaylistSheet.swift */,
+				DBDE6707AA9E4644EDC1E6F0 /* SilverBrandHeader.swift */,
+				77C8EA3E9635098F33599076 /* SkeletonLoaders.swift */,
+				A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */,
+				9658B955B58EE7E7352E6745 /* SongTile.swift */,
+				B90D1C9B4C11A4426AEDF789 /* TrackOptionsMenu.swift */,
+			);
+			path = Components;
+			sourceTree = "<group>";
+		};
+		9530FC32C55F7F14663C77F5 /* Spasiba */ = {
+			isa = PBXGroup;
+			children = (
+				183F738C275DAA4512D1D0B3 /* Info.plist */,
+				E470A7AEC9DCFD4DFF6B376A /* App */,
+				BECF52D4ED39AF062E8BC13D /* Core */,
+				0607E4591E5F9700446A95D4 /* Data */,
+				4C996847086C52A0F4F46985 /* Player */,
+				75A3D947E55DEE0C117FDA7C /* Services */,
+				CA1501E176B6F84FB2DE2D15 /* UI */,
+				A02B713A4A88BD6E453E5EC8 /* Utils */,
+			);
+			path = Spasiba;
+			sourceTree = "<group>";
+		};
+		992E7EAC6638DCA50C25BA3B /* Repository */ = {
+			isa = PBXGroup;
+			children = (
+				8B8AD4244E91B011EDF94BFE /* LrcLyricsFetcher.swift */,
+				6D6F863AA0EC98D82B84EF5C /* MusicRepository.swift */,
+			);
+			path = Repository;
+			sourceTree = "<group>";
+		};
+		A02B713A4A88BD6E453E5EC8 /* Utils */ = {
+			isa = PBXGroup;
+			children = (
+				A1AE5C58525C8C406DDC9ABA /* NavigationUtils.swift */,
+			);
+			path = Utils;
+			sourceTree = "<group>";
+		};
+		A38528D02115245890405FE3 /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				FE9528EAEEC6110058363D83 /* Theme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+		B290B363C80ED0E773C04E74 /* Cache */ = {
+			isa = PBXGroup;
+			children = (
+				BFA46F7471C37A9D041EDA0F /* QueueSnapshotCache.swift */,
+				F2E758E3213028ED09E89974 /* SearchHistoryManager.swift */,
+				CBB4CD77306918FD14D6BD71 /* SpasibaAudioCacheManager.swift */,
+				0F11ECE8E8F28DE26E638CC5 /* SpasibaNativeAudioCache.swift */,
+			);
+			path = Cache;
+			sourceTree = "<group>";
+		};
+		BB31C62F8AA75A60A3674133 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				D7C8CA5249F0173C2A9FA9C8 /* Spasiba.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		BECF52D4ED39AF062E8BC13D /* Core */ = {
+			isa = PBXGroup;
+			children = (
+				C7F6354B6A8187FB2D59CD0F /* Network */,
+				2BCF5259A06DE2A9A656D347 /* Utils */,
+			);
+			path = Core;
+			sourceTree = "<group>";
+		};
+		C7F6354B6A8187FB2D59CD0F /* Network */ = {
+			isa = PBXGroup;
+			children = (
+				08C6B2E01E89AC3E3C241332 /* HttpClientProvider.swift */,
+			);
+			path = Network;
+			sourceTree = "<group>";
+		};
+		CA1501E176B6F84FB2DE2D15 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				EABD80F675DB2B0D240343A8 /* SpasibaAppShell.swift */,
+				5A72F39A51A0F87DBD4C7C06 /* SpasibaNativeAppShell.swift */,
+				89CCE6C76C68AECA2CECA481 /* Components */,
+				7AB75C81C8FB58C1FF9F26EC /* Screens */,
+				A38528D02115245890405FE3 /* Theme */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		E470A7AEC9DCFD4DFF6B376A /* App */ = {
+			isa = PBXGroup;
+			children = (
+				0D3D4079ACA9D4182BF39E0D /* ContentView.swift */,
+				09F0EAB03BE570B30B1E2597 /* MainActivity.swift */,
+				690EFA722038C3E82FCE527D /* SpasibaApp.swift */,
+				97309E41EB85F4EE3BB2E436 /* SpasibaApplication.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		68181E30AD39BE20EAF760E0 /* Spasiba */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 48C94AD68BE38241BF67FFDE /* Build configuration list for PBXNativeTarget "Spasiba" */;
+			buildPhases = (
+				DFBD3BBEA016D7885435BF60 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Spasiba;
+			packageProductDependencies = (
+			);
+			productName = Spasiba;
+			productReference = D7C8CA5249F0173C2A9FA9C8 /* Spasiba.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		455B4A03437C3A2514AFCFFD /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1600;
+				TargetAttributes = {
+					68181E30AD39BE20EAF760E0 = {
+						DevelopmentTeam = H6JD3WVN26;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 7291FE692FC13154705DFDCF /* Build configuration list for PBXProject "Spasiba" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 832B21A6043BC2C5E006BAD1;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BB31C62F8AA75A60A3674133 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				68181E30AD39BE20EAF760E0 /* Spasiba */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DFBD3BBEA016D7885435BF60 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				07440000AFFD89C5F2709465 /* ArtistDetailsScreen.swift in Sources */,
+				231D74997F001F51251D73CD /* ArtistOptionsMenuSheet.swift in Sources */,
+				DE81AD1C93FC7AFEC4B60BFA /* AudioVisualizer.swift in Sources */,
+				392420DC7C8ECF69B14A78B6 /* CategoryFeedScreen.swift in Sources */,
+				492EF9D29AABE2B3119B2764 /* ContentView.swift in Sources */,
+				B09A7712CE83ECB26F4C5027 /* CreatePlaylistDialog.swift in Sources */,
+				16A084095264BDA7B800FE79 /* Daos.swift in Sources */,
+				A817D3B4C7ADE3E9A2698B0D /* DynamicBackdrop.swift in Sources */,
+				C08D2CF34854EEDDB1C503BF /* Entities.swift in Sources */,
+				0113372BC7AE22DF70BF822D /* EqualizerSleepTimerModal.swift in Sources */,
+				1D3235E9A4BF43A3838FC770 /* EqualizerWaveformAnimation.swift in Sources */,
+				4A3F40ECA3FBD3EE1A0BDF7D /* EunoiaFriendManager.swift in Sources */,
+				3D1F4EE0C477D38A33421A6F /* EunoiaInviteReceiver.swift in Sources */,
+				4C28731F0AEE338BBB2AD665 /* EunoiaNotificationHelper.swift in Sources */,
+				80DF56DCC14FBB2020FE02E5 /* EunoiaScreen.swift in Sources */,
+				CDB3C001543F32378FA3C955 /* EunoiaSessionManager.swift in Sources */,
+				F546A4E110ABEEFD2B923B15 /* EunoiaSocketClient.swift in Sources */,
+				2DE8F440E83C4EAF441288A6 /* EunoiaSyncController.swift in Sources */,
+				8C6CE09A19CBC5A13E1F2C2F /* EunoiaWebRtcManager.swift in Sources */,
+				FAD73324C8B8429ECC228FB2 /* ExpandedPlayerSheet.swift in Sources */,
+				0449DF7705E89349FB45A89B /* FcmTokenManager.swift in Sources */,
+				BB68809736772365B78DDDB5 /* FriendChatScreen.swift in Sources */,
+				DB77D90F74F7C37D2BF6D8B5 /* FriendProfileDetailsScreen.swift in Sources */,
+				1CA52C9013C73D5D863CEB27 /* FriendsListScreen.swift in Sources */,
+				A3CDA9E7501D5B67EE30C2FF /* HeroBanner.swift in Sources */,
+				98AF8ED883C8DCF562D8DF17 /* HomeScreen.swift in Sources */,
+				B2B2E67C278C5D881BB0265D /* HttpClientProvider.swift in Sources */,
+				42CE7C175419FD4270B970D7 /* LibraryScreen.swift in Sources */,
+				D899567E29A7B7A7FD757DD2 /* ListenerProfileEngine.swift in Sources */,
+				BA3B97AF4AE63A42777510C4 /* LrcLyricsFetcher.swift in Sources */,
+				B6E8B7EA8936122F6015DDDE /* MainActivity.swift in Sources */,
+				B65DD6FE5B4C5DDE1AF2170D /* MiniPlayerDock.swift in Sources */,
+				E81B4D76A081D2D5BB442983 /* MusicRepository.swift in Sources */,
+				6B8F3522E323C85D9267D3B1 /* NativePlayerManager.swift in Sources */,
+				BB0102030405060708090B01 /* HeadlessAudioBridge.swift in Sources */,
+				8C49EDD2EF54A71C5B79DF18 /* NavigationUtils.swift in Sources */,
+				9AE770B733942020156EB6FA /* NotificationsScreen.swift in Sources */,
+				5675ABDF14A640F5D5A809F9 /* PlaylistOperationsScreen.swift in Sources */,
+				D7F1B1E90F57C75A57838163 /* ProfileScreen.swift in Sources */,
+				69B4B74987A1BC987CA1C6E0 /* QueueSnapshotCache.swift in Sources */,
+				F0FFE8D68CAA817F6CBFCB81 /* QuickPicksEngine.swift in Sources */,
+				CDFF5966F471F61B2A60D64C /* SaveToPlaylistSheet.swift in Sources */,
+				5BF468FD291FC4C4DE12FDC8 /* SearchHistoryManager.swift in Sources */,
+				FF5417E46B8B3AE598F5C4C3 /* SearchScreen.swift in Sources */,
+				C2E7C24BA36D60C05B91F8F7 /* SessionBrainManager.swift in Sources */,
+				2E2162B8FA03C4A6D0202835 /* ShareUtils.swift in Sources */,
+				EB77C5DD0B373AB91CEAD265 /* SilverBrandHeader.swift in Sources */,
+				02D51E8C196384F5BB5EDDF6 /* SkeletonLoaders.swift in Sources */,
+				43CAF63518E5EBD8C70613F0 /* SmartQueueEngine.swift in Sources */,
+				E54569BDA28A074C4D884D71 /* Song.swift in Sources */,
+				09CD37393BD9CB55DD511F76 /* SongArtworkView.swift in Sources */,
+				E64C1899DE39CADB5277D4E2 /* SongTile.swift in Sources */,
+				640495AD898B74B75B89C976 /* SpasibaApp.swift in Sources */,
+				93D2A9CA025EADE065F77F11 /* SpasibaAppShell.swift in Sources */,
+				4046368733B5E0B61BE6B0DE /* SpasibaApplication.swift in Sources */,
+				C1298B0409723974B33AD729 /* SpasibaAudioCacheManager.swift in Sources */,
+				B49CFAC42DC547EC5FD764D2 /* SpasibaDatabase.swift in Sources */,
+				BAEAE8770BA2A152863014E2 /* SpasibaDownloadManager.swift in Sources */,
+				5F1AD51F7F7E3BB4E62D36BF /* SpasibaFcmService.swift in Sources */,
+				6FBEAE3460EB0A18BD650004 /* SpasibaMediaService.swift in Sources */,
+				3D9FEFEC18C64660AF15CADC /* SpasibaNativeAppShell.swift in Sources */,
+				443A5D8A028C945B20414CAC /* SpasibaNativeAudioCache.swift in Sources */,
+				057D8FF891C1DACCF97C22C3 /* SpasibaNativeExtractor.swift in Sources */,
+				6FA2DF25C928D0F8DE7FAC58 /* TenorGifApi.swift in Sources */,
+				5E700448EDEC45A7F6A07F02 /* Theme.swift in Sources */,
+				D70165C3B0F1427D8611049F /* TrackOptionsMenu.swift in Sources */,
+				4646672205044A3377C6AF1A /* YouTubeMusicApi.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		19CC58A679175888AB49B3C6 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Spasiba/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.commerceos.customer;
+				PRODUCT_NAME = Spasiba;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		94532C91B53CF4329B551440 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = H6JD3WVN26;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		97D7D5A1CA62E3EA1DE66CC1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = H6JD3WVN26;
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		BA7E52629409B1B681A19635 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				ENABLE_DEBUG_DYLIB = NO;
+				ENABLE_PREVIEWS = NO;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Spasiba/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.commerceos.customer;
+				PRODUCT_NAME = Spasiba;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		48C94AD68BE38241BF67FFDE /* Build configuration list for PBXNativeTarget "Spasiba" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				19CC58A679175888AB49B3C6 /* Debug */,
+				BA7E52629409B1B681A19635 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7291FE692FC13154705DFDCF /* Build configuration list for PBXProject "Spasiba" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				97D7D5A1CA62E3EA1DE66CC1 /* Debug */,
+				94532C91B53CF4329B551440 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = 455B4A03437C3A2514AFCFFD /* Project object */;
+}
