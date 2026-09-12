@@ -50,6 +50,31 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                 self.webView?.evaluateJavaScript("if (player && player.getPlayerState && player.getPlayerState() !== 1) { player.playVideo(); }", completionHandler: nil)
             }
         }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.willEnterForegroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if !self.userWantsPlayback || !self.isPlaying {
+                NSLog("[HeadlessAudioBridge] App returned to foreground while paused - enforcing pause")
+                self.webView?.pauseAllMediaPlayback()
+                self.webView?.evaluateJavaScript("userWantsPlayback = false; if (player && player.pauseVideo) { player.pauseVideo(); }", completionHandler: nil)
+            }
+        }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didBecomeActiveNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if !self.userWantsPlayback || !self.isPlaying {
+                self.webView?.pauseAllMediaPlayback()
+                self.webView?.evaluateJavaScript("userWantsPlayback = false; if (player && player.pauseVideo) { player.pauseVideo(); }", completionHandler: nil)
+            }
+        }
     }
 
     // MARK: - WKWebView Setup
@@ -243,10 +268,19 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             function onPlayerStateChange(event) {
               postBridge({ type: 'log', message: 'onPlayerStateChange: ' + event.data });
               if (event.data === 1) { // PLAYING
+                if (!userWantsPlayback) {
+                  postBridge({ type: 'log', message: 'Suppressed unwanted playback resume on foreground/system event' });
+                  if (player && player.pauseVideo) {
+                    player.pauseVideo();
+                  }
+                  return;
+                }
                 try {
                   if (typeof player.unMute === 'function') player.unMute();
                   if (typeof player.setVolume === 'function') player.setVolume(100);
                 } catch (e) {}
+              } else if (event.data === 2) { // PAUSED
+                userWantsPlayback = false;
               }
               postBridge({
                 type: 'stateChange',
@@ -419,10 +453,12 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                     case 1: // Playing
                         self.isPlaying = true
                         self.isBuffering = false
+                        self.userWantsPlayback = true
                         self.onStateChange?(true, false)
                     case 2: // Paused
                         self.isPlaying = false
                         self.isBuffering = false
+                        self.userWantsPlayback = false
                         self.onStateChange?(false, false)
                     case 3: // Buffering
                         self.isBuffering = true

@@ -429,6 +429,7 @@ public final class NativePlayerManager: ObservableObject {
 
     // MARK: - Lock Screen & Control Center Integration
     private func setupRemoteCommandCenter() {
+        UIApplication.shared.beginReceivingRemoteControlEvents()
         let commandCenter = MPRemoteCommandCenter.shared()
 
         // Clean any existing targets to avoid duplicate triggers
