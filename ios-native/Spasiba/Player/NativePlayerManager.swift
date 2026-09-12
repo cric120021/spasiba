@@ -284,23 +284,32 @@ public final class NativePlayerManager: ObservableObject {
         self.updateNowPlayingInfo()
     }
 
+    public func play() {
+        if player != nil {
+            player?.play()
+            if playbackSpeed != 1.0 {
+                player?.rate = playbackSpeed
+            }
+        } else {
+            HeadlessAudioBridge.shared.play()
+        }
+        self.isPlaying = true
+        updateNowPlayingInfo()
+    }
+
+    public func pause() {
+        player?.pause()
+        HeadlessAudioBridge.shared.pause()
+        self.isPlaying = false
+        updateNowPlayingInfo()
+    }
+
     public func togglePlayPause() {
         if isPlaying {
-            player?.pause()
-            HeadlessAudioBridge.shared.pause()
-            isPlaying = false
+            pause()
         } else {
-            if player != nil {
-                player?.play()
-                if playbackSpeed != 1.0 {
-                    player?.rate = playbackSpeed
-                }
-            } else {
-                HeadlessAudioBridge.shared.play()
-            }
-            isPlaying = true
+            play()
         }
-        updateNowPlayingInfo()
     }
 
     public func seek(to seconds: Double) {
@@ -387,6 +396,20 @@ public final class NativePlayerManager: ObservableObject {
             if (queueEngine.queue.count - queueEngine.currentIndex) < 6 {
                 replenishRadioQueue(for: nextSong)
             }
+        } else if let current = currentSong {
+            // Reached end of queue or single track playing: immediately fetch radio and advance
+            Task {
+                let automix = await YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(videoId: current.id)
+                let filtered = automix.filter { $0.id != current.id }
+                await MainActor.run {
+                    if !filtered.isEmpty {
+                        self.queueEngine.appendTracks(filtered)
+                        if let next = self.queueEngine.advanceNext() {
+                            self.play(song: next)
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -395,6 +418,8 @@ public final class NativePlayerManager: ObservableObject {
             seek(to: 0)
         } else if let prevSong = queueEngine.retreatPrevious() {
             play(song: prevSong)
+        } else {
+            seek(to: 0)
         }
     }
 
@@ -406,8 +431,22 @@ public final class NativePlayerManager: ObservableObject {
     private func setupRemoteCommandCenter() {
         let commandCenter = MPRemoteCommandCenter.shared()
 
-        // Disable skip interval commands so iOS shows Next/Previous track buttons instead
+        // Clean any existing targets to avoid duplicate triggers
+        commandCenter.playCommand.removeTarget(nil)
+        commandCenter.pauseCommand.removeTarget(nil)
+        commandCenter.togglePlayPauseCommand.removeTarget(nil)
+        commandCenter.nextTrackCommand.removeTarget(nil)
+        commandCenter.previousTrackCommand.removeTarget(nil)
+        commandCenter.changePlaybackPositionCommand.removeTarget(nil)
+        commandCenter.skipForwardCommand.removeTarget(nil)
+        commandCenter.skipBackwardCommand.removeTarget(nil)
+        commandCenter.seekForwardCommand.removeTarget(nil)
+        commandCenter.seekBackwardCommand.removeTarget(nil)
+
+        // Completely disable skip interval commands so iOS shows Next / Previous track buttons
+        commandCenter.skipForwardCommand.preferredIntervals = []
         commandCenter.skipForwardCommand.isEnabled = false
+        commandCenter.skipBackwardCommand.preferredIntervals = []
         commandCenter.skipBackwardCommand.isEnabled = false
         commandCenter.seekForwardCommand.isEnabled = false
         commandCenter.seekBackwardCommand.isEnabled = false
@@ -416,8 +455,8 @@ public final class NativePlayerManager: ObservableObject {
         commandCenter.playCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             NSLog("[NativePlayerManager] Remote command: playCommand")
-            if !self.isPlaying {
-                self.togglePlayPause()
+            DispatchQueue.main.async {
+                self.play()
             }
             return .success
         }
@@ -426,8 +465,8 @@ public final class NativePlayerManager: ObservableObject {
         commandCenter.pauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             NSLog("[NativePlayerManager] Remote command: pauseCommand")
-            if self.isPlaying {
-                self.togglePlayPause()
+            DispatchQueue.main.async {
+                self.pause()
             }
             return .success
         }
@@ -436,7 +475,9 @@ public final class NativePlayerManager: ObservableObject {
         commandCenter.togglePlayPauseCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             NSLog("[NativePlayerManager] Remote command: togglePlayPauseCommand")
-            self.togglePlayPause()
+            DispatchQueue.main.async {
+                self.togglePlayPause()
+            }
             return .success
         }
 
@@ -444,7 +485,9 @@ public final class NativePlayerManager: ObservableObject {
         commandCenter.nextTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             NSLog("[NativePlayerManager] Remote command: nextTrackCommand")
-            self.playNext()
+            DispatchQueue.main.async {
+                self.playNext()
+            }
             return .success
         }
 
@@ -452,7 +495,9 @@ public final class NativePlayerManager: ObservableObject {
         commandCenter.previousTrackCommand.addTarget { [weak self] _ in
             guard let self = self else { return .commandFailed }
             NSLog("[NativePlayerManager] Remote command: previousTrackCommand")
-            self.playPrevious()
+            DispatchQueue.main.async {
+                self.playPrevious()
+            }
             return .success
         }
 
@@ -461,7 +506,9 @@ public final class NativePlayerManager: ObservableObject {
             guard let self = self, let positionEvent = event as? MPChangePlaybackPositionCommandEvent else {
                 return .commandFailed
             }
-            self.seek(to: positionEvent.positionTime)
+            DispatchQueue.main.async {
+                self.seek(to: positionEvent.positionTime)
+            }
             return .success
         }
     }
@@ -480,8 +527,6 @@ public final class NativePlayerManager: ObservableObject {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackSpeed) : 0.0
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = max(0, queueEngine.currentIndex)
-        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = max(1, queueEngine.queue.count)
 
         // Cached artwork attachment
         if let artwork = currentArtwork, currentArtworkSongId == song.id {

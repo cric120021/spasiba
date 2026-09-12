@@ -202,7 +202,6 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             var isReady = false;
             var pendingId = null;
             var userWantsPlayback = false;
-            var isAutoResuming = false;
 
             function onYouTubeIframeAPIReady() {
               postBridge({ type: 'log', message: 'onYouTubeIframeAPIReady invoked' });
@@ -244,23 +243,10 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             function onPlayerStateChange(event) {
               postBridge({ type: 'log', message: 'onPlayerStateChange: ' + event.data });
               if (event.data === 1) { // PLAYING
-                isAutoResuming = false;
                 try {
                   if (typeof player.unMute === 'function') player.unMute();
                   if (typeof player.setVolume === 'function') player.setVolume(100);
                 } catch (e) {}
-              } else if (event.data === 2) { // PAUSED
-                // If paused unexpectedly while user wants playback (e.g. system background transition)
-                if (userWantsPlayback && !isAutoResuming) {
-                  isAutoResuming = true;
-                  setTimeout(function() {
-                    if (userWantsPlayback && player && player.getPlayerState && player.getPlayerState() === 2) {
-                      postBridge({ type: 'log', message: 'Re-asserting playback after unexpected pause' });
-                      player.playVideo();
-                    }
-                    isAutoResuming = false;
-                  }, 200);
-                }
               }
               postBridge({
                 type: 'stateChange',
@@ -388,8 +374,8 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         self.userWantsPlayback = false
         DispatchQueue.main.async { [weak self] in
             guard let self = self else { return }
-            self.webView?.pauseAllMediaPlayback()
             self.webView?.evaluateJavaScript("pauseVideo();", completionHandler: nil)
+            self.webView?.pauseAllMediaPlayback()
         }
     }
 
