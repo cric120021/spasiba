@@ -126,12 +126,12 @@ public struct SearchScreen: View {
             Color(hex: 0x0D0D0F).ignoresSafeArea()
 
             VStack(spacing: 0) {
-                // 1. YouTube/Spotify style Search Input Bar
+                // 1. YouTube/Spotify style Search Input Bar (Matching Android SearchScreen.kt lines 228-325)
                 HStack(spacing: 12) {
                     HStack(spacing: 10) {
                         Image(systemName: "magnifyingglass")
                             .font(.system(size: 20))
-                            .foregroundColor(Color(hex: 0x1DB954))
+                            .foregroundColor(.white)
                             .onTapGesture {
                                 if !query.trimmingCharacters(in: .whitespaces).isEmpty {
                                     performSearch(query)
@@ -142,13 +142,13 @@ public struct SearchScreen: View {
                             if query.isEmpty {
                                 Text("Search songs, artists...")
                                     .font(.system(size: 16))
-                                    .foregroundColor(Color.white.opacity(0.5))
+                                    .foregroundColor(SpasibaTheme.textMuted)
                             }
 
                             TextField("", text: $query)
                                 .font(.system(size: 16))
-                                .foregroundColor(.white)
-                                .accentColor(Color(hex: 0x1DB954))
+                                .foregroundColor(SpasibaTheme.textStrong)
+                                .accentColor(.white)
                                 .onChange(of: query) { newQ in
                                     isSearchSubmitted = false
                                     fetchSuggestions(for: newQ)
@@ -166,29 +166,33 @@ public struct SearchScreen: View {
                             }) {
                                 Image(systemName: "xmark.circle.fill")
                                     .font(.system(size: 18))
-                                    .foregroundColor(Color.white.opacity(0.5))
+                                    .foregroundColor(SpasibaTheme.textMuted)
                             }
                         }
                     }
                     .padding(.horizontal, 16)
-                    .frame(height: 54)
-                    .background(Color(hex: 0x1E1E22))
-                    .cornerRadius(27)
+                    .frame(height: 58)
+                    .background(SpasibaTheme.surfaceElevated)
+                    .cornerRadius(29)
                     .overlay(
-                        RoundedRectangle(cornerRadius: 27)
+                        RoundedRectangle(cornerRadius: 29)
                             .stroke(Color.white.opacity(0.12), lineWidth: 1)
                     )
 
-                    // Voice / Mic Button (matching Android 58dp circle)
+                    // Voice / Mic Button (Matching Android 58dp circle with UiSurfaceElevated & border)
                     Button(action: {
                         startVoiceSearch()
                     }) {
                         Image(systemName: "mic.fill")
                             .font(.system(size: 20))
                             .foregroundColor(.white)
-                            .frame(width: 54, height: 54)
-                            .background(Color.white.opacity(0.12))
+                            .frame(width: 58, height: 58)
+                            .background(SpasibaTheme.surfaceElevated)
                             .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+                            )
                     }
                     .buttonStyle(PlainButtonStyle())
                 }

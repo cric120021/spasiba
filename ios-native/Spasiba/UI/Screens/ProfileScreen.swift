@@ -397,25 +397,36 @@ public struct ProfileScreen: View {
         }
     }
 
-    // MARK: - Sheets
+    // MARK: - Sheets (Matching Android ProfileScreen.kt lines 840-985)
     private var editNameSheet: some View {
         VStack(spacing: 20) {
             Text("Edit Display Name")
                 .font(.system(size: 18, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(SpasibaTheme.textStrong)
 
-            TextField("Display Name", text: $editNameInput)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
-                .foregroundColor(.white)
+            ZStack(alignment: .leading) {
+                if editNameInput.isEmpty {
+                    Text("Display Name")
+                        .foregroundColor(SpasibaTheme.textMuted)
+                }
+
+                TextField("", text: $editNameInput)
+                    .foregroundColor(SpasibaTheme.textStrong)
+                    .accentColor(.white)
+            }
+            .padding(14)
+            .background(Color.white.opacity(0.04))
+            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
 
             HStack(spacing: 12) {
                 Button("Cancel") {
                     isEditNameDialogOpen = false
                 }
-                .foregroundColor(Color.white.opacity(0.6))
+                .foregroundColor(SpasibaTheme.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding()
 
@@ -431,34 +442,71 @@ public struct ProfileScreen: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(hex: 0x1DB954))
+                .background(Color.white)
                 .cornerRadius(12)
             }
             Spacer()
         }
         .padding(24)
-        .background(Color(hex: 0x121214).ignoresSafeArea())
+        .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
     }
 
     private var addFriendSheet: some View {
         VStack(spacing: 20) {
-            Text("Add Friend")
+            Text("Add Friend with Code")
                 .font(.system(size: 18, weight: .bold))
                 .foregroundColor(.white)
 
-            TextField("Friend Device ID (@...)", text: $addFriendIdInput)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
-                .foregroundColor(.white)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Enter your friend's code or Device ID:")
+                    .font(.system(size: 13))
+                    .foregroundColor(SpasibaTheme.textMuted)
 
-            TextField("Friend Name", text: $addFriendNameInput)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
-                .foregroundColor(.white)
+                ZStack(alignment: .leading) {
+                    if addFriendIdInput.isEmpty {
+                        Text("e.g. SPASIBA-9A2F41")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.gray)
+                    }
+
+                    TextField("", text: $addFriendIdInput)
+                        .autocapitalization(.allCharacters)
+                        .foregroundColor(.white)
+                        .accentColor(.white)
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color(hex: 0x10B981), lineWidth: 1)
+                )
+            }
+
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Friend Name (Optional):")
+                    .font(.system(size: 13))
+                    .foregroundColor(SpasibaTheme.textMuted)
+
+                ZStack(alignment: .leading) {
+                    if addFriendNameInput.isEmpty {
+                        Text("e.g. Alex")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.gray)
+                    }
+
+                    TextField("", text: $addFriendNameInput)
+                        .foregroundColor(.white)
+                        .accentColor(.white)
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
+            }
 
             HStack(spacing: 12) {
                 Button("Cancel") {
@@ -466,15 +514,15 @@ public struct ProfileScreen: View {
                     addFriendIdInput = ""
                     addFriendNameInput = ""
                 }
-                .foregroundColor(Color.white.opacity(0.6))
+                .foregroundColor(SpasibaTheme.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding()
 
-                Button("Add") {
+                Button("Add Friend") {
                     let cleanId = addFriendIdInput.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "")
                     let cleanName = addFriendNameInput.trimmingCharacters(in: .whitespaces)
-                    if !cleanId.isEmpty && !cleanName.isEmpty {
-                        _ = friendManager.addOrSendFriendRequest(friendId: cleanId, name: cleanName)
+                    if !cleanId.isEmpty {
+                        _ = friendManager.addOrSendFriendRequest(friendId: cleanId, name: cleanName.isEmpty ? cleanId : cleanName)
                         isAddFriendDialogOpen = false
                         addFriendIdInput = ""
                         addFriendNameInput = ""
@@ -484,12 +532,12 @@ public struct ProfileScreen: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(hex: 0x10B981))
+                .background(Color.white)
                 .cornerRadius(12)
             }
             Spacer()
         }
         .padding(24)
-        .background(Color(hex: 0x121214).ignoresSafeArea())
+        .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
     }
 }

@@ -133,12 +133,31 @@ public struct EunoiaScreen: View {
 
                 // Chat Input Bar
                 HStack(spacing: 10) {
-                    TextField("Send message to party...", text: $chatMessage)
-                        .foregroundColor(.white)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
-                        .background(SpasibaTheme.surfaceElevated)
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                    HStack(spacing: 10) {
+                        Image(systemName: "slider.horizontal.3")
+                            .font(.system(size: 18))
+                            .foregroundColor(!chatMessage.trimmingCharacters(in: .whitespaces).isEmpty ? .white : SpasibaTheme.textMuted)
+
+                        ZStack(alignment: .leading) {
+                            if chatMessage.isEmpty {
+                                Text("Write a message in room...")
+                                    .font(.system(size: 15))
+                                    .foregroundColor(SpasibaTheme.textMuted)
+                            }
+                            TextField("", text: $chatMessage)
+                                .font(.system(size: 15))
+                                .foregroundColor(SpasibaTheme.textStrong)
+                                .accentColor(.white)
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .frame(height: 54)
+                    .background(SpasibaTheme.surfaceElevated)
+                    .clipShape(RoundedRectangle(cornerRadius: 27))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 27)
+                            .stroke(Color.white.opacity(0.14), lineWidth: 1)
+                    )
 
                     Button(action: {
                         let clean = chatMessage.trimmingCharacters(in: .whitespaces)
@@ -150,7 +169,7 @@ public struct EunoiaScreen: View {
                         Image(systemName: "paperplane.fill")
                             .font(.system(size: 16))
                             .foregroundColor(.black)
-                            .frame(width: 40, height: 40)
+                            .frame(width: 44, height: 44)
                             .background(Color.white)
                             .clipShape(Circle())
                     }

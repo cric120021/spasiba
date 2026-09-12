@@ -443,10 +443,17 @@ public struct FriendChatScreen: View {
                 }
 
                 // Text field
-                TextField("Message", text: $messageInput)
-                    .foregroundColor(Color(hex: 0xE9EDEF))
-                    .accentColor(Color(hex: 0x00A884))
-                    .font(.system(size: 15))
+                ZStack(alignment: .leading) {
+                    if messageInput.isEmpty {
+                        Text("Message")
+                            .font(.system(size: 15))
+                            .foregroundColor(Color(hex: 0x8696A0))
+                    }
+                    TextField("", text: $messageInput)
+                        .foregroundColor(Color(hex: 0xE9EDEF))
+                        .accentColor(Color(hex: 0x00A884))
+                        .font(.system(size: 15))
+                }
 
                 // Photos Attachment Picker
                 PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
@@ -629,8 +636,17 @@ public struct GifStickerPickerView: View {
                     Image(systemName: "magnifyingglass")
                         .foregroundColor(SpasibaTheme.textMuted)
 
-                    TextField("Search Tenor GIFs...", text: $searchQuery)
-                        .foregroundColor(.white)
+                    ZStack(alignment: .leading) {
+                        if searchQuery.isEmpty {
+                            Text("Search Tenor GIFs...")
+                                .foregroundColor(SpasibaTheme.textMuted)
+                                .font(.system(size: 14))
+                        }
+                        TextField("", text: $searchQuery)
+                            .foregroundColor(.white)
+                            .font(.system(size: 14))
+                            .accentColor(Color(hex: 0x00A884))
+                    }
 
                     if !searchQuery.isEmpty {
                         Button(action: { searchQuery = "" }) {

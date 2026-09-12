@@ -31,15 +31,25 @@ public struct CreatePlaylistDialog: View {
                     .font(.system(size: 14))
                     .foregroundColor(SpasibaTheme.textMuted)
 
-                TextField("Playlist Name", text: $name)
-                    .foregroundColor(SpasibaTheme.textStrong)
-                    .padding(12)
-                    .background(Color.white.opacity(0.06))
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.white.opacity(0.3), lineWidth: 1)
-                    )
+                ZStack(alignment: .leading) {
+                    if name.isEmpty {
+                        Text("Playlist Name")
+                            .font(.system(size: 15))
+                            .foregroundColor(SpasibaTheme.textMuted)
+                    }
+
+                    TextField("", text: $name)
+                        .font(.system(size: 15))
+                        .foregroundColor(SpasibaTheme.textStrong)
+                        .accentColor(.white)
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 HStack(spacing: 12) {
                     Spacer()

@@ -438,31 +438,49 @@ public struct FriendsListScreen: View {
                     .font(.system(size: 13))
                     .foregroundColor(SpasibaTheme.textMuted)
 
-                TextField("e.g. SPASIBA-9A2F41", text: $friendCodeInput)
-                    .autocapitalization(.allCharacters)
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
+                ZStack(alignment: .leading) {
+                    if friendCodeInput.isEmpty {
+                        Text("e.g. SPASIBA-9A2F41")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.gray)
+                    }
+
+                    TextField("", text: $friendCodeInput)
+                        .autocapitalization(.allCharacters)
+                        .foregroundColor(.white)
+                        .accentColor(.white)
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 Text("Friend Name (Optional):")
                     .font(.system(size: 13))
                     .foregroundColor(SpasibaTheme.textMuted)
                     .padding(.top, 4)
 
-                TextField("e.g. Alex", text: $friendNameInput)
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 10)
-                            .stroke(Color.white.opacity(0.2), lineWidth: 1)
-                    )
+                ZStack(alignment: .leading) {
+                    if friendNameInput.isEmpty {
+                        Text("e.g. Alex")
+                            .font(.system(size: 13))
+                            .foregroundColor(Color.gray)
+                    }
+
+                    TextField("", text: $friendNameInput)
+                        .foregroundColor(.white)
+                        .accentColor(.white)
+                }
+                .padding(14)
+                .background(Color.white.opacity(0.04))
+                .clipShape(RoundedRectangle(cornerRadius: 12))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 12)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 HStack {
                     Spacer()
@@ -492,8 +510,12 @@ public struct FriendsListScreen: View {
                 .padding(.top, 8)
             }
             .padding(22)
-            .background(Color(hex: 0x14141E))
+            .background(SpasibaTheme.surfaceElevated)
             .clipShape(RoundedRectangle(cornerRadius: 20))
+            .overlay(
+                RoundedRectangle(cornerRadius: 20)
+                    .stroke(SpasibaTheme.border, lineWidth: 1)
+            )
             .padding(.horizontal, 32)
         }
     }

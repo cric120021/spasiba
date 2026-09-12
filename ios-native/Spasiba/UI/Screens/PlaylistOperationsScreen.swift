@@ -401,11 +401,22 @@ public struct PlaylistOperationsScreen: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
 
-                TextField("Playlist Name", text: $createNameInput)
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                ZStack(alignment: .leading) {
+                    if createNameInput.isEmpty {
+                        Text("Playlist Name")
+                            .foregroundColor(SpasibaTheme.textMuted)
+                    }
+                    TextField("", text: $createNameInput)
+                        .foregroundColor(SpasibaTheme.textStrong)
+                        .accentColor(.white)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 HStack {
                     Spacer()
@@ -432,8 +443,12 @@ public struct PlaylistOperationsScreen: View {
                 }
             }
             .padding(20)
-            .background(Color(hex: 0x181824))
+            .background(SpasibaTheme.surfaceElevated)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
             .padding(.horizontal, 32)
         }
     }
@@ -450,11 +465,22 @@ public struct PlaylistOperationsScreen: View {
                     .font(.system(size: 12))
                     .foregroundColor(SpasibaTheme.textMuted)
 
-                TextField("Share Code / Link", text: $importCodeInput)
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                ZStack(alignment: .leading) {
+                    if importCodeInput.isEmpty {
+                        Text("Share Code / Link")
+                            .foregroundColor(SpasibaTheme.textMuted)
+                    }
+                    TextField("", text: $importCodeInput)
+                        .foregroundColor(SpasibaTheme.textStrong)
+                        .accentColor(.white)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 HStack {
                     Spacer()
@@ -485,8 +511,12 @@ public struct PlaylistOperationsScreen: View {
                 }
             }
             .padding(20)
-            .background(Color(hex: 0x181824))
+            .background(SpasibaTheme.surfaceElevated)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
             .padding(.horizontal, 32)
         }
     }
@@ -499,11 +529,22 @@ public struct PlaylistOperationsScreen: View {
                     .font(.system(size: 18, weight: .bold))
                     .foregroundColor(.white)
 
-                TextField("New Name", text: $renameInput)
-                    .foregroundColor(.white)
-                    .padding(12)
-                    .background(Color.white.opacity(0.08))
-                    .clipShape(RoundedRectangle(cornerRadius: 10))
+                ZStack(alignment: .leading) {
+                    if renameInput.isEmpty {
+                        Text("New Name")
+                            .foregroundColor(SpasibaTheme.textMuted)
+                    }
+                    TextField("", text: $renameInput)
+                        .foregroundColor(SpasibaTheme.textStrong)
+                        .accentColor(.white)
+                }
+                .padding(12)
+                .background(Color.white.opacity(0.08))
+                .clipShape(RoundedRectangle(cornerRadius: 10))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                )
 
                 HStack {
                     Spacer()
@@ -533,8 +574,12 @@ public struct PlaylistOperationsScreen: View {
                 }
             }
             .padding(20)
-            .background(Color(hex: 0x181824))
+            .background(SpasibaTheme.surfaceElevated)
             .clipShape(RoundedRectangle(cornerRadius: 16))
+            .overlay(
+                RoundedRectangle(cornerRadius: 16)
+                    .stroke(Color.white.opacity(0.12), lineWidth: 1)
+            )
             .padding(.horizontal, 32)
         }
     }

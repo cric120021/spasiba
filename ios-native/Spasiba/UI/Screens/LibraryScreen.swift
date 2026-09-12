@@ -643,21 +643,32 @@ public struct LibraryScreen: View {
         VStack(spacing: 20) {
             Text("Create Playlist")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(SpasibaTheme.textStrong)
 
-            TextField("Playlist Name", text: $newPlaylistName)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
-                .foregroundColor(.white)
+            ZStack(alignment: .leading) {
+                if newPlaylistName.isEmpty {
+                    Text("Playlist Name")
+                        .foregroundColor(SpasibaTheme.textMuted)
+                }
+                TextField("", text: $newPlaylistName)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .foregroundColor(SpasibaTheme.textStrong)
+                    .accentColor(.white)
+            }
+            .padding()
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
 
             HStack(spacing: 12) {
                 Button("Cancel") {
                     isCreatePlaylistOpen = false
                     newPlaylistName = ""
                 }
-                .foregroundColor(Color.white.opacity(0.6))
+                .foregroundColor(SpasibaTheme.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding()
 
@@ -672,35 +683,46 @@ public struct LibraryScreen: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(hex: 0x1DB954))
+                .background(Color.white)
                 .cornerRadius(12)
             }
 
             Spacer()
         }
         .padding(24)
-        .background(Color(hex: 0x121214).ignoresSafeArea())
+        .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
     }
 
     private var importPlaylistSheet: some View {
         VStack(spacing: 20) {
             Text("Import Shared Playlist")
                 .font(.system(size: 20, weight: .bold))
-                .foregroundColor(.white)
+                .foregroundColor(SpasibaTheme.textStrong)
 
-            TextField("Share Code / Deep Link / Title", text: $importInput)
-                .textFieldStyle(PlainTextFieldStyle())
-                .padding()
-                .background(Color.white.opacity(0.08))
-                .cornerRadius(12)
-                .foregroundColor(.white)
+            ZStack(alignment: .leading) {
+                if importInput.isEmpty {
+                    Text("Share Code / Deep Link / Title")
+                        .foregroundColor(SpasibaTheme.textMuted)
+                }
+                TextField("", text: $importInput)
+                    .textFieldStyle(PlainTextFieldStyle())
+                    .foregroundColor(SpasibaTheme.textStrong)
+                    .accentColor(.white)
+            }
+            .padding()
+            .background(Color.white.opacity(0.08))
+            .cornerRadius(12)
+            .overlay(
+                RoundedRectangle(cornerRadius: 12)
+                    .stroke(Color.white.opacity(0.2), lineWidth: 1)
+            )
 
             HStack(spacing: 12) {
                 Button("Cancel") {
                     isImportDialogOpen = false
                     importInput = ""
                 }
-                .foregroundColor(Color.white.opacity(0.6))
+                .foregroundColor(SpasibaTheme.textMuted)
                 .frame(maxWidth: .infinity)
                 .padding()
 
@@ -720,14 +742,14 @@ public struct LibraryScreen: View {
                 .foregroundColor(.black)
                 .frame(maxWidth: .infinity)
                 .padding()
-                .background(Color(hex: 0x1DB954))
+                .background(Color.white)
                 .cornerRadius(12)
             }
 
             Spacer()
         }
         .padding(24)
-        .background(Color(hex: 0x121214).ignoresSafeArea())
+        .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
     }
 
     private func playlistOptionsSheet(playlist: PlaylistEntity) -> some View {
