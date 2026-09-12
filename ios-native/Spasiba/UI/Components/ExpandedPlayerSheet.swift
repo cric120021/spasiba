@@ -159,23 +159,21 @@ public struct ExpandedPlayerSheet: View {
         VStack(spacing: 0) {
             // 1. Top Navigation Bar (pinned at top)
             topNavigationBar
-                .frame(maxWidth: 540)
                 .padding(.horizontal, 20)
                 .padding(.top, 6)
-                .padding(.bottom, 4)
+                .padding(.bottom, 6)
 
             // 2. Center Dynamic Content Area (fills remaining viewport space)
             centerContentView
-                .frame(maxWidth: 540)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 3. Pinned Bottom Player Controls Section (always accessible, never scrolls off)
             bottomControlsSection
-                .frame(maxWidth: 540)
                 .padding(.horizontal, 20)
-                .padding(.bottom, 12)
+                .padding(.bottom, 16)
         }
-        .frame(width: geometry.size.width, height: geometry.size.height)
+        .frame(maxWidth: 540)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Center Content View (Hero Artwork vs Lyrics vs Up Next Queue)
@@ -243,7 +241,7 @@ public struct ExpandedPlayerSheet: View {
         }
     }
 
-    // MARK: - Top Navigation Bar
+    // MARK: - Top Navigation Bar (Symmetrical 40pt side buttons + Centered Audio/Video switch)
     private var topNavigationBar: some View {
         VStack(spacing: 4) {
             // Drag handle pill (standard on iOS modal sheets)
@@ -253,7 +251,7 @@ public struct ExpandedPlayerSheet: View {
                 .padding(.top, 2)
 
             HStack {
-                // Down Arrow Button
+                // Down Arrow Button (Left - 40pt circle)
                 Button(action: { dismiss() }) {
                     Circle()
                         .fill(Color.white.opacity(0.08))
@@ -268,103 +266,95 @@ public struct ExpandedPlayerSheet: View {
 
                 Spacer()
 
-                // Center Caption: PLAYING FROM QUEUE / Context
-                VStack(spacing: 1) {
-                    Text("PLAYING FROM QUEUE")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(Color.white.opacity(0.55))
-                        .tracking(1)
-
-                    if let song = song {
-                        Text(song.author)
+                // Center: Audio / Video Toggle Pill Switch (Matching Android Native 2 & YouTube Music)
+                HStack(spacing: 0) {
+                    Button(action: {
+                        withAnimation {
+                            isVideoModeActive = false
+                            playerManager.disableVideoMode()
+                        }
+                    }) {
+                        Text("Audio")
                             .font(.system(size: 12, weight: .bold))
-                            .foregroundColor(.white)
-                            .lineLimit(1)
+                            .foregroundColor(!isVideoModeActive ? .black : .white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(!isVideoModeActive ? Color.white : Color.clear)
+                            .clipShape(Capsule())
                     }
+                    .buttonStyle(PlainButtonStyle())
+
+                    Button(action: {
+                        withAnimation {
+                            isVideoModeActive = true
+                            activeTab = "NOW PLAYING"
+                            playerManager.enableVideoMode()
+                        }
+                    }) {
+                        Text("Video")
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundColor(isVideoModeActive ? .black : .white)
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 6)
+                            .background(isVideoModeActive ? Color.white : Color.clear)
+                            .clipShape(Capsule())
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
+                .padding(2)
+                .background(Color.white.opacity(0.10))
+                .clipShape(Capsule())
+                .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
 
                 Spacer()
 
-                HStack(spacing: 8) {
-                    // Audio / Video Toggle Pill Switch
-                    HStack(spacing: 0) {
+                // Options Menu Button (Right - 40pt circle)
+                Menu {
+                    if let song = song {
                         Button(action: {
-                            withAnimation {
-                                isVideoModeActive = false
-                                playerManager.disableVideoMode()
-                            }
+                            ShareUtils.shareSong(song: song)
                         }) {
-                            Text("Audio")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(!isVideoModeActive ? .black : .white)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 5)
-                                .background(!isVideoModeActive ? Color.white : Color.clear)
-                                .clipShape(Capsule())
+                            Label("Share Song", systemImage: "square.and.arrow.up")
                         }
-                        .buttonStyle(PlainButtonStyle())
-
-                        Button(action: {
-                            withAnimation {
-                                isVideoModeActive = true
-                                activeTab = "NOW PLAYING"
-                                playerManager.enableVideoMode()
-                            }
-                        }) {
-                            Text("Video")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isVideoModeActive ? .black : .white)
-                                .padding(.horizontal, 11)
-                                .padding(.vertical, 5)
-                                .background(isVideoModeActive ? Color.white : Color.clear)
-                                .clipShape(Capsule())
-                        }
-                        .buttonStyle(PlainButtonStyle())
                     }
-                    .padding(2)
-                    .background(Color.white.opacity(0.10))
-                    .clipShape(Capsule())
-                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
 
-                    // Options Menu Button
-                    Menu {
-                        Button(action: { isQualityDialogOpen = true }) {
-                            Label("Video Quality (\(playerManager.videoQuality))", systemImage: "video")
-                        }
-
-                        if isDownloaded {
-                            Button(role: .destructive, action: { isDownloaded = false }) {
-                                Label("Remove download", systemImage: "trash")
-                            }
-                        } else {
-                            Button(action: { isDownloadDialogOpen = true }) {
-                                Label("Download Track", systemImage: "arrow.down.circle")
-                            }
-                        }
-
-                        Button(action: { isSleepTimerModalOpen = true }) {
-                            Label("Speed & Sleep Timer", systemImage: "timer")
-                        }
-
-                        Button(action: {
-                            withAnimation {
-                                showVinylMode.toggle()
-                            }
-                        }) {
-                            Label(showVinylMode ? "Standard Artwork" : "Vinyl Record Mode", systemImage: "record.circle")
-                        }
-                    } label: {
-                        Circle()
-                            .fill(Color.white.opacity(0.08))
-                            .frame(width: 40, height: 40)
-                            .overlay(
-                                Image(systemName: "ellipsis")
-                                    .font(.system(size: 16, weight: .bold))
-                                    .foregroundColor(.white)
-                                    .rotationEffect(.degrees(90))
-                            )
+                    Button(action: { isQualityDialogOpen = true }) {
+                        Label("Video Quality (\(playerManager.videoQuality))", systemImage: "video")
                     }
+
+                    if isDownloaded {
+                        Button(role: .destructive, action: { isDownloaded = false }) {
+                            Label("Remove download", systemImage: "trash")
+                        }
+                    } else {
+                        Button(action: { isDownloadDialogOpen = true }) {
+                            Label("Download Track", systemImage: "arrow.down.circle")
+                        }
+                    }
+
+                    Button(action: { isSleepTimerModalOpen = true }) {
+                        Label("Speed & Sleep Timer", systemImage: "timer")
+                    }
+
+                    Button(action: {
+                        withAnimation {
+                            showVinylMode.toggle()
+                        }
+                    }) {
+                        Label(showVinylMode ? "Standard Artwork" : "Vinyl Record Mode", systemImage: "record.circle")
+                    }
+                } label: {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            Image(systemName: "ellipsis")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundColor(.white)
+                                .rotationEffect(.degrees(90))
+                        )
                 }
+                .buttonStyle(PlainButtonStyle())
             }
         }
         .contentShape(Rectangle())
@@ -639,47 +629,35 @@ public struct ExpandedPlayerSheet: View {
         .frame(width: baseSize, height: baseSize)
     }
 
-    // MARK: - Track Metadata Row
+    // MARK: - Track Metadata Row (Title/Author + Heart Button, matching Spotify 1:1)
     private var trackMetadataRow: some View {
         HStack(alignment: .center, spacing: 12) {
             if let song = song {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     Text(song.title)
-                        .font(.system(size: 20, weight: .bold))
+                        .font(.system(size: 21, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
                     Text(song.author)
-                        .font(.system(size: 13))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(Color.white.opacity(0.7))
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                HStack(spacing: 4) {
-                    Button(action: {
-                        db.toggleLike(song: song)
-                    }) {
-                        Image(systemName: isLiked ? "heart.fill" : "heart")
-                            .font(.system(size: 22))
-                            .foregroundColor(isLiked ? Color(hex: 0xEF4444) : .white)
-                            .frame(width: 40, height: 40)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-
-                    Button(action: {
-                        ShareUtils.shareSong(song: song)
-                    }) {
-                        Image(systemName: "square.and.arrow.up")
-                            .font(.system(size: 20))
-                            .foregroundColor(Color.white.opacity(0.85))
-                            .frame(width: 40, height: 40)
-                    }
-                    .buttonStyle(PlainButtonStyle())
+                // Single Heart (Like) button on the right - cleanly balanced
+                Button(action: {
+                    db.toggleLike(song: song)
+                }) {
+                    Image(systemName: isLiked ? "heart.fill" : "heart")
+                        .font(.system(size: 24))
+                        .foregroundColor(isLiked ? Color(hex: 0xEF4444) : .white)
+                        .frame(width: 44, height: 44)
                 }
-                .fixedSize()
+                .buttonStyle(PlainButtonStyle())
             }
         }
     }
