@@ -137,28 +137,35 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             }
             if (navigator.mediaSession) {
                 var origSetActionHandler = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
-                navigator.mediaSession.setActionHandler = function(action, handler) {
-                    if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') {
-                        return origSetActionHandler(action, null);
-                    }
-                    return origSetActionHandler(action, handler);
-                };
-                navigator.mediaSession.setActionHandler('nexttrack', function() {
+                var notifyNext = function() {
                     if (window.__spasibaBridge) {
                         window.__spasibaBridge.postMessage({ type: 'nextTrack' });
                     } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.spasibaBridge) {
                         window.webkit.messageHandlers.spasibaBridge.postMessage({ type: 'nextTrack' });
                     }
-                });
-                navigator.mediaSession.setActionHandler('previoustrack', function() {
+                };
+                var notifyPrev = function() {
                     if (window.__spasibaBridge) {
                         window.__spasibaBridge.postMessage({ type: 'prevTrack' });
                     } else if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.spasibaBridge) {
                         window.webkit.messageHandlers.spasibaBridge.postMessage({ type: 'prevTrack' });
                     }
-                });
-                navigator.mediaSession.setActionHandler('seekforward', null);
-                navigator.mediaSession.setActionHandler('seekbackward', null);
+                };
+
+                navigator.mediaSession.setActionHandler = function(action, handler) {
+                    if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') {
+                        return origSetActionHandler(action, null);
+                    }
+                    if (action === 'nexttrack' || action === 'previoustrack') {
+                        return;
+                    }
+                    return origSetActionHandler(action, handler);
+                };
+
+                origSetActionHandler('nexttrack', notifyNext);
+                origSetActionHandler('previoustrack', notifyPrev);
+                origSetActionHandler('seekforward', null);
+                origSetActionHandler('seekbackward', null);
             }
         } catch (e) {}
         """
@@ -203,20 +210,25 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
               }
               if (navigator.mediaSession) {
                 var origSetActionHandler = navigator.mediaSession.setActionHandler.bind(navigator.mediaSession);
+                var notifyNext = function() {
+                  postBridge({ type: 'nextTrack' });
+                };
+                var notifyPrev = function() {
+                  postBridge({ type: 'prevTrack' });
+                };
                 navigator.mediaSession.setActionHandler = function(action, handler) {
                   if (action === 'seekforward' || action === 'seekbackward' || action === 'seekto') {
                     return origSetActionHandler(action, null);
                   }
+                  if (action === 'nexttrack' || action === 'previoustrack') {
+                    return;
+                  }
                   return origSetActionHandler(action, handler);
                 };
-                navigator.mediaSession.setActionHandler('nexttrack', function() {
-                  postBridge({ type: 'nextTrack' });
-                });
-                navigator.mediaSession.setActionHandler('previoustrack', function() {
-                  postBridge({ type: 'prevTrack' });
-                });
-                navigator.mediaSession.setActionHandler('seekforward', null);
-                navigator.mediaSession.setActionHandler('seekbackward', null);
+                origSetActionHandler('nexttrack', notifyNext);
+                origSetActionHandler('previoustrack', notifyPrev);
+                origSetActionHandler('seekforward', null);
+                origSetActionHandler('seekbackward', null);
               }
             } catch (e) {}
           </script>

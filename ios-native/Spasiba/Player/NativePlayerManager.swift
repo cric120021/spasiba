@@ -544,6 +544,11 @@ public final class NativePlayerManager: ObservableObject {
         nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackSpeed) : 0.0
         nowPlayingInfo[MPNowPlayingInfoPropertyDefaultPlaybackRate] = 1.0
         nowPlayingInfo[MPNowPlayingInfoPropertyMediaType] = MPNowPlayingInfoMediaType.audio.rawValue
+        
+        let qIndex = max(1, queueEngine.currentIndex + 1)
+        let qCount = max(qIndex + 5, queueEngine.queue.count + 2)
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueIndex] = qIndex
+        nowPlayingInfo[MPNowPlayingInfoPropertyPlaybackQueueCount] = qCount
 
         let commandCenter = MPRemoteCommandCenter.shared()
         commandCenter.skipForwardCommand.preferredIntervals = []
