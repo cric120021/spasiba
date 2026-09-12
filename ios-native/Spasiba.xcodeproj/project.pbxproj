@@ -74,6 +74,7 @@
 		F546A4E110ABEEFD2B923B15 /* EunoiaSocketClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 76F6EFB0FAD2A2B73CC724BC /* EunoiaSocketClient.swift */; };
 		FAD73324C8B8429ECC228FB2 /* ExpandedPlayerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B933502D4BEF036EAF7F1B9 /* ExpandedPlayerSheet.swift */; };
 		FF5417E46B8B3AE598F5C4C3 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564105F9BBE26056E7ACAC63 /* SearchScreen.swift */; };
+		A1C000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1C000000000000000000002 /* Assets.xcassets */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -88,6 +89,7 @@
 		0F6E2832411EEF3290F4B0A8 /* EunoiaNotificationHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaNotificationHelper.swift; sourceTree = "<group>"; };
 		161404EDB23C900B12DF3EDF /* EunoiaSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaSyncController.swift; sourceTree = "<group>"; };
 		183F738C275DAA4512D1D0B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		A1C000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1BFF7EECB6E5668003F3B636 /* YouTubeMusicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeMusicApi.swift; sourceTree = "<group>"; };
 		1C57FF91389513D0CC6FB7FC /* PlaylistOperationsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistOperationsScreen.swift; sourceTree = "<group>"; };
 		2BCE2D50E06A3B3048FE2B2B /* CreatePlaylistDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePlaylistDialog.swift; sourceTree = "<group>"; };
@@ -313,6 +315,7 @@
 			isa = PBXGroup;
 			children = (
 				183F738C275DAA4512D1D0B3 /* Info.plist */,
+				A1C000000000000000000002 /* Assets.xcassets */,
 				E470A7AEC9DCFD4DFF6B376A /* App */,
 				BECF52D4ED39AF062E8BC13D /* Core */,
 				0607E4591E5F9700446A95D4 /* Data */,
@@ -416,6 +419,7 @@
 			buildConfigurationList = 48C94AD68BE38241BF67FFDE /* Build configuration list for PBXNativeTarget "Spasiba" */;
 			buildPhases = (
 				DFBD3BBEA016D7885435BF60 /* Sources */,
+				A1C000000000000000000003 /* Resources */,
 			);
 			buildRules = (
 			);
@@ -429,6 +433,17 @@
 			productType = "com.apple.product-type.application";
 		};
 /* End PBXNativeTarget section */
+
+/* Begin PBXResourcesBuildPhase section */
+		A1C000000000000000000003 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				A1C000000000000000000001 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
 
 /* Begin PBXProject section */
 		455B4A03437C3A2514AFCFFD /* Project object */ = {

@@ -20,6 +20,7 @@ DEVICES=(
     "4654717E-424D-5817-9AA4-57A7A2983492" # Simran's iPhone
     "678D49E0-19B5-5115-9804-B1340A3D29BB" # Jigar's iPad
     "345AFF88-CE33-52B3-9AC8-7C4635D205FE" # Jigar's iPhone
+    "0F0DBDFB-F03A-5A69-A4F0-F6CF1DADA0E8" # J’s iphone (iPhone 12, iOS 18)
 )
 
 DEVICE_LIST=$(xcrun devicectl list devices 2>/dev/null || true)
