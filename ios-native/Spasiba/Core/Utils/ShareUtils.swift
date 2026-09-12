@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 #if canImport(UIKit)
 import UIKit
 #endif
@@ -154,3 +155,34 @@ public enum ShareUtils {
         return SharedPlaylistData(name: name, songs: songs, shareCode: code)
     }
 }
+
+// MARK: - iOS 15 Backward Compatible Presentation Detents
+extension View {
+    @ViewBuilder
+    public func compatPresentationDetentsMedium() -> some View {
+        if #available(iOS 16.0, *) {
+            self.presentationDetents([.medium])
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    public func compatPresentationDetentsHeight(_ height: CGFloat) -> some View {
+        if #available(iOS 16.0, *) {
+            self.presentationDetents([.height(height)])
+        } else {
+            self
+        }
+    }
+
+    @ViewBuilder
+    public func compatScrollDismissesKeyboardImmediately() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDismissesKeyboard(.immediately)
+        } else {
+            self
+        }
+    }
+}
+

@@ -79,7 +79,7 @@ public struct ArtistDetailsScreen: View {
                     SpasibaDownloadManager.shared.startDownload(song: song, type: type, quality: quality)
                 }
             )
-            .presentationDetents([.medium])
+            .compatPresentationDetentsMedium()
         }
         .sheet(isPresented: $showArtistOptionsSheet) {
             ArtistOptionsMenuSheet(
@@ -105,7 +105,7 @@ public struct ArtistDetailsScreen: View {
                 },
                 onRemoveFromHistory: {}
             )
-            .presentationDetents([.medium])
+            .compatPresentationDetentsMedium()
         }
     }
 

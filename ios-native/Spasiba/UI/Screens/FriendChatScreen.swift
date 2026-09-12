@@ -20,7 +20,7 @@ public struct FriendChatScreen: View {
     @State private var toastMessage: String? = nil
 
     // Photo picker
-    @State private var selectedPhotoItem: PhotosPickerItem? = nil
+    @State private var isPhotoPickerPresented: Bool = false
 
     public init(
         friendId: String,
@@ -107,10 +107,9 @@ public struct FriendChatScreen: View {
                 )
             }
         }
-        .onChange(of: selectedPhotoItem) { newItem in
-            Task {
-                if let data = try? await newItem?.loadTransferable(type: Data.self) {
-                    // Save temporary image or base64
+        .sheet(isPresented: $isPhotoPickerPresented) {
+            ChatPhotoPicker(isPresented: $isPhotoPickerPresented) { image in
+                if let data = image.jpegData(compressionQuality: 0.8) {
                     let base64 = "data:image/jpeg;base64," + data.base64EncodedString()
                     friendManager.addChatMessage(
                         friendId: friendId,
@@ -456,7 +455,9 @@ public struct FriendChatScreen: View {
                 }
 
                 // Photos Attachment Picker
-                PhotosPicker(selection: $selectedPhotoItem, matching: .images) {
+                Button(action: {
+                    isPhotoPickerPresented = true
+                }) {
                     Image(systemName: "paperclip")
                         .font(.system(size: 18))
                         .foregroundColor(Color(hex: 0x8696A0))
@@ -742,6 +743,47 @@ public struct GifStickerPickerView: View {
             isLoadingGifs = true
             gifResults = await TenorGifApi.searchGifs(query: searchQuery)
             isLoadingGifs = false
+        }
+    }
+}
+
+// MARK: - iOS 14+ Compatible Photo Picker
+struct ChatPhotoPicker: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    var onImagePicked: (UIImage) -> Void
+
+    func makeUIViewController(context: Context) -> PHPickerViewController {
+        var config = PHPickerConfiguration()
+        config.filter = .images
+        config.selectionLimit = 1
+        let picker = PHPickerViewController(configuration: config)
+        picker.delegate = context.coordinator
+        return picker
+    }
+
+    func updateUIViewController(_ uiViewController: PHPickerViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(self)
+    }
+
+    class Coordinator: NSObject, PHPickerViewControllerDelegate {
+        let parent: ChatPhotoPicker
+
+        init(_ parent: ChatPhotoPicker) {
+            self.parent = parent
+        }
+
+        func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+            parent.isPresented = false
+            guard let provider = results.first?.itemProvider, provider.canLoadObject(ofClass: UIImage.self) else { return }
+            provider.loadObject(ofClass: UIImage.self) { image, _ in
+                if let uiImage = image as? UIImage {
+                    DispatchQueue.main.async {
+                        self.parent.onImagePicked(uiImage)
+                    }
+                }
+            }
         }
     }
 }

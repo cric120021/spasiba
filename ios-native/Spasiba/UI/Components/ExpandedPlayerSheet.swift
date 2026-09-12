@@ -84,15 +84,15 @@ public struct ExpandedPlayerSheet: View {
             .offset(y: max(0, sheetDragOffset))
             .sheet(isPresented: $isQualityDialogOpen) {
                 videoQualityDialog
-                    .presentationDetents([.height(280)])
+                    .compatPresentationDetentsHeight(280)
             }
             .sheet(isPresented: $isDownloadDialogOpen) {
                 downloadOptionsDialog
-                    .presentationDetents([.height(300)])
+                    .compatPresentationDetentsHeight(300)
             }
             .sheet(isPresented: $isDownloadQualityPickerOpen) {
                 downloadQualityDialog
-                    .presentationDetents([.height(320)])
+                    .compatPresentationDetentsHeight(320)
             }
             .sheet(isPresented: $isSleepTimerModalOpen) {
                 EqualizerSleepTimerModal(
@@ -106,7 +106,7 @@ public struct ExpandedPlayerSheet: View {
                         playerManager.setSleepTimer(minutes: minutes)
                     }
                 )
-                .presentationDetents([.height(320)])
+                .compatPresentationDetentsHeight(320)
             }
         }
         .ignoresSafeArea()

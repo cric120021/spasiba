@@ -429,7 +429,7 @@ public struct SearchScreen: View {
                     }
                     .padding(.bottom, 120)
                 }
-                .scrollDismissesKeyboard(.immediately)
+                .compatScrollDismissesKeyboardImmediately()
                 .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
             } else {
                 VStack(spacing: 12) {
@@ -567,7 +567,7 @@ public struct SearchScreen: View {
             }
             .padding(.bottom, 140)
         }
-        .scrollDismissesKeyboard(.immediately)
+        .compatScrollDismissesKeyboardImmediately()
         .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
         .background(
             Color.black
@@ -872,7 +872,7 @@ public struct SearchScreen: View {
             }
             .padding(.bottom, 140)
         }
-        .scrollDismissesKeyboard(.immediately)
+        .compatScrollDismissesKeyboardImmediately()
         .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
         .onAppear {
             dismissKeyboard()

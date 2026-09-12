@@ -42,4 +42,18 @@ for DEV_ID in "${DEVICES[@]}"; do
     fi
 done
 
+# 3. Check for legacy / USB devices via ios-deploy
+if command -v /opt/homebrew/bin/ios-deploy >/dev/null 2>&1; then
+    USB_DEV=$(/opt/homebrew/bin/ios-deploy -c --timeout 2 2>/dev/null | grep "Found" || true)
+    if [ -n "$USB_DEV" ]; then
+        echo "USB Device detected: $USB_DEV"
+        echo "Installing to USB device..."
+        if /opt/homebrew/bin/ios-deploy --bundle "$APP_PATH" --no-wifi >/dev/null 2>&1; then
+            echo "✅ Successfully renewed USB device"
+        else
+            echo "⚠️ Could not install to USB device"
+        fi
+    fi
+fi
+
 echo "=== Spasiba Auto-Renew Finished: $(date) ==="
