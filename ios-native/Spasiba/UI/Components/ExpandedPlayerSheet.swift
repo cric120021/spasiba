@@ -1342,6 +1342,7 @@ public struct YouTubeMusicSeekerBar: View {
 
     @State private var isSeeking: Bool = false
     @State private var userFraction: Float = 0.0
+    @State private var lockedFraction: Float? = nil
 
     public init(
         progressFraction: Float,
@@ -1356,13 +1357,19 @@ public struct YouTubeMusicSeekerBar: View {
     }
 
     private var displayFraction: CGFloat {
-        CGFloat(isSeeking ? userFraction : progressFraction).clamped(to: 0...1)
+        if isSeeking {
+            return CGFloat(userFraction).clamped(to: 0...1)
+        } else if let locked = lockedFraction {
+            return CGFloat(locked).clamped(to: 0...1)
+        } else {
+            return CGFloat(progressFraction).clamped(to: 0...1)
+        }
     }
 
     public var body: some View {
         VStack(spacing: 4) {
             GeometryReader { geometry in
-                let width = geometry.size.width
+                let width = max(1, geometry.size.width)
                 let barHeight: CGFloat = isSeeking ? 10.0 : 5.0
 
                 ZStack(alignment: .leading) {
@@ -1393,17 +1400,34 @@ public struct YouTubeMusicSeekerBar: View {
                             isSeeking = true
                             let frac = Float(value.location.x / width).clamped(to: 0...1)
                             userFraction = frac
-                            onSeek(frac)
+                            lockedFraction = frac
                         }
                         .onEnded { value in
                             let frac = Float(value.location.x / width).clamped(to: 0...1)
-                            onSeek(frac)
+                            userFraction = frac
+                            lockedFraction = frac
                             isSeeking = false
+                            onSeek(frac)
+
+                            // Keep visually pinned until player catches up or 800ms expires
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                if !isSeeking {
+                                    withAnimation(.easeOut(duration: 0.1)) {
+                                        lockedFraction = nil
+                                    }
+                                }
+                            }
                         }
                 )
                 .animation(.easeInOut(duration: 0.15), value: isSeeking)
             }
             .frame(height: 28)
+            .onChange(of: progressFraction) { newProgress in
+                // Release lock smoothly as soon as playback reaches the seek destination
+                if let locked = lockedFraction, abs(newProgress - locked) < 0.015 {
+                    lockedFraction = nil
+                }
+            }
 
             HStack {
                 Text(positionFormatted)

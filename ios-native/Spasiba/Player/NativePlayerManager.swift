@@ -78,6 +78,8 @@ public final class NativePlayerManager: ObservableObject {
     private var isResolvingFallback: Bool = false
     private var musicVideoCache: [String: String] = [:]
     public private(set) var currentlyLoadedVideoId: String? = nil
+    private var lastSeekTimestamp: Date = .distantPast
+    private var targetSeekTime: Double? = nil
 
     private func setupAudioBridge() {
         let bridge = HeadlessAudioBridge.shared
@@ -90,6 +92,12 @@ public final class NativePlayerManager: ObservableObject {
 
         bridge.onTimeUpdate = { [weak self] currentTime, duration in
             guard let self = self else { return }
+            // Ignore stale time reports during seek transition period
+            if Date().timeIntervalSince(self.lastSeekTimestamp) < 0.6 {
+                if let target = self.targetSeekTime, abs(currentTime - target) > 2.0 {
+                    return
+                }
+            }
             self.currentTime = currentTime
             if duration > 0 {
                 self.duration = duration
@@ -402,6 +410,13 @@ public final class NativePlayerManager: ObservableObject {
     }
 
     public func seek(to seconds: Double) {
+        lastSeekTimestamp = Date()
+        targetSeekTime = seconds
+        self.currentTime = seconds
+        if duration > 0 {
+            self.playbackProgress = max(0.0, min(1.0, seconds / duration))
+        }
+
         if let player = player {
             let targetTime = CMTime(seconds: seconds, preferredTimescale: 600)
             player.seek(to: targetTime, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
@@ -414,7 +429,6 @@ public final class NativePlayerManager: ObservableObject {
             }
         } else {
             HeadlessAudioBridge.shared.seek(to: seconds)
-            self.currentTime = seconds
             self.updateNowPlayingInfo()
         }
     }

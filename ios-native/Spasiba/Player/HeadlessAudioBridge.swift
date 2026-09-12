@@ -37,8 +37,10 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [])
+            try session.setPreferredSampleRate(48000.0)
+            try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
-            NSLog("[HeadlessAudioBridge] AVAudioSession configured for longFormAudio .playback")
+            NSLog("[HeadlessAudioBridge] AVAudioSession configured for longFormAudio .playback at 48kHz Hi-Fi")
         } catch {
             NSLog("[HeadlessAudioBridge] Failed to configure AVAudioSession: %@", error.localizedDescription)
         }
@@ -461,6 +463,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   'cc_load_policy': 0,
                   'cc_lang_pref': 'none',
                   'enablejsapi': 1,
+                  'suggestedQuality': 'hd1080',
                   'origin': 'https://spasiba.vercel.app'
                 },
                 events: {
@@ -475,6 +478,10 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
               isReady = true;
               postBridge({ type: 'log', message: 'onPlayerReady fired' });
               postBridge({ type: 'ready' });
+              if (typeof player.setPlaybackQuality === 'function') {
+                try { player.setPlaybackQuality('hd1080'); } catch(e) {}
+                try { player.setPlaybackQualityRange('hd1080', 'highres'); } catch(e) {}
+              }
               if (typeof player.unloadModule === 'function') {
                 try { player.unloadModule('captions'); } catch(e) {}
                 try { player.unloadModule('cc'); } catch(e) {}
@@ -541,12 +548,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   player.setVolume(100);
                 }
                 if (typeof player.loadVideoById === 'function') {
-                  player.loadVideoById({ videoId: videoId, startSeconds: startSec });
+                  player.loadVideoById({ videoId: videoId, startSeconds: startSec, suggestedQuality: 'hd1080' });
                   player.playVideo();
-                  postBridge({ type: 'log', message: 'player.loadVideoById executed for: ' + videoId + ' at ' + startSec });
+                  try { player.setPlaybackQuality('hd1080'); } catch(e) {}
+                  postBridge({ type: 'log', message: 'player.loadVideoById executed for: ' + videoId + ' at ' + startSec + ' with hd1080 quality' });
                 } else if (typeof player.cueVideoById === 'function') {
-                  player.cueVideoById({ videoId: videoId, startSeconds: startSec });
+                  player.cueVideoById({ videoId: videoId, startSeconds: startSec, suggestedQuality: 'hd1080' });
                   player.playVideo();
+                  try { player.setPlaybackQuality('hd1080'); } catch(e) {}
                   postBridge({ type: 'log', message: 'player.cueVideoById + play executed for: ' + videoId });
                 } else {
                   postBridge({ type: 'log', message: 'No loadVideoById method found on player' });
