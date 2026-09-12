@@ -279,8 +279,6 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   if (typeof player.unMute === 'function') player.unMute();
                   if (typeof player.setVolume === 'function') player.setVolume(100);
                 } catch (e) {}
-              } else if (event.data === 2) { // PAUSED
-                userWantsPlayback = false;
               }
               postBridge({
                 type: 'stateChange',
@@ -458,7 +456,6 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                     case 2: // Paused
                         self.isPlaying = false
                         self.isBuffering = false
-                        self.userWantsPlayback = false
                         self.onStateChange?(false, false)
                     case 3: // Buffering
                         self.isBuffering = true
