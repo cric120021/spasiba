@@ -80,11 +80,6 @@ public final class NativePlayerManager: ObservableObject {
             guard let self = self else { return }
             self.isPlaying = isPlaying
             self.isBuffering = isBuffering
-            if isPlaying {
-                SilentAudioPlayer.shared.start()
-            } else if !isBuffering {
-                SilentAudioPlayer.shared.stop()
-            }
             self.updateNowPlayingInfo()
         }
 
@@ -286,7 +281,6 @@ public final class NativePlayerManager: ObservableObject {
         }
         self.isPlaying = true
         self.isBuffering = false
-        SilentAudioPlayer.shared.start()
         self.updateNowPlayingInfo()
     }
 
@@ -294,7 +288,6 @@ public final class NativePlayerManager: ObservableObject {
         if isPlaying {
             player?.pause()
             HeadlessAudioBridge.shared.pause()
-            SilentAudioPlayer.shared.stop()
             isPlaying = false
         } else {
             if player != nil {
@@ -305,7 +298,6 @@ public final class NativePlayerManager: ObservableObject {
             } else {
                 HeadlessAudioBridge.shared.play()
             }
-            SilentAudioPlayer.shared.start()
             isPlaying = true
         }
         updateNowPlayingInfo()
@@ -489,79 +481,3 @@ public final class NativePlayerManager: ObservableObject {
     }
 }
 
-// MARK: - Background Audio Keep-Alive via Silent Audio Loop
-public final class SilentAudioPlayer {
-    public static let shared = SilentAudioPlayer()
-    private var audioPlayer: AVAudioPlayer?
-
-    private init() {
-        setupSilentTrack()
-    }
-
-    private func setupSilentTrack() {
-        let sampleRate: Int32 = 44100
-        let numChannels: Int16 = 1
-        let bitsPerSample: Int16 = 16
-        let numSamples: Int32 = 44100 // 1 second
-        let byteRate: Int32 = sampleRate * Int32(numChannels) * Int32(bitsPerSample / 8)
-        let blockAlign: Int16 = numChannels * (bitsPerSample / 8)
-        let subchunk2Size: Int32 = numSamples * Int32(numChannels) * Int32(bitsPerSample / 8)
-        let chunkSize: Int32 = 36 + subchunk2Size
-
-        var data = Data()
-        // "RIFF"
-        data.append(contentsOf: [0x52, 0x49, 0x46, 0x46])
-        var cs = chunkSize.littleEndian
-        data.append(Data(bytes: &cs, count: 4))
-        // "WAVE"
-        data.append(contentsOf: [0x57, 0x41, 0x56, 0x45])
-
-        // "fmt "
-        data.append(contentsOf: [0x66, 0x6D, 0x74, 0x20])
-        var subchunk1Size: Int32 = 16
-        data.append(Data(bytes: &subchunk1Size, count: 4))
-        var audioFormat: Int16 = 1 // PCM
-        data.append(Data(bytes: &audioFormat, count: 2))
-        var channels = numChannels.littleEndian
-        data.append(Data(bytes: &channels, count: 2))
-        var sr = sampleRate.littleEndian
-        data.append(Data(bytes: &sr, count: 4))
-        var br = byteRate.littleEndian
-        data.append(Data(bytes: &br, count: 4))
-        var ba = blockAlign.littleEndian
-        data.append(Data(bytes: &ba, count: 2))
-        var bps = bitsPerSample.littleEndian
-        data.append(Data(bytes: &bps, count: 2))
-
-        // "data"
-        data.append(contentsOf: [0x64, 0x61, 0x74, 0x61])
-        var ds = subchunk2Size.littleEndian
-        data.append(Data(bytes: &ds, count: 4))
-        data.append(Data(repeating: 0, count: Int(subchunk2Size)))
-
-        do {
-            let player = try AVAudioPlayer(data: data)
-            player.numberOfLoops = -1 // loop infinitely
-            player.volume = 0.01 // inaudible
-            player.prepareToPlay()
-            self.audioPlayer = player
-            NSLog("[SilentAudioPlayer] Initialized silent background keep-alive audio loop")
-        } catch {
-            NSLog("[SilentAudioPlayer] Failed to create silent audio player: %@", error.localizedDescription)
-        }
-    }
-
-    public func start() {
-        if let player = audioPlayer, !player.isPlaying {
-            player.play()
-            NSLog("[SilentAudioPlayer] Started silent background keep-alive")
-        }
-    }
-
-    public func stop() {
-        if let player = audioPlayer, player.isPlaying {
-            player.pause()
-            NSLog("[SilentAudioPlayer] Stopped silent background keep-alive")
-        }
-    }
-}

@@ -75,6 +75,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         configuration.allowsInlineMediaPlayback = true
         configuration.mediaTypesRequiringUserActionForPlayback = []
         configuration.allowsAirPlayForMediaPlayback = true
+        configuration.allowsPictureInPictureMediaPlayback = true
         if #available(iOS 15.4, *) {
             configuration.preferences.isElementFullscreenEnabled = true
         }
@@ -200,7 +201,8 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             var player = null;
             var isReady = false;
             var pendingId = null;
-            var shouldUnmuteOnPlay = false;
+            var userWantsPlayback = false;
+            var isAutoResuming = false;
 
             function onYouTubeIframeAPIReady() {
               postBridge({ type: 'log', message: 'onYouTubeIframeAPIReady invoked' });
@@ -242,13 +244,22 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             function onPlayerStateChange(event) {
               postBridge({ type: 'log', message: 'onPlayerStateChange: ' + event.data });
               if (event.data === 1) { // PLAYING
-                if (shouldUnmuteOnPlay && player) {
-                  shouldUnmuteOnPlay = false;
-                  try {
-                    if (typeof player.unMute === 'function') player.unMute();
-                    if (typeof player.setVolume === 'function') player.setVolume(100);
-                    postBridge({ type: 'log', message: 'Unmuted audio after playback start' });
-                  } catch (e) {}
+                isAutoResuming = false;
+                try {
+                  if (typeof player.unMute === 'function') player.unMute();
+                  if (typeof player.setVolume === 'function') player.setVolume(100);
+                } catch (e) {}
+              } else if (event.data === 2) { // PAUSED
+                // If paused unexpectedly while user wants playback (e.g. system background transition)
+                if (userWantsPlayback && !isAutoResuming) {
+                  isAutoResuming = true;
+                  setTimeout(function() {
+                    if (userWantsPlayback && player && player.getPlayerState && player.getPlayerState() === 2) {
+                      postBridge({ type: 'log', message: 'Re-asserting playback after unexpected pause' });
+                      player.playVideo();
+                    }
+                    isAutoResuming = false;
+                  }, 200);
                 }
               }
               postBridge({
@@ -269,15 +280,18 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
 
             function loadVideo(videoId) {
               postBridge({ type: 'log', message: 'loadVideo called with: ' + videoId });
+              userWantsPlayback = true;
               if (!isReady || !player) {
                 postBridge({ type: 'log', message: 'Player not ready, pendingId set: ' + videoId });
                 pendingId = videoId;
                 return;
               }
-              shouldUnmuteOnPlay = true;
               try {
-                if (typeof player.mute === 'function') {
-                  player.mute();
+                if (typeof player.unMute === 'function') {
+                  player.unMute();
+                }
+                if (typeof player.setVolume === 'function') {
+                  player.setVolume(100);
                 }
                 if (typeof player.loadVideoById === 'function') {
                   player.loadVideoById({ videoId: videoId, startSeconds: 0 });
@@ -296,12 +310,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             }
 
             function playVideo() {
+              userWantsPlayback = true;
               if (player && player.playVideo) {
                 player.playVideo();
               }
             }
 
             function pauseVideo() {
+              userWantsPlayback = false;
               if (player && player.pauseVideo) {
                 player.pauseVideo();
               }
