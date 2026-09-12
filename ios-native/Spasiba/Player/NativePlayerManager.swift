@@ -37,6 +37,7 @@ public final class NativePlayerManager: ObservableObject {
 
     public func playNextInQueue(_ song: Song) {
         queueEngine.addNext(song)
+        persistQueue()
     }
 
     // Video & Extra Controls
@@ -55,6 +56,7 @@ public final class NativePlayerManager: ObservableObject {
 
     public func addToQueue(_ song: Song) {
         queueEngine.addToQueue(song)
+        persistQueue()
     }
 
     public var avPlayer: AVPlayer? { player }
@@ -69,6 +71,7 @@ public final class NativePlayerManager: ObservableObject {
         setupRemoteCommandCenter()
         setupQueueObserver()
         setupQueueSync()
+        restoreQueueSnapshot()
     }
 
     private var failedVideoIds = Set<String>()
@@ -188,14 +191,80 @@ public final class NativePlayerManager: ObservableObject {
         )
     }
 
+    private func persistQueue() {
+        QueueSnapshotCache.shared.saveSnapshot(
+            songs: queueEngine.queue,
+            currentIndex: queueEngine.currentIndex,
+            positionMs: Int64(currentTime * 1000)
+        )
+    }
+
+    private func restoreQueueSnapshot() {
+        guard let snapshot = QueueSnapshotCache.shared.restoreSnapshot(),
+              !snapshot.songs.isEmpty,
+              snapshot.currentIndex >= 0,
+              snapshot.currentIndex < snapshot.songs.count else {
+            return
+        }
+        queueEngine.setQueue(snapshot.songs, startIndex: snapshot.currentIndex)
+        if let current = queueEngine.currentSong {
+            self.currentSong = current
+            self.duration = max(1.0, Double(current.durationSeconds))
+            if snapshot.positionMs > 0 {
+                self.currentTime = Double(snapshot.positionMs) / 1000.0
+            }
+            NSLog("[NativePlayerManager] Restored queue snapshot: %d tracks, index=%d", snapshot.songs.count, snapshot.currentIndex)
+        }
+    }
+
+    public func maybeReplenishRadioQueue(for song: Song? = nil) {
+        let currentQueue = queueEngine.queue
+        let curIndex = queueEngine.currentIndex
+        guard !currentQueue.isEmpty, curIndex >= 0 else { return }
+
+        let remainingAhead = currentQueue.count - 1 - curIndex
+        if remainingAhead <= 3 && currentQueue.count < 15 {
+            let currentTrack = song ?? currentQueue[curIndex]
+            radioQueueTask?.cancel()
+            radioQueueTask = Task {
+                let candidateTracks = await QuickPicksEngine.generateRadioQueue(seedSong: currentTrack)
+                guard !Task.isCancelled, !candidateTracks.isEmpty else { return }
+                await MainActor.run {
+                    let activeHistoryAndCurrent = Array(self.queueEngine.queue.prefix(curIndex + 1))
+                    let deduplicatedCandidates = candidateTracks.filter { cand in
+                        !activeHistoryAndCurrent.contains(where: { $0.id == cand.id })
+                    }
+                    let updatedQueue = Array((activeHistoryAndCurrent + deduplicatedCandidates)
+                        .prefix(curIndex + 1 + SmartQueueEngine.UPCOMING_QUEUE_TARGET))
+                    if updatedQueue.count > self.queueEngine.queue.count {
+                        self.queueEngine.setQueue(updatedQueue, startIndex: curIndex)
+                        self.persistQueue()
+                        NSLog("[NativePlayerManager] RADIO QUEUE TOP-UP: Queue capped to %d tracks", updatedQueue.count)
+                    }
+                }
+            }
+        }
+    }
+
     public func replenishRadioQueue(for song: Song) {
+        maybeReplenishRadioQueue(for: song)
+    }
+
+    public func playSingleSongWithRadio(_ clickedSong: Song, sourceLabel: String = "Spasiba Radio") {
+        queueEngine.setQueue([clickedSong], startIndex: 0)
+        playInternal(song: clickedSong)
+        persistQueue()
+
         radioQueueTask?.cancel()
         radioQueueTask = Task {
-            let automix = await YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(videoId: song.id)
-            guard !Task.isCancelled, !automix.isEmpty else { return }
+            let radioTracks = await YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(videoId: clickedSong.id)
+            guard !Task.isCancelled, !radioTracks.isEmpty else { return }
             await MainActor.run {
-                let filtered = automix.filter { $0.id != song.id }
-                self.queueEngine.appendTracks(filtered)
+                let filtered = radioTracks.filter { $0.id != clickedSong.id }
+                let newQueue = Array(([clickedSong] + filtered).prefix(SmartQueueEngine.UPCOMING_QUEUE_TARGET + 1))
+                self.queueEngine.setQueue(newQueue, startIndex: 0)
+                self.persistQueue()
+                NSLog("[NativePlayerManager] PLAY SINGLE SONG RADIO: Queue set to %d YouTube Automix tracks", newQueue.count)
             }
         }
     }
@@ -206,12 +275,14 @@ public final class NativePlayerManager: ObservableObject {
         queueEngine.setQueue(songs, startIndex: validIndex)
         let selected = songs[validIndex]
         playInternal(song: selected)
-        if songs.count <= 2 {
-            replenishRadioQueue(for: selected)
+        persistQueue()
+        if (songs.count - 1 - validIndex) <= 3 {
+            maybeReplenishRadioQueue(for: selected)
         }
     }
 
     public func toggleLike(_ song: Song) {
+        SessionBrainManager.shared.recordLike(song: song)
         SpasibaDatabase.shared.toggleLike(song: song)
     }
 
@@ -221,15 +292,12 @@ public final class NativePlayerManager: ObservableObject {
 
     public func play(song: Song) {
         if queueEngine.queue.isEmpty || !queueEngine.queue.contains(where: { $0.id == song.id }) {
-            queueEngine.setQueue([song], startIndex: 0)
+            playSingleSongWithRadio(song)
         } else if let idx = queueEngine.queue.firstIndex(where: { $0.id == song.id }) {
             queueEngine.setCurrentIndex(idx)
-        }
-
-        playInternal(song: song)
-
-        if (queueEngine.queue.count - queueEngine.currentIndex) < 6 {
-            replenishRadioQueue(for: song)
+            playInternal(song: song)
+            persistQueue()
+            maybeReplenishRadioQueue(for: song)
         }
     }
 
@@ -238,6 +306,7 @@ public final class NativePlayerManager: ObservableObject {
         self.isBuffering = true
         self.currentTime = 0.0
         self.duration = max(1.0, Double(song.durationSeconds))
+        SessionBrainManager.shared.recordPlayStart(song: song)
 
         // Reset lyrics for new song
         self.syncedLyrics = []
@@ -406,22 +475,28 @@ public final class NativePlayerManager: ObservableObject {
         }
     }
 
-    public func playNext() {
+    public func playNext(isUserSkip: Bool = true) {
+        if isUserSkip, let current = currentSong {
+            SessionBrainManager.shared.recordSkip(song: current)
+        }
+
         if let nextSong = queueEngine.advanceNext() {
-            play(song: nextSong)
-            if (queueEngine.queue.count - queueEngine.currentIndex) < 6 {
-                replenishRadioQueue(for: nextSong)
-            }
+            playInternal(song: nextSong)
+            persistQueue()
+            maybeReplenishRadioQueue()
         } else if let current = currentSong {
             // Reached end of queue or single track playing: immediately fetch radio and advance
-            Task {
-                let automix = await YouTubeMusicApi.fetchYouTubeMusicNextRadioQueue(videoId: current.id)
-                let filtered = automix.filter { $0.id != current.id }
+            radioQueueTask?.cancel()
+            radioQueueTask = Task {
+                let candidateTracks = await QuickPicksEngine.generateRadioQueue(seedSong: current)
+                guard !Task.isCancelled, !candidateTracks.isEmpty else { return }
                 await MainActor.run {
+                    let filtered = candidateTracks.filter { $0.id != current.id }
                     if !filtered.isEmpty {
                         self.queueEngine.appendTracks(filtered)
+                        self.persistQueue()
                         if let next = self.queueEngine.advanceNext() {
-                            self.play(song: next)
+                            self.playInternal(song: next)
                         }
                     }
                 }
@@ -433,14 +508,26 @@ public final class NativePlayerManager: ObservableObject {
         if currentTime > 3.0 {
             seek(to: 0)
         } else if let prevSong = queueEngine.retreatPrevious() {
-            play(song: prevSong)
+            playInternal(song: prevSong)
+            persistQueue()
         } else {
             seek(to: 0)
         }
     }
 
     @objc private func handleTrackFinished() {
-        playNext()
+        NSLog("[NativePlayerManager] Track finished")
+        if queueEngine.repeatMode == .one {
+            seek(to: 0)
+            if player != nil {
+                player?.play()
+                isPlaying = true
+            } else if let song = currentSong {
+                HeadlessAudioBridge.shared.loadAndPlay(videoId: song.id)
+            }
+        } else {
+            playNext(isUserSkip: false)
+        }
     }
 
     // MARK: - Lock Screen & Control Center Integration
