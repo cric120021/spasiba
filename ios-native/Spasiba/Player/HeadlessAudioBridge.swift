@@ -173,6 +173,59 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                 origSetActionHandler('seekbackward', null);
             }
         } catch (e) {}
+
+        var injectCleanStyles = function() {
+            var css = `
+                .ytp-chrome-top,
+                .ytp-chrome-bottom,
+                .ytp-watermark,
+                .ytp-pause-overlay,
+                .ytp-pause-overlay-container,
+                .ytp-youtube-button,
+                .ytp-show-cards-title,
+                .ytp-gradient-top,
+                .ytp-gradient-bottom,
+                .ytp-ce-element,
+                .ytp-contextmenu,
+                .ytp-scroll-min,
+                .ytp-cards-teaser,
+                .ytp-paid-content-overlay,
+                .branding-img-container,
+                .branding-context-container,
+                .ytp-impression-link,
+                .ytp-unmute,
+                .ytp-spinner,
+                .ytp-large-play-button,
+                a[href*="youtube.com"] {
+                    display: none !important;
+                    opacity: 0 !important;
+                    pointer-events: none !important;
+                    visibility: hidden !important;
+                }
+                video.video-stream.html5-main-video {
+                    width: 100% !important;
+                    height: 100% !important;
+                    object-fit: contain !important;
+                }
+            `;
+            if (document.getElementById('spasiba-clean-style')) return;
+            var style = document.createElement('style');
+            style.id = 'spasiba-clean-style';
+            style.type = 'text/css';
+            style.appendChild(document.createTextNode(css));
+            if (document.head) {
+                document.head.appendChild(style);
+            } else if (document.documentElement) {
+                document.documentElement.appendChild(style);
+            }
+        };
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', injectCleanStyles);
+        } else {
+            injectCleanStyles();
+        }
+        setInterval(injectCleanStyles, 1000);
         """
         let webkitHiderScript = WKUserScript(
             source: webkitHiderSource,
