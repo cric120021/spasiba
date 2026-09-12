@@ -46,7 +46,6 @@ public struct ExpandedPlayerSheet: View {
     public var body: some View {
         GeometryReader { geometry in
             let isLandscape = geometry.size.width > geometry.size.height
-            let isTabletLayout = geometry.size.width >= 640 && geometry.size.height >= 480
 
             ZStack {
                 // Background
@@ -59,10 +58,8 @@ public struct ExpandedPlayerSheet: View {
                 // Main Content
                 if isLandscape && isVideoModeActive {
                     landscapeVideoLayout
-                } else if isTabletLayout && !isVideoModeActive {
-                    tabletDualPaneLayout(geometry: geometry)
                 } else {
-                    portraitLayout(geometry: geometry)
+                    playerMainLayout(geometry: geometry)
                 }
 
                 // Landscape Fullscreen Video Modal Overlay
@@ -157,133 +154,54 @@ public struct ExpandedPlayerSheet: View {
         }
     }
 
-    // MARK: - Tablet Dual-Pane Layout (iPad Portrait / Landscape & Wide Displays)
-    private func tabletDualPaneLayout(geometry: GeometryProxy) -> some View {
-        let contentHeight = max(340, geometry.size.height - 96)
-        let leftWidth = min(420, geometry.size.width * 0.44)
+    // MARK: - Main Player Layout (Universal for iPhone, iPad portrait & landscape)
+    private func playerMainLayout(geometry: GeometryProxy) -> some View {
+        let screenW = geometry.size.width
+        let screenH = geometry.size.height
+        let maxAllowedArt = min(screenW - 48, 340)
+        let artSize = max(180, min(maxAllowedArt, screenH * 0.35))
 
         return VStack(spacing: 0) {
-            // Top Navigation Bar
+            // 1. Top Navigation Bar (centered max width 540)
             topNavigationBar
-                .padding(.horizontal, 28)
-                .padding(.top, 12)
-                .padding(.bottom, 8)
-
-            HStack(alignment: .top, spacing: 28) {
-                // Left Column: Artwork/Turntable + Metadata + Seeker + Controls
-                VStack(spacing: 0) {
-                    Spacer(minLength: 4)
-
-                    // Dynamic proportional artwork / turntable size
-                    let maxArtHeight = contentHeight - 220
-                    let artSize = max(180, min(leftWidth - 16, min(maxArtHeight, 360)))
-
-                    mediaDisplayBox(size: artSize)
-
-                    Spacer(minLength: 12)
-
-                    trackMetadataRow
-                        .padding(.horizontal, 8)
-
-                    seekerBarSection
-                        .padding(.horizontal, 8)
-                        .padding(.top, 10)
-
-                    playbackControlsRow
-                        .padding(.horizontal, 8)
-                        .padding(.top, 14)
-
-                    Spacer(minLength: 10)
-                }
-                .frame(width: leftWidth, height: contentHeight)
-
-                // Right Column: Lyrics / Up Next Queue Panel
-                VStack(spacing: 12) {
-                    tabsHeader
-                        .padding(.horizontal, 4)
-
-                    ZStack {
-                        RoundedRectangle(cornerRadius: 24)
-                            .fill(Color.white.opacity(0.05))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 24)
-                                    .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                            )
-
-                        if activeTab == "UP NEXT" {
-                            ScrollView(showsIndicators: true) {
-                                upNextQueueView
-                                    .padding(.horizontal, 16)
-                                    .padding(.vertical, 14)
-                            }
-                        } else {
-                            KaraokeLyricsView(
-                                syncedLines: playerManager.syncedLyrics,
-                                positionMs: positionMs,
-                                isLoading: playerManager.isLyricsLoading,
-                                isExpandedTablet: true,
-                                onSeekTo: { timestampMs in
-                                    playerManager.seekTo(timestampMs)
-                                }
-                            )
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .clipShape(RoundedRectangle(cornerRadius: 24))
-                }
-                .frame(maxWidth: .infinity, maxHeight: contentHeight)
-            }
-            .padding(.horizontal, 28)
-            .padding(.bottom, 16)
-        }
-        .frame(width: geometry.size.width, height: geometry.size.height, alignment: .top)
-    }
-
-    // MARK: - Portrait Layout (Compact / iPhone / Narrow Split View)
-    private func portraitLayout(geometry: GeometryProxy) -> some View {
-        let artSize = min(geometry.size.width - 48, min(geometry.size.height * 0.36, 330))
-
-        return VStack(spacing: 0) {
-            // 1. Top Navigation Bar
-            topNavigationBar
-                .padding(.horizontal, 16)
+                .frame(maxWidth: 540)
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, 20)
                 .padding(.top, 8)
                 .padding(.bottom, 6)
 
-            // Scrollable player content
+            // 2. Scrollable player content
             ScrollView(showsIndicators: false) {
                 VStack(alignment: .center, spacing: 0) {
-                    // 2. Artwork or Video Display Box
+                    // Artwork or Video Display Box
                     mediaDisplayBox(size: artSize)
-                        .padding(.top, 10)
+                        .padding(.top, 8)
 
-                    // 3. Track Title, Author & Action Buttons
+                    // Track Title, Author & Action Buttons
                     trackMetadataRow
                         .padding(.horizontal, 20)
                         .padding(.top, 16)
 
-                    // 4. Seeker Bar
+                    // Seeker Bar
                     seekerBarSection
                         .padding(.horizontal, 20)
                         .padding(.top, 10)
 
-                    // 5. Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
+                    // Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
                     playbackControlsRow
                         .padding(.horizontal, 20)
                         .padding(.top, 12)
 
-                    // 6. Tabs: UP NEXT vs LYRICS
+                    // Tabs: UP NEXT vs LYRICS
                     tabsHeader
                         .padding(.horizontal, 20)
                         .padding(.top, 18)
 
-                    // 7. Tab Content
+                    // Tab Content
                     if activeTab == "UP NEXT" {
                         upNextQueueView
                             .padding(.horizontal, 20)
-                            .padding(.top, 8)
+                            .padding(.top, 10)
                     } else {
                         ZStack {
                             RoundedRectangle(cornerRadius: 20)
@@ -297,7 +215,6 @@ public struct ExpandedPlayerSheet: View {
                                 syncedLines: playerManager.syncedLyrics,
                                 positionMs: positionMs,
                                 isLoading: playerManager.isLyricsLoading,
-                                isExpandedTablet: false,
                                 onSeekTo: { timestampMs in
                                     playerManager.seekTo(timestampMs)
                                 }
@@ -305,14 +222,14 @@ public struct ExpandedPlayerSheet: View {
                             .padding(.horizontal, 8)
                             .padding(.vertical, 8)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 8)
+                        .padding(.horizontal, 20)
+                        .padding(.top, 10)
                         .clipShape(RoundedRectangle(cornerRadius: 20))
                     }
 
-                    Spacer().frame(height: 40)
+                    Spacer().frame(height: 48)
                 }
-                .frame(maxWidth: 520)
+                .frame(maxWidth: 540)
                 .frame(maxWidth: .infinity)
             }
         }
@@ -690,21 +607,22 @@ public struct ExpandedPlayerSheet: View {
 
     // MARK: - Track Metadata Row
     private var trackMetadataRow: some View {
-        HStack(alignment: .center) {
+        HStack(alignment: .center, spacing: 12) {
             if let song = song {
-                VStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 3) {
                     Text(song.title)
                         .font(.system(size: 20, weight: .bold))
                         .foregroundColor(.white)
                         .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Text(song.author)
                         .font(.system(size: 13))
                         .foregroundColor(Color.white.opacity(0.7))
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 4) {
                     Button(action: {
@@ -727,6 +645,7 @@ public struct ExpandedPlayerSheet: View {
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
+                .fixedSize()
             }
         }
     }
@@ -881,26 +800,30 @@ public struct ExpandedPlayerSheet: View {
                         HStack(spacing: 12) {
                             SongArtworkView(song: qSong, cornerRadius: 8)
                                 .frame(width: 42, height: 42)
+                                .fixedSize()
 
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(qSong.title)
                                     .font(.system(size: 14, weight: isCurrent ? .bold : .regular))
                                     .foregroundColor(isCurrent ? Color(hex: 0x1DB954) : Color.white.opacity(0.9))
                                     .lineLimit(1)
+                                    .truncationMode(.tail)
 
                                 Text(qSong.author)
                                     .font(.system(size: 12))
                                     .foregroundColor(Color.white.opacity(0.6))
                                     .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
-
-                            Spacer()
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                             if isCurrent {
                                 EqualizerWaveformAnimation(isPlaying: isPlaying)
+                                    .fixedSize()
                             }
                         }
-                        .padding(8)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 8)
                         .background(isCurrent ? Color.white.opacity(0.12) : Color.clear)
                         .clipShape(RoundedRectangle(cornerRadius: 12))
                     }
@@ -1275,8 +1198,8 @@ public struct KaraokeLyricsView: View {
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
                     Spacer()
                 }
-                .frame(height: isExpandedTablet ? nil : 260)
-                .frame(maxWidth: .infinity, maxHeight: isExpandedTablet ? .infinity : nil)
+                .frame(height: 260)
+                .frame(maxWidth: .infinity)
             } else if syncedLines.isEmpty {
                 VStack {
                     Spacer()
@@ -1285,23 +1208,23 @@ public struct KaraokeLyricsView: View {
                         .foregroundColor(Color.white.opacity(0.6))
                     Spacer()
                 }
-                .frame(height: isExpandedTablet ? nil : 200)
-                .frame(maxWidth: .infinity, maxHeight: isExpandedTablet ? .infinity : nil)
+                .frame(height: 200)
+                .frame(maxWidth: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: isExpandedTablet ? 18 : 14) {
+                        LazyVStack(alignment: .leading, spacing: 16) {
                             ForEach(0..<syncedLines.count, id: \.self) { index in
                                 let line = syncedLines[index]
                                 let isActive = index == activeIndex
 
                                 Text(line.text)
                                     .font(.system(
-                                        size: isActive ? (isExpandedTablet ? 22 : 19) : (isExpandedTablet ? 16 : 15),
+                                        size: isActive ? 21 : 16,
                                         weight: isActive ? .bold : .medium
                                     ))
-                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.40))
-                                    .lineSpacing(isExpandedTablet ? 6 : 4)
+                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.45))
+                                    .lineSpacing(5)
                                     .animation(.easeInOut(duration: 0.25), value: isActive)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
@@ -1311,11 +1234,10 @@ public struct KaraokeLyricsView: View {
                                     .id(index)
                             }
                         }
-                        .padding(.horizontal, isExpandedTablet ? 20 : 16)
-                        .padding(.vertical, 20)
+                        .padding(.horizontal, 20)
+                        .padding(.vertical, 24)
                     }
-                    .frame(height: isExpandedTablet ? nil : 320)
-                    .frame(maxHeight: isExpandedTablet ? .infinity : nil)
+                    .frame(height: 360)
                     .mask(
                         LinearGradient(
                             stops: [
