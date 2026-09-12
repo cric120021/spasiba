@@ -51,6 +51,7 @@ public struct SpasibaAppShell: View {
     @State private var pendingSongForNewPlaylist: Song? = nil
     @State private var isCreatePlaylistDialogOpen: Bool = false
     @State private var isEqualizerModalOpen: Bool = false
+    @State private var isKeyboardVisible: Bool = false
 
     public init(initialScreen: Int = 0) {
         _backStack = State(initialValue: [initialScreen])
@@ -78,7 +79,7 @@ public struct SpasibaAppShell: View {
     }
 
     public var body: some View {
-        ZStack {
+        ZStack(alignment: .bottom) {
             SpasibaTheme.background.ignoresSafeArea()
 
             // 1. Main Navigation Graph Content Area
@@ -246,10 +247,17 @@ public struct SpasibaAppShell: View {
                     }
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 2. Bottom Navigation Panel (MiniPlayer + Tab Bar)
+            // Anchored at the true bottom of the screen, never pushed over the keyboard
+            if !isKeyboardVisible {
+                bottomFloatingBar
+                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+            }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            bottomFloatingBar
-        }
+        .ignoresSafeArea(.keyboard, edges: .bottom)
         // Modals and Sheets
         .fullScreenCover(isPresented: $isExpandedPlayerVisible) {
             ExpandedPlayerSheet()
@@ -324,6 +332,16 @@ public struct SpasibaAppShell: View {
             }
         }
         .allowsHitTesting(true)
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.15)) {
+                isKeyboardVisible = true
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillHideNotification)) { _ in
+            withAnimation(.easeOut(duration: 0.2)) {
+                isKeyboardVisible = false
+            }
+        }
     }
 
     // MARK: - Bottom Floating MiniPlayerDock & Official Compact Bottom Navigation Bar
@@ -381,6 +399,9 @@ public struct SpasibaAppShell: View {
             .frame(height: 52)
         }
         .frame(maxWidth: .infinity)
-        .background(Color.black)
+        .background(
+            Color.black
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 }
