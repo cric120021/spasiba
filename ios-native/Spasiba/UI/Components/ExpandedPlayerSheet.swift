@@ -22,7 +22,7 @@ public struct ExpandedPlayerSheet: View {
     @State private var showVideoControls: Bool = true
     @State private var isVideoZoomed: Bool = false
     @State private var doubleTapSeekFeedback: String? = nil
-    @State private var activeTab: String = "UP NEXT"
+    @State private var activeTab: String = "NOW PLAYING"
 
     @State private var isQualityDialogOpen: Bool = false
     @State private var isDownloadDialogOpen: Bool = false
@@ -156,181 +156,215 @@ public struct ExpandedPlayerSheet: View {
 
     // MARK: - Main Player Layout (Universal for iPhone, iPad portrait & landscape)
     private func playerMainLayout(geometry: GeometryProxy) -> some View {
-        let screenW = geometry.size.width
-        let screenH = geometry.size.height
-        let maxAllowedArt = min(screenW - 48, 340)
-        let artSize = max(180, min(maxAllowedArt, screenH * 0.35))
-
-        return VStack(spacing: 0) {
-            // 1. Top Navigation Bar (centered max width 540)
+        VStack(spacing: 0) {
+            // 1. Top Navigation Bar (pinned at top)
             topNavigationBar
                 .frame(maxWidth: 540)
-                .frame(maxWidth: .infinity)
                 .padding(.horizontal, 20)
-                .padding(.top, 8)
-                .padding(.bottom, 6)
+                .padding(.top, 6)
+                .padding(.bottom, 4)
 
-            // 2. Scrollable player content
-            ScrollView(showsIndicators: false) {
-                VStack(alignment: .center, spacing: 0) {
-                    // Artwork or Video Display Box
-                    mediaDisplayBox(size: artSize)
-                        .padding(.top, 8)
-
-                    // Track Title, Author & Action Buttons
-                    trackMetadataRow
-                        .padding(.horizontal, 20)
-                        .padding(.top, 16)
-
-                    // Seeker Bar
-                    seekerBarSection
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-
-                    // Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
-                    playbackControlsRow
-                        .padding(.horizontal, 20)
-                        .padding(.top, 12)
-
-                    // Tabs: UP NEXT vs LYRICS
-                    tabsHeader
-                        .padding(.horizontal, 20)
-                        .padding(.top, 18)
-
-                    // Tab Content
-                    if activeTab == "UP NEXT" {
-                        upNextQueueView
-                            .padding(.horizontal, 20)
-                            .padding(.top, 10)
-                    } else {
-                        ZStack {
-                            RoundedRectangle(cornerRadius: 20)
-                                .fill(Color.white.opacity(0.05))
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 20)
-                                        .stroke(Color.white.opacity(0.10), lineWidth: 1)
-                                )
-
-                            KaraokeLyricsView(
-                                syncedLines: playerManager.syncedLyrics,
-                                positionMs: positionMs,
-                                isLoading: playerManager.isLyricsLoading,
-                                onSeekTo: { timestampMs in
-                                    playerManager.seekTo(timestampMs)
-                                }
-                            )
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 8)
-                        }
-                        .padding(.horizontal, 20)
-                        .padding(.top, 10)
-                        .clipShape(RoundedRectangle(cornerRadius: 20))
-                    }
-
-                    Spacer().frame(height: 48)
-                }
+            // 2. Center Dynamic Content Area (fills remaining viewport space)
+            centerContentView
                 .frame(maxWidth: 540)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+            // 3. Pinned Bottom Player Controls Section (always accessible, never scrolls off)
+            bottomControlsSection
+                .frame(maxWidth: 540)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 12)
+        }
+        .frame(width: geometry.size.width, height: geometry.size.height)
+    }
+
+    // MARK: - Center Content View (Hero Artwork vs Lyrics vs Up Next Queue)
+    @ViewBuilder
+    private var centerContentView: some View {
+        GeometryReader { centerGeo in
+            let w = centerGeo.size.width
+            let h = centerGeo.size.height
+
+            ZStack {
+                switch activeTab {
+                case "NOW PLAYING":
+                    VStack {
+                        Spacer(minLength: 0)
+                        let artSize = max(160, min(w - 32, min(h - 20, 360)))
+                        mediaDisplayBox(size: artSize)
+                        Spacer(minLength: 0)
+                    }
+                    .frame(width: w, height: h)
+                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
+
+                case "LYRICS":
+                    KaraokeLyricsView(
+                        syncedLines: playerManager.syncedLyrics,
+                        positionMs: positionMs,
+                        isLoading: playerManager.isLyricsLoading,
+                        onSeekTo: { timestampMs in
+                            playerManager.seekTo(timestampMs)
+                        }
+                    )
+                    .frame(width: w, height: h)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+
+                case "UP NEXT":
+                    ScrollView(showsIndicators: true) {
+                        upNextQueueView
+                            .padding(.horizontal, 6)
+                            .padding(.vertical, 8)
+                    }
+                    .frame(width: w, height: h)
+                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
+
+                default:
+                    EmptyView()
+                }
             }
+        }
+    }
+
+    // MARK: - Bottom Controls Section (Pinned, always accessible)
+    private var bottomControlsSection: some View {
+        VStack(spacing: 8) {
+            // Track Metadata Row (Title, Author, Like, Share)
+            trackMetadataRow
+
+            // Dynamic Seeker Bar
+            seekerBarSection
+
+            // Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
+            playbackControlsRow
+
+            // Mode Selector Pill Tabs (NOW PLAYING, LYRICS, UP NEXT)
+            tabsHeader
+                .padding(.top, 2)
         }
     }
 
     // MARK: - Top Navigation Bar
     private var topNavigationBar: some View {
-        HStack {
-            // Down Arrow Button
-            Button(action: { dismiss() }) {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 42, height: 42)
-                    .overlay(
-                        Image(systemName: "chevron.down")
-                            .font(.system(size: 20, weight: .bold))
-                            .foregroundColor(.white)
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
+        VStack(spacing: 4) {
+            // Drag handle pill (standard on iOS modal sheets)
+            Capsule()
+                .fill(Color.white.opacity(0.25))
+                .frame(width: 36, height: 4)
+                .padding(.top, 2)
 
-            Spacer()
-
-            // Audio / Video Toggle Pill Switch
-            HStack(spacing: 0) {
-                Button(action: {
-                    withAnimation {
-                        isVideoModeActive = false
-                        playerManager.disableVideoMode()
-                    }
-                }) {
-                    Text("Audio")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(!isVideoModeActive ? .black : .white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(!isVideoModeActive ? Color.white : Color.clear)
-                        .clipShape(Capsule())
+            HStack {
+                // Down Arrow Button
+                Button(action: { dismiss() }) {
+                    Circle()
+                        .fill(Color.white.opacity(0.08))
+                        .frame(width: 40, height: 40)
+                        .overlay(
+                            Image(systemName: "chevron.down")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                        )
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                Button(action: {
-                    withAnimation {
-                        isVideoModeActive = true
-                        playerManager.enableVideoMode()
-                    }
-                }) {
-                    Text("Video")
-                        .font(.system(size: 12, weight: .bold))
-                        .foregroundColor(isVideoModeActive ? .black : .white)
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 6)
-                        .background(isVideoModeActive ? Color.white : Color.clear)
-                        .clipShape(Capsule())
-                }
-                .buttonStyle(PlainButtonStyle())
-            }
-            .padding(3)
-            .background(Color.white.opacity(0.10))
-            .clipShape(Capsule())
-            .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+                Spacer()
 
-            Spacer()
+                // Center Caption: PLAYING FROM QUEUE / Context
+                VStack(spacing: 1) {
+                    Text("PLAYING FROM QUEUE")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(Color.white.opacity(0.55))
+                        .tracking(1)
 
-            // Options Menu Button
-            Menu {
-                Button(action: { isQualityDialogOpen = true }) {
-                    Label("Video Quality (\(playerManager.videoQuality))", systemImage: "video")
-                }
-
-                if isDownloaded {
-                    Button(role: .destructive, action: { isDownloaded = false }) {
-                        Label("Remove download", systemImage: "trash")
-                    }
-                } else {
-                    Button(action: { isDownloadDialogOpen = true }) {
-                        Label("Download Track", systemImage: "arrow.down.circle")
-                    }
-                }
-
-                Button(action: { isSleepTimerModalOpen = true }) {
-                    Label("Speed & Sleep Timer", systemImage: "timer")
-                }
-
-                Button(action: {
-                    withAnimation {
-                        showVinylMode.toggle()
-                    }
-                }) {
-                    Label(showVinylMode ? "Standard Artwork" : "Vinyl Record Mode", systemImage: "record.circle")
-                }
-            } label: {
-                Circle()
-                    .fill(Color.white.opacity(0.08))
-                    .frame(width: 42, height: 42)
-                    .overlay(
-                        Image(systemName: "ellipsis")
-                            .font(.system(size: 18))
+                    if let song = song {
+                        Text(song.author)
+                            .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
-                            .rotationEffect(.degrees(90))
-                    )
+                            .lineLimit(1)
+                    }
+                }
+
+                Spacer()
+
+                HStack(spacing: 8) {
+                    // Audio / Video Toggle Pill Switch
+                    HStack(spacing: 0) {
+                        Button(action: {
+                            withAnimation {
+                                isVideoModeActive = false
+                                playerManager.disableVideoMode()
+                            }
+                        }) {
+                            Text("Audio")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(!isVideoModeActive ? .black : .white)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 5)
+                                .background(!isVideoModeActive ? Color.white : Color.clear)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
+                        Button(action: {
+                            withAnimation {
+                                isVideoModeActive = true
+                                activeTab = "NOW PLAYING"
+                                playerManager.enableVideoMode()
+                            }
+                        }) {
+                            Text("Video")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(isVideoModeActive ? .black : .white)
+                                .padding(.horizontal, 11)
+                                .padding(.vertical, 5)
+                                .background(isVideoModeActive ? Color.white : Color.clear)
+                                .clipShape(Capsule())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+                    }
+                    .padding(2)
+                    .background(Color.white.opacity(0.10))
+                    .clipShape(Capsule())
+                    .overlay(Capsule().stroke(Color.white.opacity(0.15), lineWidth: 1))
+
+                    // Options Menu Button
+                    Menu {
+                        Button(action: { isQualityDialogOpen = true }) {
+                            Label("Video Quality (\(playerManager.videoQuality))", systemImage: "video")
+                        }
+
+                        if isDownloaded {
+                            Button(role: .destructive, action: { isDownloaded = false }) {
+                                Label("Remove download", systemImage: "trash")
+                            }
+                        } else {
+                            Button(action: { isDownloadDialogOpen = true }) {
+                                Label("Download Track", systemImage: "arrow.down.circle")
+                            }
+                        }
+
+                        Button(action: { isSleepTimerModalOpen = true }) {
+                            Label("Speed & Sleep Timer", systemImage: "timer")
+                        }
+
+                        Button(action: {
+                            withAnimation {
+                                showVinylMode.toggle()
+                            }
+                        }) {
+                            Label(showVinylMode ? "Standard Artwork" : "Vinyl Record Mode", systemImage: "record.circle")
+                        }
+                    } label: {
+                        Circle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(width: 40, height: 40)
+                            .overlay(
+                                Image(systemName: "ellipsis")
+                                    .font(.system(size: 16, weight: .bold))
+                                    .foregroundColor(.white)
+                                    .rotationEffect(.degrees(90))
+                            )
+                    }
+                }
             }
         }
         .contentShape(Rectangle())
@@ -345,7 +379,7 @@ public struct ExpandedPlayerSheet: View {
                 }
             }
             .onEnded { value in
-                if value.translation.height > 150 {
+                if value.translation.height > 120 {
                     dismiss()
                 }
                 withAnimation(.easeOut(duration: 0.25)) {
@@ -753,19 +787,27 @@ public struct ExpandedPlayerSheet: View {
         }
     }
 
-    // MARK: - Tabs Header: UP NEXT vs LYRICS
+    // MARK: - Tabs Header: NOW PLAYING vs LYRICS vs UP NEXT
     private var tabsHeader: some View {
         HStack(spacing: 0) {
-            ForEach(["UP NEXT", "LYRICS"], id: \.self) { tab in
+            ForEach(["NOW PLAYING", "LYRICS", "UP NEXT"], id: \.self) { tab in
                 let isSelected = activeTab == tab
-                Button(action: { activeTab = tab }) {
-                    Text(tab)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(isSelected ? .black : Color.white.opacity(0.7))
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 6)
-                        .background(isSelected ? Color.white : Color.clear)
-                        .clipShape(Capsule())
+                Button(action: {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+                        activeTab = tab
+                    }
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: tabIcon(for: tab))
+                            .font(.system(size: 11, weight: .bold))
+                        Text(tabTitle(for: tab))
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .foregroundColor(isSelected ? .black : Color.white.opacity(0.7))
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 7)
+                    .background(isSelected ? Color.white : Color.clear)
+                    .clipShape(Capsule())
                 }
                 .buttonStyle(PlainButtonStyle())
             }
@@ -774,6 +816,24 @@ public struct ExpandedPlayerSheet: View {
         .background(Color.white.opacity(0.08))
         .clipShape(Capsule())
         .overlay(Capsule().stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private func tabIcon(for tab: String) -> String {
+        switch tab {
+        case "NOW PLAYING": return "music.note"
+        case "LYRICS": return "quote.bubble.fill"
+        case "UP NEXT": return "list.bullet"
+        default: return "music.note"
+        }
+    }
+
+    private func tabTitle(for tab: String) -> String {
+        switch tab {
+        case "NOW PLAYING": return "Now Playing"
+        case "LYRICS": return "Lyrics"
+        case "UP NEXT": return "Up Next"
+        default: return tab
+        }
     }
 
     // MARK: - UP NEXT Queue View
@@ -1192,40 +1252,48 @@ public struct KaraokeLyricsView: View {
     public var body: some View {
         Group {
             if isLoading {
-                VStack {
+                VStack(spacing: 12) {
                     Spacer()
                     ProgressView()
                         .progressViewStyle(CircularProgressViewStyle(tint: .white))
-                    Spacer()
-                }
-                .frame(height: 260)
-                .frame(maxWidth: .infinity)
-            } else if syncedLines.isEmpty {
-                VStack {
-                    Spacer()
-                    Text("No lyrics available for this track.")
-                        .font(.system(size: 16))
+                        .scaleEffect(1.2)
+                    Text("Loading synced lyrics...")
+                        .font(.system(size: 14))
                         .foregroundColor(Color.white.opacity(0.6))
                     Spacer()
                 }
-                .frame(height: 200)
-                .frame(maxWidth: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if syncedLines.isEmpty {
+                VStack(spacing: 10) {
+                    Spacer()
+                    Image(systemName: "quote.bubble")
+                        .font(.system(size: 36))
+                        .foregroundColor(Color.white.opacity(0.35))
+                    Text("No lyrics available for this track.")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(Color.white.opacity(0.65))
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
-                        LazyVStack(alignment: .leading, spacing: 16) {
+                        LazyVStack(alignment: .leading, spacing: 20) {
+                            Spacer().frame(height: 40)
+
                             ForEach(0..<syncedLines.count, id: \.self) { index in
                                 let line = syncedLines[index]
                                 let isActive = index == activeIndex
 
                                 Text(line.text)
                                     .font(.system(
-                                        size: isActive ? 21 : 16,
+                                        size: isActive ? 24 : 18,
                                         weight: isActive ? .bold : .medium
                                     ))
-                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.45))
-                                    .lineSpacing(5)
-                                    .animation(.easeInOut(duration: 0.25), value: isActive)
+                                    .foregroundColor(Color.white.opacity(isActive ? 1.0 : 0.40))
+                                    .lineSpacing(6)
+                                    .scaleEffect(isActive ? 1.04 : 1.0, anchor: .leading)
+                                    .animation(.spring(response: 0.35, dampingFraction: 0.75), value: isActive)
                                     .contentShape(Rectangle())
                                     .onTapGesture {
                                         let targetMs = Int64(line.timestampSeconds * 1000)
@@ -1233,17 +1301,19 @@ public struct KaraokeLyricsView: View {
                                     }
                                     .id(index)
                             }
+
+                            Spacer().frame(height: 60)
                         }
-                        .padding(.horizontal, 20)
-                        .padding(.vertical, 24)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 12)
                     }
-                    .frame(height: 360)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .mask(
                         LinearGradient(
                             stops: [
                                 .init(color: .clear, location: 0.0),
-                                .init(color: .white, location: 0.08),
-                                .init(color: .white, location: 0.92),
+                                .init(color: .white, location: 0.10),
+                                .init(color: .white, location: 0.88),
                                 .init(color: .clear, location: 1.0)
                             ],
                             startPoint: .top,
@@ -1251,13 +1321,14 @@ public struct KaraokeLyricsView: View {
                         )
                     )
                     .onChange(of: activeIndex) { newIndex in
-                        withAnimation(.easeInOut(duration: 0.3)) {
-                            proxy.scrollTo(max(0, newIndex - 1), anchor: .center)
+                        withAnimation(.easeInOut(duration: 0.35)) {
+                            proxy.scrollTo(max(0, newIndex), anchor: .center)
                         }
                     }
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
