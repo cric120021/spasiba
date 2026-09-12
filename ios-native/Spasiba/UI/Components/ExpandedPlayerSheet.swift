@@ -22,7 +22,7 @@ public struct ExpandedPlayerSheet: View {
     @State private var showVideoControls: Bool = true
     @State private var isVideoZoomed: Bool = false
     @State private var doubleTapSeekFeedback: String? = nil
-    @State private var activeTab: String = "NOW PLAYING"
+    @State private var activeTab: String = "UP NEXT"
 
     @State private var isQualityDialogOpen: Bool = false
     @State private var isDownloadDialogOpen: Bool = false
@@ -162,92 +162,72 @@ public struct ExpandedPlayerSheet: View {
         .clipped()
     }
 
-    // MARK: - Main Player Layout (Universal for iPhone, iPad portrait & landscape)
+    // MARK: - Main Player Layout (Scrollable matching Android Native 2)
     private func playerMainLayout(geometry: GeometryProxy) -> some View {
         let contentWidth = min(geometry.size.width, 540)
+        let artSize = min(contentWidth * 0.82, 340)
+
         return VStack(spacing: 0) {
             // 1. Top Navigation Bar (pinned at top)
             topNavigationBar
-                .padding(.horizontal, 20)
+                .padding(.horizontal, 16)
                 .padding(.top, max(geometry.safeAreaInsets.top, 8))
                 .padding(.bottom, 6)
 
-            // 2. Center Dynamic Content Area (fills remaining viewport space)
-            centerContentView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            // 2. Scrollable Body
+            ScrollView(showsIndicators: false) {
+                VStack(spacing: 0) {
+                    // Hero Media Display (Artwork / Vinyl / Video)
+                    mediaDisplayBox(size: artSize)
+                        .padding(.top, 8)
+                        .padding(.bottom, 16)
 
-            // 3. Pinned Bottom Player Controls Section (always accessible, never scrolls off)
-            bottomControlsSection
-                .padding(.horizontal, 20)
-                .padding(.bottom, max(geometry.safeAreaInsets.bottom, 16))
+                    // Track Metadata Row (Title, Author, Like Button, Share Button)
+                    trackMetadataRow
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 8)
+
+                    // YouTube Music Seeker Bar
+                    seekerBarSection
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 10)
+
+                    // Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
+                    playbackControlsRow
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 16)
+
+                    // Tabs Header: "UP NEXT" vs "LYRICS"
+                    tabsHeader
+                        .padding(.horizontal, 20)
+                        .padding(.bottom, 12)
+
+                    // Dynamic Section Below Tabs: UP NEXT Queue or Karaoke Lyrics
+                    if activeTab == "UP NEXT" {
+                        upNextQueueView
+                            .padding(.horizontal, 20)
+                    } else if activeTab == "LYRICS" {
+                        KaraokeLyricsView(
+                            syncedLines: playerManager.syncedLyrics,
+                            positionMs: positionMs,
+                            isLoading: playerManager.isLyricsLoading,
+                            onSeekTo: { timestampMs in
+                                playerManager.seekTo(timestampMs)
+                            }
+                        )
+                        .padding(.horizontal, 20)
+                    }
+
+                    // Bottom Safe Area Spacing
+                    Spacer()
+                        .frame(height: max(geometry.safeAreaInsets.bottom + 24, 36))
+                }
+                .frame(width: contentWidth)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .frame(width: contentWidth)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Center Content View (Hero Artwork vs Lyrics vs Up Next Queue)
-    @ViewBuilder
-    private var centerContentView: some View {
-        GeometryReader { centerGeo in
-            let w = centerGeo.size.width
-            let h = centerGeo.size.height
-
-            ZStack {
-                switch activeTab {
-                case "NOW PLAYING":
-                    VStack {
-                        Spacer(minLength: 0)
-                        let artSize = max(140, min(w - 40, min(h - 20, 360)))
-                        mediaDisplayBox(size: artSize)
-                        Spacer(minLength: 0)
-                    }
-                    .frame(width: w, height: h)
-                    .transition(.opacity.combined(with: .scale(scale: 0.95)))
-
-                case "LYRICS":
-                    KaraokeLyricsView(
-                        syncedLines: playerManager.syncedLyrics,
-                        positionMs: positionMs,
-                        isLoading: playerManager.isLyricsLoading,
-                        onSeekTo: { timestampMs in
-                            playerManager.seekTo(timestampMs)
-                        }
-                    )
-                    .frame(width: w, height: h)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-
-                case "UP NEXT":
-                    ScrollView(showsIndicators: true) {
-                        upNextQueueView
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 8)
-                    }
-                    .frame(width: w, height: h)
-                    .transition(.opacity.combined(with: .scale(scale: 0.98)))
-
-                default:
-                    EmptyView()
-                }
-            }
-        }
-    }
-
-    // MARK: - Bottom Controls Section (Pinned, always accessible)
-    private var bottomControlsSection: some View {
-        VStack(spacing: 8) {
-            // Track Metadata Row (Title, Author, Like, Share)
-            trackMetadataRow
-
-            // Dynamic Seeker Bar
-            seekerBarSection
-
-            // Playback Controls Row (Shuffle, Prev, Play/Pause, Next, Repeat)
-            playbackControlsRow
-
-            // Mode Selector Pill Tabs (NOW PLAYING, LYRICS, UP NEXT)
-            tabsHeader
-                .padding(.top, 2)
-        }
     }
 
     // MARK: - Top Navigation Bar (Symmetrical 40pt side buttons + Centered Audio/Video switch)
@@ -296,7 +276,6 @@ public struct ExpandedPlayerSheet: View {
                     Button(action: {
                         withAnimation {
                             isVideoModeActive = true
-                            activeTab = "NOW PLAYING"
                             playerManager.enableVideoMode()
                         }
                     }) {
@@ -657,16 +636,29 @@ public struct ExpandedPlayerSheet: View {
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
 
-                // Single Heart (Like) button on the right - cleanly balanced
-                Button(action: {
-                    db.toggleLike(song: song)
-                }) {
-                    Image(systemName: isLiked ? "heart.fill" : "heart")
-                        .font(.system(size: 24))
-                        .foregroundColor(isLiked ? Color(hex: 0xEF4444) : .white)
-                        .frame(width: 44, height: 44)
+                HStack(spacing: 4) {
+                    // Like button
+                    Button(action: {
+                        db.toggleLike(song: song)
+                    }) {
+                        Image(systemName: isLiked ? "heart.fill" : "heart")
+                            .font(.system(size: 22))
+                            .foregroundColor(isLiked ? Color(hex: 0xEF4444) : .white)
+                            .frame(width: 42, height: 42)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+
+                    // Share button
+                    Button(action: {
+                        ShareUtils.shareSong(song: song)
+                    }) {
+                        Image(systemName: "square.and.arrow.up")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color.white.opacity(0.85))
+                            .frame(width: 42, height: 42)
+                    }
+                    .buttonStyle(PlainButtonStyle())
                 }
-                .buttonStyle(PlainButtonStyle())
             }
         }
     }
@@ -774,10 +766,10 @@ public struct ExpandedPlayerSheet: View {
         }
     }
 
-    // MARK: - Tabs Header: NOW PLAYING vs LYRICS vs UP NEXT
+    // MARK: - Tabs Header: UP NEXT vs LYRICS (Matching Android Native 2)
     private var tabsHeader: some View {
         HStack(spacing: 0) {
-            ForEach(["NOW PLAYING", "LYRICS", "UP NEXT"], id: \.self) { tab in
+            ForEach(["UP NEXT", "LYRICS"], id: \.self) { tab in
                 let isSelected = activeTab == tab
                 Button(action: {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
@@ -792,7 +784,7 @@ public struct ExpandedPlayerSheet: View {
                     }
                     .foregroundColor(isSelected ? .black : Color.white.opacity(0.7))
                     .frame(maxWidth: .infinity)
-                    .padding(.vertical, 7)
+                    .padding(.vertical, 8)
                     .background(isSelected ? Color.white : Color.clear)
                     .clipShape(Capsule())
                 }
@@ -807,18 +799,16 @@ public struct ExpandedPlayerSheet: View {
 
     private func tabIcon(for tab: String) -> String {
         switch tab {
-        case "NOW PLAYING": return "music.note"
-        case "LYRICS": return "quote.bubble.fill"
         case "UP NEXT": return "list.bullet"
+        case "LYRICS": return "quote.bubble.fill"
         default: return "music.note"
         }
     }
 
     private func tabTitle(for tab: String) -> String {
         switch tab {
-        case "NOW PLAYING": return "Now Playing"
-        case "LYRICS": return "Lyrics"
         case "UP NEXT": return "Up Next"
+        case "LYRICS": return "Lyrics"
         default: return tab
         }
     }
@@ -1249,7 +1239,8 @@ public struct KaraokeLyricsView: View {
                         .foregroundColor(Color.white.opacity(0.6))
                     Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: 260)
             } else if syncedLines.isEmpty {
                 VStack(spacing: 10) {
                     Spacer()
@@ -1261,7 +1252,8 @@ public struct KaraokeLyricsView: View {
                         .foregroundColor(Color.white.opacity(0.65))
                     Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity)
+                .frame(height: 200)
             } else {
                 ScrollViewReader { proxy in
                     ScrollView(showsIndicators: false) {
@@ -1294,7 +1286,8 @@ public struct KaraokeLyricsView: View {
                         .padding(.horizontal, 24)
                         .padding(.vertical, 12)
                     }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: 450)
                     .mask(
                         LinearGradient(
                             stops: [
@@ -1315,7 +1308,6 @@ public struct KaraokeLyricsView: View {
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
