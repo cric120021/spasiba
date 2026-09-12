@@ -39,6 +39,17 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         } catch {
             NSLog("[HeadlessAudioBridge] Failed to configure AVAudioSession: %@", error.localizedDescription)
         }
+
+        NotificationCenter.default.addObserver(
+            forName: UIApplication.didEnterBackgroundNotification,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            guard let self = self else { return }
+            if self.userWantsPlayback {
+                self.webView?.evaluateJavaScript("if (player && player.getPlayerState && player.getPlayerState() !== 1) { player.playVideo(); }", completionHandler: nil)
+            }
+        }
     }
 
     // MARK: - WKWebView Setup
