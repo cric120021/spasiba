@@ -51,7 +51,6 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         wv.isOpaque = false
         wv.backgroundColor = .clear
         wv.scrollView.backgroundColor = .clear
-        wv.alpha = 0.01
         wv.customUserAgent = "Mozilla/5.0 (iPad; CPU OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1"
         wv.navigationDelegate = self
         self.webView = wv
@@ -119,7 +118,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
         <html>
         <head>
           <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-          <meta name="referrer" content="strict-origin-when-cross-origin">
+          <meta name="referrer" content="always">
           <script>
             try {
               Object.defineProperty(document, 'hidden', { get: function() { return false; }, configurable: true });
@@ -187,17 +186,17 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
             var firstScriptTag = document.getElementsByTagName('script')[0];
             firstScriptTag.parentNode.insertBefore(tag, firstScriptTag);
 
-            var player;
+            var player = null;
             var isReady = false;
             var pendingId = null;
+            var shouldUnmuteOnPlay = false;
 
             function onYouTubeIframeAPIReady() {
               postBridge({ type: 'log', message: 'onYouTubeIframeAPIReady invoked' });
               player = new YT.Player('player', {
                 height: '100%',
                 width: '100%',
-                host: 'https://www.youtube-nocookie.com',
-                videoId: '',
+                host: 'https://www.youtube.com',
                 playerVars: {
                   'autoplay': 1,
                   'playsinline': 1,
@@ -207,6 +206,7 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                   'rel': 0,
                   'modestbranding': 1,
                   'iv_load_policy': 3,
+                  'enablejsapi': 1,
                   'origin': 'https://spasiba.vercel.app'
                 },
                 events: {
@@ -230,6 +230,16 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
 
             function onPlayerStateChange(event) {
               postBridge({ type: 'log', message: 'onPlayerStateChange: ' + event.data });
+              if (event.data === 1) { // PLAYING
+                if (shouldUnmuteOnPlay && player) {
+                  shouldUnmuteOnPlay = false;
+                  try {
+                    if (typeof player.unMute === 'function') player.unMute();
+                    if (typeof player.setVolume === 'function') player.setVolume(100);
+                    postBridge({ type: 'log', message: 'Unmuted audio after playback start' });
+                  } catch (e) {}
+                }
+              }
               postBridge({
                 type: 'stateChange',
                 state: event.data,
@@ -253,9 +263,14 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                 pendingId = videoId;
                 return;
               }
+              shouldUnmuteOnPlay = true;
               try {
+                if (typeof player.mute === 'function') {
+                  player.mute();
+                }
                 if (typeof player.loadVideoById === 'function') {
                   player.loadVideoById({ videoId: videoId, startSeconds: 0 });
+                  player.playVideo();
                   postBridge({ type: 'log', message: 'player.loadVideoById executed for: ' + videoId });
                 } else if (typeof player.cueVideoById === 'function') {
                   player.cueVideoById({ videoId: videoId });
@@ -390,18 +405,9 @@ public final class HeadlessAudioBridge: NSObject, WKScriptMessageHandler, WKNavi
                         self.isBuffering = false
                         self.onStateChange?(true, false)
                     case 2: // Paused
-                        if self.userWantsPlayback {
-                            NSLog("[HeadlessAudioBridge] Detected background pause from WebKit. Re-asserting play...")
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
-                                if self?.userWantsPlayback == true {
-                                    self?.play()
-                                }
-                            }
-                        } else {
-                            self.isPlaying = false
-                            self.isBuffering = false
-                            self.onStateChange?(false, false)
-                        }
+                        self.isPlaying = false
+                        self.isBuffering = false
+                        self.onStateChange?(false, false)
                     case 3: // Buffering
                         self.isBuffering = true
                         self.onStateChange?(self.isPlaying, true)

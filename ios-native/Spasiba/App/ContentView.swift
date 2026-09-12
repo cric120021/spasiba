@@ -5,11 +5,13 @@ public struct ContentView: View {
 
     public var body: some View {
         ZStack {
-            SpasibaAppShell()
+            // Keep the audio bridge rendering in the view hierarchy behind the opaque UI
+            // so WebKit does not throttle or suspend audio playback.
             HeadlessAudioBridgeRepresentable()
-                .frame(width: 320, height: 240)
-                .opacity(0.001)
+                .frame(width: 200, height: 200)
                 .allowsHitTesting(false)
+
+            SpasibaAppShell()
         }
         .preferredColorScheme(.dark)
     }
