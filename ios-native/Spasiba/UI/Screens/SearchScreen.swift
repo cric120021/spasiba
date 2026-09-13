@@ -197,7 +197,7 @@ public struct SearchScreen: View {
                     .padding(.horizontal, 16)
                     .frame(height: 58)
                     .frame(maxWidth: .infinity)
-                    .background(Color(hex: 0x181818))
+                    .background(Color(hex: 0x141418))
                     .cornerRadius(29)
                     .overlay(
                         RoundedRectangle(cornerRadius: 29)
@@ -213,7 +213,7 @@ public struct SearchScreen: View {
                             .font(.system(size: 20))
                             .foregroundColor(.white)
                             .frame(width: 58, height: 58)
-                            .background(Color(hex: 0x181818))
+                            .background(Color(hex: 0x141418))
                             .clipShape(Circle())
                             .overlay(
                                 Circle()
@@ -773,7 +773,7 @@ public struct SearchScreen: View {
                             }
                         }
                         .padding(16)
-                        .background(Color(hex: 0x181818))
+                        .background(Color(hex: 0x141418))
                         .cornerRadius(20)
                         .overlay(
                             RoundedRectangle(cornerRadius: 20)
@@ -873,7 +873,7 @@ public struct SearchScreen: View {
                             }
                         }
                         .padding(14)
-                        .background(Color(hex: 0x181818))
+                        .background(Color(hex: 0x141418))
                         .clipShape(RoundedRectangle(cornerRadius: 18))
                         .overlay(
                             RoundedRectangle(cornerRadius: 18)
