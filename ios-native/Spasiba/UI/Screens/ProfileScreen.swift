@@ -7,7 +7,7 @@ public struct ProfileScreen: View {
     @Environment(\.dismiss) private var dismiss
 
     @State private var username: String = UserDefaults.standard.string(forKey: "username") ?? "Spasiba Listener"
-    @State private var visitorId: String = UIDevice.current.identifierForVendor?.uuidString.prefix(8).uppercased().description ?? "SPASIBA-DEVICE"
+    @State private var visitorId: String = FcmTokenManager.shared.deviceId
     @AppStorage("profile_photo_uri") private var profilePhotoUri: String = ""
     @State private var isEditNameDialogOpen: Bool = false
     @State private var editNameInput: String = ""
@@ -107,6 +107,12 @@ public struct ProfileScreen: View {
         .sheet(isPresented: $isImagePickerOpen) {
             ImagePicker { pickedImage in
                 saveProfilePhoto(pickedImage)
+            }
+        }
+        .onAppear {
+            let id = FcmTokenManager.shared.deviceId
+            if !id.isEmpty {
+                self.visitorId = id
             }
         }
     }
@@ -618,7 +624,7 @@ public struct ProfileScreen: View {
                     let cleanId = addFriendIdInput.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: "@", with: "")
                     let cleanName = addFriendNameInput.trimmingCharacters(in: .whitespaces)
                     if !cleanId.isEmpty {
-                        _ = friendManager.addOrSendFriendRequest(friendId: cleanId, name: cleanName.isEmpty ? cleanId : cleanName)
+                        EunoiaSessionManager.shared.sendFriendRequestSignal(friendId: cleanId, friendName: cleanName.isEmpty ? cleanId : cleanName)
                         isAddFriendDialogOpen = false
                         addFriendIdInput = ""
                         addFriendNameInput = ""

@@ -297,7 +297,7 @@ public struct NotificationsScreen: View {
                     HStack(spacing: 10) {
                         Button(action: {
                             updateActionState(id: item.id, state: "ACCEPTED")
-                            friendManager.acceptFriendRequest(friendId: item.id)
+                            sessionManager.acceptFriendRequestSignal(friendId: item.id, friendName: item.senderName)
                             NotificationState.dismissNotification(id: item.id)
                             onNavigateToEunoia()
                         }) {
@@ -312,7 +312,7 @@ public struct NotificationsScreen: View {
 
                         Button(action: {
                             updateActionState(id: item.id, state: "DECLINED")
-                            friendManager.removeFriend(friendId: item.id)
+                            sessionManager.removeFriendSignal(friendId: item.id)
                             NotificationState.dismissNotification(id: item.id)
                             notifications.removeAll(where: { $0.id == item.id })
                         }) {
@@ -332,6 +332,7 @@ public struct NotificationsScreen: View {
                     Button(action: {
                         updateActionState(id: item.id, state: "JOINED")
                         NotificationState.dismissNotification(id: item.id)
+                        sessionManager.acceptInvite()
                         onNavigateToEunoia()
                     }) {
                         Text("Join Room")

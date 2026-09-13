@@ -120,6 +120,57 @@ public struct EunoiaScreen: View {
                     .padding(.bottom, 6)
                     .frame(width: screenWidth)
 
+                // Incoming Session Invite Banner
+                if sessionManager.sessionStatus == .inviteReceived {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 20))
+                            .foregroundColor(Color(hex: 0x10B981))
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Listening Session Invite")
+                                .font(.system(size: 13, weight: .bold))
+                                .foregroundColor(.white)
+                            Text("\(sessionManager.partnerName ?? "A friend") invited you")
+                                .font(.system(size: 11))
+                                .foregroundColor(.white.opacity(0.7))
+                        }
+
+                        Spacer()
+
+                        Button(action: {
+                            sessionManager.acceptInvite()
+                        }) {
+                            Text("Accept")
+                                .font(.system(size: 12, weight: .bold))
+                                .foregroundColor(.black)
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 6)
+                                .background(Color(hex: 0x10B981))
+                                .cornerRadius(12)
+                        }
+
+                        Button(action: {
+                            sessionManager.rejectInvite()
+                        }) {
+                            Text("Decline")
+                                .font(.system(size: 12))
+                                .foregroundColor(.white)
+                                .padding(.horizontal, 10)
+                                .padding(.vertical, 6)
+                                .background(Color.white.opacity(0.15))
+                                .cornerRadius(12)
+                        }
+                    }
+                    .padding(12)
+                    .background(Color(hex: 0x1E293B))
+                    .cornerRadius(14)
+                    .overlay(RoundedRectangle(cornerRadius: 14).stroke(Color(hex: 0x10B981).opacity(0.4), lineWidth: 1))
+                    .padding(.horizontal, 16)
+                    .padding(.bottom, 8)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 // Player Hero (Card-Less Floating Layout)
                 playerHeroSection
                     .padding(.horizontal, 16)

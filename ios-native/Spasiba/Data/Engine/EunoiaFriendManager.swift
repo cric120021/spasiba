@@ -120,6 +120,7 @@ public final class EunoiaFriendManager: ObservableObject {
         return addOrSendFriendRequest(friendId: friendId, name: name, isOutgoing: true)
     }
 
+    @discardableResult
     public func addOrSendFriendRequest(
         friendId: String,
         name: String,

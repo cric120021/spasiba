@@ -1,6 +1,7 @@
 import SwiftUI
 import AVFoundation
 import UIKit
+import UserNotifications
 
 // MARK: - Universal Tap-Outside-to-Dismiss Keyboard Recognizer
 public final class UniversalKeyboardDismissGestureRecognizer: UITapGestureRecognizer, UIGestureRecognizerDelegate {
@@ -128,7 +129,37 @@ public struct WindowGestureAttacher: UIViewRepresentable {
 final class SpasibaAppDelegate: NSObject, UIApplicationDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey : Any]? = nil) -> Bool {
         UniversalKeyboardDismissHelper.shared.start()
+
+        // Configure notification categories & delegate
+        let center = UNUserNotificationCenter.current()
+        center.delegate = EunoiaInviteReceiver.shared
+        center.requestAuthorization(options: [.alert, .sound, .badge]) { granted, error in
+            if granted {
+                DispatchQueue.main.async {
+                    application.registerForRemoteNotifications()
+                }
+            }
+            if let error = error {
+                print("[SpasibaAppDelegate] Notification authorization error: \(error)")
+            }
+        }
+
         return true
+    }
+
+    func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
+        let tokenString = deviceToken.map { String(format: "%02.2hhx", $0) }.joined()
+        print("[SpasibaAppDelegate] Registered for remote notifications with APNs token: \(tokenString)")
+        SpasibaFcmService.shared.onNewToken(tokenString)
+    }
+
+    func application(_ application: UIApplication, didFailToRegisterForRemoteNotificationsWithError error: Error) {
+        print("[SpasibaAppDelegate] Failed to register for remote notifications: \(error)")
+    }
+
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable : Any], fetchCompletionHandler completionHandler: @escaping (UIBackgroundFetchResult) -> Void) {
+        SpasibaFcmService.shared.handleRemoteNotification(userInfo: userInfo)
+        completionHandler(.newData)
     }
 }
 
