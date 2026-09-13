@@ -78,6 +78,10 @@ public struct CategoryFeedScreen: View {
         Array(activeSongs.dropFirst(4).prefix(6))
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     public var body: some View {
         ZStack {
             SpasibaTheme.background.ignoresSafeArea()
@@ -126,9 +130,14 @@ public struct CategoryFeedScreen: View {
                         }
                     }
                 }
+                .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .frame(width: screenWidth)
+            .clipped()
         }
+        .frame(width: screenWidth)
+        .clipped()
         .task {
             if categoryFeedSongs.isEmpty && internalSongs.isEmpty {
                 await fetchSongsForCategory()
@@ -269,6 +278,7 @@ public struct CategoryFeedScreen: View {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 20)
         }
     }
@@ -331,6 +341,7 @@ public struct CategoryFeedScreen: View {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 20)
         }
     }

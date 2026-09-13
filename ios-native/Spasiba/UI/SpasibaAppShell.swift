@@ -154,6 +154,8 @@ public struct SpasibaAppShell: View {
                             .opacity(currentScreen == 3 ? 1 : 0)
                             .allowsHitTesting(currentScreen == 3)
                     }
+                    .frame(width: screenWidth)
+                    .clipped()
 
                     // 2. Secondary & Detail Screens (Screen Index >= 4)
                     if currentScreen >= 4 {

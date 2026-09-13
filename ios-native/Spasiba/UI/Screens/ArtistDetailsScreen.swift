@@ -35,6 +35,10 @@ public struct ArtistDetailsScreen: View {
         self.onOptionsClick = onOptionsClick
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     public var body: some View {
         ZStack {
             Color(hex: 0x0D0D0F).ignoresSafeArea()
@@ -63,9 +67,14 @@ public struct ArtistDetailsScreen: View {
                     // 6. Songs List or Loading Skeleton
                     songsListSection
                 }
+                .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .frame(width: screenWidth)
+            .clipped()
         }
+        .frame(width: screenWidth)
+        .clipped()
         .task(id: artistName) {
             await loadArtistData()
         }
@@ -338,7 +347,9 @@ public struct ArtistDetailsScreen: View {
                 }
                 .padding(.horizontal, 20)
             }
+            .frame(width: screenWidth)
         }
+        .frame(width: screenWidth)
     }
 
     private var topSongsHeaderSection: some View {

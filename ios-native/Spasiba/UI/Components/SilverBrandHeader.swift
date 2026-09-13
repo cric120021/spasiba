@@ -31,6 +31,8 @@ public struct SilverBrandHeader: View {
                     Text(subtitle)
                         .font(.system(size: 12))
                         .foregroundColor(Color(hex: 0xB3B3B3))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
 

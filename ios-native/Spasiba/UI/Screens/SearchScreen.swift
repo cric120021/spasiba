@@ -124,6 +124,10 @@ public struct SearchScreen: View {
         self.onArtistClick = onArtistClick
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     private func dismissKeyboard() {
         isSearchFieldFocused = false
         UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
@@ -156,6 +160,7 @@ public struct SearchScreen: View {
                                 Text("Search songs, artists...")
                                     .font(.system(size: 16))
                                     .foregroundColor(SpasibaTheme.textMuted)
+                                    .lineLimit(1)
                             }
 
                             TextField("", text: $query)
@@ -219,6 +224,7 @@ public struct SearchScreen: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 10)
                 .padding(.bottom, 8)
+                .frame(width: screenWidth)
 
                 // 2. Main Search Content Area
                 ZStack {
@@ -230,13 +236,17 @@ public struct SearchScreen: View {
                         searchResultsView
                     }
                 }
+                .frame(width: screenWidth)
             }
+            .frame(width: screenWidth)
 
             // 3. Voice Search Modal Overlay (matching SearchScreen.kt lines 1300-1430)
             if isVoiceListeningModalOpen {
                 voiceSearchModalOverlay
             }
         }
+        .frame(width: screenWidth)
+        .clipped()
         .sheet(item: $selectedSongForOptions) { song in
             TrackOptionsMenu(
                 song: song,
@@ -287,6 +297,7 @@ public struct SearchScreen: View {
                         }
                         .padding(.horizontal, 20)
                         .padding(.top, 8)
+                        .frame(width: screenWidth)
 
                         // Top Played Songs Horizontal Rail Carousel
                         if !historyManager.playedSongs.isEmpty {
@@ -301,12 +312,14 @@ public struct SearchScreen: View {
                                                 .font(.system(size: 13, weight: .bold))
                                                 .foregroundColor(.white)
                                                 .lineLimit(1)
+                                                .truncationMode(.tail)
                                                 .frame(width: 105, alignment: .leading)
 
                                             Text(track.author)
                                                 .font(.system(size: 11))
                                                 .foregroundColor(Color.white.opacity(0.6))
                                                 .lineLimit(1)
+                                                .truncationMode(.tail)
                                                 .frame(width: 105, alignment: .leading)
                                         }
                                         .frame(width: 105)
@@ -326,6 +339,7 @@ public struct SearchScreen: View {
                                 }
                                 .padding(.horizontal, 20)
                             }
+                            .frame(width: screenWidth)
                             .padding(.bottom, 6)
                         }
 
@@ -349,9 +363,13 @@ public struct SearchScreen: View {
                                         Text(artistItem.artistName)
                                             .font(.system(size: 16, weight: .bold))
                                             .foregroundColor(.white)
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                         Text(artistItem.subtitle)
                                             .font(.system(size: 12))
                                             .foregroundColor(Color.white.opacity(0.6))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
 
                                     Spacer()
@@ -367,6 +385,7 @@ public struct SearchScreen: View {
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 6)
+                                .frame(width: screenWidth)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     dismissKeyboard()
@@ -393,6 +412,8 @@ public struct SearchScreen: View {
                                     Text(historyQuery)
                                         .font(.system(size: 16))
                                         .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
 
                                     Spacer()
 
@@ -409,6 +430,7 @@ public struct SearchScreen: View {
                                 }
                                 .padding(.horizontal, 20)
                                 .padding(.vertical, 8)
+                                .frame(width: screenWidth)
                                 .contentShape(Rectangle())
                                 .onTapGesture {
                                     performSearch(historyQuery)
@@ -423,8 +445,11 @@ public struct SearchScreen: View {
                             }
                         }
                     }
+                    .frame(width: screenWidth)
                     .padding(.bottom, 120)
                 }
+                .frame(width: screenWidth)
+                .clipped()
                 .compatScrollDismissesKeyboardImmediately()
                 .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
             } else {
@@ -443,6 +468,7 @@ public struct SearchScreen: View {
                         .foregroundColor(Color.white.opacity(0.5))
                     Spacer()
                 }
+                .frame(width: screenWidth)
                 .padding(.bottom, 100)
             }
         }
@@ -455,6 +481,7 @@ public struct SearchScreen: View {
                 if isSuggestionsLoading && suggestions.isEmpty {
                     ForEach(0..<5, id: \.self) { _ in
                         SongTileSkeleton()
+                            .frame(width: screenWidth - 32)
                     }
                 } else {
                     ForEach(suggestions) { item in
@@ -468,6 +495,8 @@ public struct SearchScreen: View {
                                 Text(q)
                                     .font(.system(size: 16, weight: .medium))
                                     .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
 
                                 Spacer()
 
@@ -484,6 +513,7 @@ public struct SearchScreen: View {
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 12)
+                            .frame(width: screenWidth)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 performSearch(q)
@@ -499,10 +529,12 @@ public struct SearchScreen: View {
                                         .font(.system(size: 15, weight: .bold))
                                         .foregroundColor(.white)
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                     Text(s.author)
                                         .font(.system(size: 12))
                                         .foregroundColor(Color.white.opacity(0.6))
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
 
                                 Spacer()
@@ -517,6 +549,7 @@ public struct SearchScreen: View {
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
+                            .frame(width: screenWidth)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 dismissKeyboard()
@@ -542,15 +575,20 @@ public struct SearchScreen: View {
                                     Text(name)
                                         .font(.system(size: 16, weight: .bold))
                                         .foregroundColor(.white)
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
                                     Text(sub)
                                         .font(.system(size: 12))
                                         .foregroundColor(Color.white.opacity(0.6))
+                                        .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
 
                                 Spacer()
                             }
                             .padding(.horizontal, 20)
                             .padding(.vertical, 8)
+                            .frame(width: screenWidth)
                             .contentShape(Rectangle())
                             .onTapGesture {
                                 dismissKeyboard()
@@ -561,8 +599,11 @@ public struct SearchScreen: View {
                     }
                 }
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .frame(width: screenWidth)
+        .clipped()
         .compatScrollDismissesKeyboardImmediately()
         .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
         .background(
@@ -581,6 +622,7 @@ public struct SearchScreen: View {
                 if isSearching {
                     ForEach(0..<6, id: \.self) { _ in
                         SongTileSkeleton()
+                            .frame(width: screenWidth - 32)
                     }
                 } else if searchResults.isEmpty {
                     VStack(spacing: 12) {
@@ -588,6 +630,7 @@ public struct SearchScreen: View {
                             .font(.system(size: 14))
                             .foregroundColor(Color.white.opacity(0.6))
                     }
+                    .frame(width: screenWidth)
                     .padding(.vertical, 40)
                 } else {
                     // 1. Featured Artist Card (matching SearchScreen.kt lines 835-950)
@@ -611,10 +654,12 @@ public struct SearchScreen: View {
                                         .font(.system(size: 18, weight: .bold))
                                         .foregroundColor(.white)
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                     Text("Official Artist Profile • Tap to view all")
                                         .font(.system(size: 12))
                                         .foregroundColor(Color.white.opacity(0.6))
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
 
                                 Spacer()
@@ -697,10 +742,12 @@ public struct SearchScreen: View {
                                             .font(.system(size: 14, weight: .bold))
                                             .foregroundColor(song.id == player.currentSong?.id ? Color(hex: 0x1DB954) : .white)
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                         Text(song.author.isEmpty ? "Spasiba Music" : song.author)
                                             .font(.system(size: 12))
                                             .foregroundColor(Color.white.opacity(0.6))
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
 
                                     Spacer()
@@ -731,6 +778,7 @@ public struct SearchScreen: View {
                             RoundedRectangle(cornerRadius: 20)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
                     }
@@ -748,6 +796,7 @@ public struct SearchScreen: View {
                                         .font(.system(size: 17, weight: .bold))
                                         .foregroundColor(.white)
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
 
                                     let durFormatted = "\(topSong.durationSeconds / 60):\(String(format: "%02d", topSong.durationSeconds % 60))"
                                     let authorStr = (topSong.author.isEmpty || topSong.author == "Artist") ? "Spasiba Music" : topSong.author
@@ -755,6 +804,7 @@ public struct SearchScreen: View {
                                         .font(.system(size: 13))
                                         .foregroundColor(Color.white.opacity(0.6))
                                         .lineLimit(1)
+                                        .truncationMode(.tail)
                                 }
 
                                 Spacer()
@@ -828,6 +878,7 @@ public struct SearchScreen: View {
                             RoundedRectangle(cornerRadius: 18)
                                 .stroke(Color.white.opacity(0.08), lineWidth: 1)
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                         .padding(.bottom, 16)
 
@@ -842,6 +893,7 @@ public struct SearchScreen: View {
                             .padding(.horizontal, 16)
                             .padding(.top, 4)
                             .padding(.bottom, 8)
+                            .frame(width: screenWidth)
                         }
                     }
 
@@ -862,12 +914,16 @@ public struct SearchScreen: View {
                             onLikeClick: { player.toggleLike(song) },
                             onOptionsClick: { selectedSongForOptions = song }
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                     }
                 }
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .frame(width: screenWidth)
+        .clipped()
         .compatScrollDismissesKeyboardImmediately()
         .simultaneousGesture(DragGesture().onChanged { _ in dismissKeyboard() })
         .onAppear {
@@ -965,8 +1021,11 @@ public struct SearchScreen: View {
                 RoundedRectangle(cornerRadius: 28)
                     .stroke(Color.white.opacity(0.12), lineWidth: 1)
             )
+            .frame(width: min(screenWidth - 48, 320))
             .padding(.horizontal, 24)
         }
+        .frame(width: screenWidth)
+        .clipped()
         .onAppear {
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 pulseScale = 1.22

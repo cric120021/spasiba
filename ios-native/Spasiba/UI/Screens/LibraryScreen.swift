@@ -19,6 +19,10 @@ public struct LibraryScreen: View {
         _selectedTab = State(initialValue: initialTab)
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     private var currentSubtitle: String {
         switch selectedTab {
         case 0: return "Your custom & shared playlists"
@@ -39,6 +43,8 @@ public struct LibraryScreen: View {
                 mainLibraryView
             }
         }
+        .frame(width: screenWidth)
+        .clipped()
         .sheet(item: $selectedPlaylistForOptions) { playlist in
             playlistOptionsSheet(playlist: playlist)
         }
@@ -65,57 +71,77 @@ public struct LibraryScreen: View {
         VStack(spacing: 0) {
             // Header matching YouTube Music design
             HStack(alignment: .center) {
-                SilverBrandHeader(subtitle: currentSubtitle)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("LIBRARY")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: 0x1DB954))
+                        .tracking(2.4)
+
+                    Text("Spasiba")
+                        .font(.system(size: 28, weight: .black))
+                        .foregroundStyle(SpasibaTheme.silverGradient)
+
+                    Text(currentSubtitle)
+                        .font(.system(size: 12))
+                        .foregroundColor(Color(hex: 0xB3B3B3))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
 
                 Spacer()
 
-                HStack(spacing: 4) {
+                HStack(spacing: 2) {
                     // 1. Playlists Tab
                     Button(action: { selectedTab = 0 }) {
                         Image(systemName: "music.note.list")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(selectedTab == 0 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
-                            .frame(width: 38, height: 38)
+                            .frame(width: 36, height: 36)
                     }
 
                     // 2. Liked Songs Tab
                     Button(action: { selectedTab = 1 }) {
                         Image(systemName: "heart.fill")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(selectedTab == 1 ? Color(hex: 0xEF4444) : Color.white.opacity(0.6))
-                            .frame(width: 38, height: 38)
+                            .frame(width: 36, height: 36)
                     }
 
                     // 3. History Tab
                     Button(action: { selectedTab = 2 }) {
                         Image(systemName: "clock.arrow.circlepath")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(selectedTab == 2 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
-                            .frame(width: 38, height: 38)
+                            .frame(width: 36, height: 36)
                     }
 
                     // 4. Downloaded Songs Tab
                     Button(action: { selectedTab = 3 }) {
                         Image(systemName: "arrow.down.circle")
-                            .font(.system(size: 20))
+                            .font(.system(size: 18))
                             .foregroundColor(selectedTab == 3 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
-                            .frame(width: 38, height: 38)
+                            .frame(width: 36, height: 36)
                     }
                 }
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
             .padding(.bottom, 6)
+            .frame(width: screenWidth)
 
             // Content
             TabView(selection: $selectedTab) {
-                playlistsTab.tag(0)
-                likedSongsTab.tag(1)
-                historyTab.tag(2)
-                downloadsTab.tag(3)
+                playlistsTab.frame(width: screenWidth).tag(0)
+                likedSongsTab.frame(width: screenWidth).tag(1)
+                historyTab.frame(width: screenWidth).tag(2)
+                downloadsTab.frame(width: screenWidth).tag(3)
             }
             .tabViewStyle(PageTabViewStyle(indexDisplayMode: .never))
+            .frame(width: screenWidth)
+            .clipped()
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     // MARK: - Tab 0: Playlists
@@ -139,9 +165,13 @@ public struct LibraryScreen: View {
                                 Text("Import Playlist")
                                     .font(.system(size: 16, weight: .bold))
                                     .foregroundColor(.white)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                                 Text("Paste a Spasiba share link or code")
                                     .font(.system(size: 13))
                                     .foregroundColor(Color.white.opacity(0.6))
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
                             }
 
                             Spacer()
@@ -151,6 +181,7 @@ public struct LibraryScreen: View {
                         .cornerRadius(16)
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .frame(width: screenWidth - 32)
                     .padding(.horizontal, 16)
 
                     if repository.playlists.isEmpty {
@@ -164,8 +195,11 @@ public struct LibraryScreen: View {
                         }
                     }
                 }
+                .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .frame(width: screenWidth)
+            .clipped()
 
             // Floating Action Button
             Button(action: { isCreatePlaylistOpen = true }) {
@@ -180,6 +214,8 @@ public struct LibraryScreen: View {
             .padding(.trailing, 20)
             .padding(.bottom, 100)
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     private func playlistCard(playlist: PlaylistEntity) -> some View {
@@ -215,11 +251,13 @@ public struct LibraryScreen: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Text("Custom User Playlist • \(pSongs.count) tracks")
                     .font(.system(size: 13))
                     .foregroundColor(Color.white.opacity(0.6))
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
 
             Spacer()
@@ -234,6 +272,7 @@ public struct LibraryScreen: View {
             .buttonStyle(PlainButtonStyle())
         }
         .padding(14)
+        .frame(width: screenWidth - 32)
         .background(Color.white.opacity(0.06))
         .cornerRadius(18)
         .padding(.horizontal, 16)
@@ -276,10 +315,14 @@ public struct LibraryScreen: View {
                     Text("Liked Songs")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     Text("Auto playlist • \(repository.likedSongs.count) songs")
                         .font(.system(size: 14))
                         .foregroundColor(Color.white.opacity(0.6))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     if !repository.likedSongs.isEmpty {
                         HStack(spacing: 16) {
@@ -313,6 +356,7 @@ public struct LibraryScreen: View {
                     }
                 }
                 .padding(.vertical, 16)
+                .frame(width: screenWidth)
 
                 if repository.likedSongs.isEmpty {
                     Text("No liked tracks yet. Heart songs to save them here!")
@@ -332,12 +376,16 @@ public struct LibraryScreen: View {
                             onLikeClick: { player.toggleLike(song) },
                             onOptionsClick: {}
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                     }
                 }
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     // MARK: - Tab 2: History
@@ -362,12 +410,16 @@ public struct LibraryScreen: View {
                             onLikeClick: { player.toggleLike(song) },
                             onOptionsClick: {}
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                     }
                 }
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     // MARK: - Tab 3: Downloads
@@ -382,6 +434,8 @@ public struct LibraryScreen: View {
                     Text("Playlist • \(downloadedList.count) \(downloadedList.count == 1 ? "song" : "songs")")
                         .font(.system(size: 13))
                         .foregroundColor(Color.white.opacity(0.6))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     ZStack {
                         LinearGradient(
@@ -399,6 +453,8 @@ public struct LibraryScreen: View {
                     Text("Downloaded songs")
                         .font(.system(size: 24, weight: .bold))
                         .foregroundColor(.white)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     HStack(spacing: 16) {
                         Image(systemName: "checkmark.circle")
@@ -431,6 +487,7 @@ public struct LibraryScreen: View {
                     }
                 }
                 .padding(.vertical, 16)
+                .frame(width: screenWidth)
 
                 // Active Downloads
                 if !activeList.isEmpty {
@@ -451,9 +508,12 @@ public struct LibraryScreen: View {
                                             .font(.system(size: 14, weight: .bold))
                                             .foregroundColor(.white)
                                             .lineLimit(1)
+                                            .truncationMode(.tail)
                                         Text("\(item.type.rawValue) • \(item.quality) • \(Int(item.progress))% (\(item.status.rawValue))")
                                             .font(.system(size: 11))
                                             .foregroundColor(Color.white.opacity(0.6))
+                                            .lineLimit(1)
+                                            .truncationMode(.tail)
                                     }
 
                                     Spacer()
@@ -471,6 +531,7 @@ public struct LibraryScreen: View {
                                 }
                             }
                             .padding(12)
+                            .frame(width: screenWidth - 32)
                             .background(Color.white.opacity(0.06))
                             .cornerRadius(12)
                             .padding(.horizontal, 16)
@@ -502,12 +563,16 @@ public struct LibraryScreen: View {
                                 songToDeleteFromOffline = song
                             }
                         )
+                        .frame(width: screenWidth - 32)
                         .padding(.horizontal, 16)
                     }
                 }
             }
+            .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     // MARK: - Playlist Detail View
@@ -542,6 +607,7 @@ public struct LibraryScreen: View {
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
+            .frame(width: screenWidth)
 
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -573,10 +639,14 @@ public struct LibraryScreen: View {
                         Text(playlist.name)
                             .font(.system(size: 24, weight: .bold))
                             .foregroundColor(.white)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Text("Playlist • \(pSongs.count) songs")
                             .font(.system(size: 14))
                             .foregroundColor(Color.white.opacity(0.6))
+                            .lineLimit(1)
+                            .truncationMode(.tail)
 
                         if !pSongs.isEmpty {
                             HStack(spacing: 16) {
@@ -608,6 +678,7 @@ public struct LibraryScreen: View {
                         }
                     }
                     .padding(.vertical, 16)
+                    .frame(width: screenWidth)
 
                     if pSongs.isEmpty {
                         Text("No songs in this playlist yet.")
@@ -627,13 +698,19 @@ public struct LibraryScreen: View {
                                 onLikeClick: { player.toggleLike(song) },
                                 onOptionsClick: {}
                             )
+                            .frame(width: screenWidth - 32)
                             .padding(.horizontal, 16)
                         }
                     }
                 }
+                .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .frame(width: screenWidth)
+            .clipped()
         }
+        .frame(width: screenWidth)
+        .clipped()
     }
 
     // MARK: - Dialogs & Sheets

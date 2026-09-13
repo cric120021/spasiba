@@ -43,6 +43,10 @@ public struct EunoiaScreen: View {
 
     public init() {}
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     private var activeSong: Song {
         player.currentSong ?? Song(
             id: "BddP6PYo2gs",
@@ -114,16 +118,21 @@ public struct EunoiaScreen: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 8)
                     .padding(.bottom, 6)
+                    .frame(width: screenWidth)
 
                 // Player Hero (Card-Less Floating Layout)
                 playerHeroSection
                     .padding(.horizontal, 16)
                     .padding(.bottom, 6)
+                    .frame(width: screenWidth)
 
                 // Room Chat & Activity Stream
                 roomChatSection
                     .padding(.horizontal, 12)
+                    .frame(width: screenWidth)
             }
+            .frame(width: screenWidth)
+            .clipped()
             .padding(.bottom, 140) // Clearance for bottom navigation bar and mini player
 
             // 3. Floating Reaction Animations
@@ -149,6 +158,8 @@ public struct EunoiaScreen: View {
                 .animation(.easeInOut, value: toastMessage)
             }
         }
+        .frame(width: screenWidth)
+        .clipped()
         .sheet(isPresented: $isInviteDialogOpen) {
             invitePartnerSheet
         }
@@ -214,11 +225,13 @@ public struct EunoiaScreen: View {
                             .font(.system(size: 16, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Text(liveStatusSubtitle)
                             .font(.system(size: 12))
                             .foregroundColor(isConnected ? Color(hex: 0x10B981) : Color(hex: 0x94A3B8))
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
             }
@@ -255,6 +268,7 @@ public struct EunoiaScreen: View {
             }
             .buttonStyle(PlainButtonStyle())
         }
+        .frame(width: screenWidth - 32)
     }
 
     @ViewBuilder
@@ -330,13 +344,16 @@ public struct EunoiaScreen: View {
                     .font(.system(size: 17, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Text(activeSong.author)
                     .font(.system(size: 13))
                     .foregroundColor(Color.white.opacity(0.7))
                     .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .padding(.top, 4)
+            .frame(width: screenWidth - 48)
 
             // Dynamic Seeker Bar with interactive scrub
             VStack(spacing: 3) {
@@ -385,6 +402,7 @@ public struct EunoiaScreen: View {
                 }
             }
             .padding(.horizontal, 8)
+            .frame(width: screenWidth - 32)
 
             // Media Controls Row (Previous, Big Play/Pause, Next, Video/Audio Toggle)
             ZStack {
@@ -449,7 +467,9 @@ public struct EunoiaScreen: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
+            .frame(width: screenWidth - 32)
         }
+        .frame(width: screenWidth)
     }
 
     // MARK: - Room Chat & Activity Section (Card-Less Floating Canvas)
@@ -470,8 +490,11 @@ public struct EunoiaScreen: View {
                                 .id(msg.id)
                         }
                     }
+                    .frame(width: screenWidth - 24)
                     .padding(.vertical, 4)
                 }
+                .frame(width: screenWidth - 24)
+                .clipped()
                 .onChange(of: messages.count) { _ in
                     if let last = messages.last {
                         withAnimation {
@@ -499,6 +522,7 @@ public struct EunoiaScreen: View {
                     Spacer()
                 }
                 .padding(.horizontal, 4)
+                .frame(width: screenWidth - 24)
 
                 // Message Input Capsule
                 HStack(spacing: 8) {
@@ -526,12 +550,14 @@ public struct EunoiaScreen: View {
                     .buttonStyle(PlainButtonStyle())
                     .disabled(chatInputValue.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
-                .frame(height: 48)
+                .frame(width: screenWidth - 24, height: 48)
                 .background(Color(hex: 0x1E1F28))
                 .clipShape(Capsule())
                 .overlay(Capsule().stroke(Color.white.opacity(0.14), lineWidth: 1))
             }
+            .frame(width: screenWidth - 24)
         }
+        .frame(width: screenWidth)
     }
 
     @ViewBuilder
@@ -546,6 +572,7 @@ public struct EunoiaScreen: View {
                     .padding(.vertical, 4)
                     .background(Color.white.opacity(0.06))
                     .clipShape(Capsule())
+                    .frame(maxWidth: screenWidth - 40)
                 Spacer()
             }
         } else if msg.isPartner {
@@ -571,6 +598,7 @@ public struct EunoiaScreen: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(Color(hex: 0x2C2D3C), lineWidth: 1)
                         )
+                        .frame(maxWidth: screenWidth * 0.72, alignment: .leading)
 
                     Text(msg.timestamp)
                         .font(.system(size: 9))
@@ -593,6 +621,7 @@ public struct EunoiaScreen: View {
                             RoundedRectangle(cornerRadius: 14)
                                 .stroke(Color(hex: 0xE50914).opacity(0.4), lineWidth: 1)
                         )
+                        .frame(maxWidth: screenWidth * 0.72, alignment: .trailing)
 
                     Text(msg.timestamp)
                         .font(.system(size: 9))

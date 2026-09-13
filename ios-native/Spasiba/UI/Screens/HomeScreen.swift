@@ -227,6 +227,8 @@ private struct QuickPickColumn: Identifiable {
                 }
             }
         }
+        .frame(width: screenWidth)
+        .clipped()
         .task {
             await initialLoad()
         }
