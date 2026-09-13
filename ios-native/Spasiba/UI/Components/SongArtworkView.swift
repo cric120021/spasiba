@@ -23,6 +23,15 @@ public final class SpasibaImageCache: @unchecked Sendable {
     public func remove(for url: URL) {
         memoryCache.removeObject(forKey: url as NSURL)
     }
+
+    public func prefetch(url: URL) {
+        if memoryCache.object(forKey: url as NSURL) != nil { return }
+        Task.detached(priority: .background) { [weak self] in
+            guard let (data, _) = try? await URLSession.shared.data(from: url),
+                  let img = UIImage(data: data) else { return }
+            self?.insert(img, for: url)
+        }
+    }
 }
 
 public struct SongArtworkView: View {
@@ -82,32 +91,47 @@ public struct SongArtworkView: View {
         return fallbackUrl
     }
 
+    @State private var currentUrl: URL? = nil
+
     public var body: some View {
         let url = activeUrl
         let cached = url.flatMap { SpasibaImageCache.shared.image(for: $0) }
+        let displayImg = (currentUrl == url ? loadedImage : nil) ?? cached
 
         ZStack {
             Color(hex: 0x222222)
 
-            if let img = loadedImage ?? cached {
+            if let img = displayImg {
                 Image(uiImage: img)
                     .resizable()
                     .aspectRatio(contentMode: .fill)
-            } else if let loadUrl = url {
-                placeholderView
-                    .task(id: loadUrl) {
-                        await fetchImage(url: loadUrl)
-                    }
             } else {
                 placeholderView
             }
         }
+        .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
+        .task(id: url) {
+            currentUrl = url
+            hasFailedTarget = false
+            guard let loadUrl = url else {
+                loadedImage = nil
+                return
+            }
+            if let existing = SpasibaImageCache.shared.image(for: loadUrl) {
+                loadedImage = existing
+                return
+            }
+            await fetchImage(url: loadUrl)
+        }
     }
 
     private func fetchImage(url: URL) async {
         if let existing = SpasibaImageCache.shared.image(for: url) {
-            await MainActor.run { self.loadedImage = existing }
+            await MainActor.run { 
+                self.currentUrl = url
+                self.loadedImage = existing 
+            }
             return
         }
 
@@ -126,7 +150,10 @@ public struct SongArtworkView: View {
 
             SpasibaImageCache.shared.insert(image, for: url)
             await MainActor.run {
-                self.loadedImage = image
+                if self.activeUrl == url {
+                    self.currentUrl = url
+                    self.loadedImage = image
+                }
             }
         } catch {
             handleFetchFailure(failedUrl: url)

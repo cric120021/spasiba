@@ -123,4 +123,15 @@ public final class EunoiaSessionManager: ObservableObject {
             self.friendEventTimestamp = Date().timeIntervalSince1970
         }
     }
+
+    public func endSession() {
+        DispatchQueue.main.async {
+            self.sessionStatus = .idle
+            self.partnerDeviceId = nil
+            self.partnerName = nil
+            self.partnerPhotoUri = nil
+            self.sessionId = nil
+            self.friendEventTimestamp = Date().timeIntervalSince1970
+        }
+    }
 }

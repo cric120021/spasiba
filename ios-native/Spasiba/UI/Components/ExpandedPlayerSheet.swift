@@ -491,6 +491,7 @@ public struct ExpandedPlayerSheet: View {
                 // Standard Album Artwork with horizontal drag-to-skip
                 if let song = song {
                     SongArtworkView(song: song, cornerRadius: max(14, size * 0.075))
+                        .id(song.id)
                         .frame(width: size, height: size)
                         .shadow(color: Color.black.opacity(0.55), radius: 22, x: 0, y: 10)
                         .offset(x: artDragOffset)
@@ -568,6 +569,7 @@ public struct ExpandedPlayerSheet: View {
                     // Center Album Art Label
                     if let song = song {
                         SongArtworkView(song: song, cornerRadius: centerLabelSize / 2)
+                            .id(song.id)
                             .frame(width: centerLabelSize, height: centerLabelSize)
                             .clipShape(Circle())
                             .overlay(Circle().stroke(Color.black, lineWidth: 3))
@@ -852,6 +854,7 @@ public struct ExpandedPlayerSheet: View {
                     }) {
                         HStack(spacing: 12) {
                             SongArtworkView(song: qSong, cornerRadius: 8)
+                                .id(qSong.id)
                                 .frame(width: 42, height: 42)
                                 .fixedSize()
 

@@ -31,6 +31,7 @@ public struct MiniPlayerDock: View {
                 HStack(spacing: 12) {
                     // Artwork
                     SongArtworkView(song: song, cornerRadius: 8)
+                        .id(song.id)
                         .frame(width: 44, height: 44)
 
                     // Track details

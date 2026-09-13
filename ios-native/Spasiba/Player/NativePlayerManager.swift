@@ -102,6 +102,7 @@ public final class NativePlayerManager: ObservableObject {
             if duration > 0 {
                 self.duration = duration
                 self.playbackProgress = min(1.0, currentTime / duration)
+                self.maybeTriggerProgressivePrefetch()
             }
             self.updateNowPlayingInfo()
         }
@@ -186,6 +187,8 @@ public final class NativePlayerManager: ObservableObject {
         do {
             let session = AVAudioSession.sharedInstance()
             try session.setCategory(.playback, mode: .default, policy: .longFormAudio, options: [])
+            try session.setPreferredSampleRate(48000.0)
+            try session.setPreferredIOBufferDuration(0.005)
             try session.setActive(true)
         } catch {
             print("Failed to activate AVAudioSession: \(error)")
@@ -325,6 +328,7 @@ public final class NativePlayerManager: ObservableObject {
         if let localFile = SpasibaAudioCacheManager.shared.findCachedAudioFile(videoId: song.id) {
             NSLog("[NativePlayerManager] Playing from local cache: %@", localFile.path)
             self.setupPlayer(with: localFile, headers: [:])
+            self.prefetchNextTrackIfAvailable()
             return
         }
 
@@ -338,9 +342,53 @@ public final class NativePlayerManager: ObservableObject {
         self.currentlyLoadedVideoId = song.id
         HeadlessAudioBridge.shared.loadAndPlay(videoId: song.id, startSeconds: 0)
         self.updateNowPlayingInfo()
+        self.prefetchNextTrackIfAvailable()
+    }
+
+    // MARK: - Smart Zero-Lag Next Track Prefetching
+    private var isPrefetchingNextAudio: Bool = false
+    private var lastPrefetchedSongId: String? = nil
+
+    private func prefetchNextTrackIfAvailable() {
+        let curIdx = queueEngine.currentIndex
+        let queue = queueEngine.queue
+        guard curIdx >= 0 && curIdx + 1 < queue.count else { return }
+        let nextSong = queue[curIdx + 1]
+
+        if nextSong.id == lastPrefetchedSongId { return }
+        lastPrefetchedSongId = nextSong.id
+        isPrefetchingNextAudio = false
+
+        // 1. Warm stream URL & headers in background (0ms resolve on skip)
+        SpasibaNativeAudioCache.shared.prefetchStream(nextSong.id)
+
+        // 2. Warm artwork in memory cache (0ms instant display)
+        if let thumb = nextSong.resolvedThumbnailUrl {
+            SpasibaImageCache.shared.prefetch(url: thumb)
+        }
+    }
+
+    private func maybeTriggerProgressivePrefetch() {
+        guard self.playbackProgress >= 0.70 && !self.isPrefetchingNextAudio else { return }
+        self.isPrefetchingNextAudio = true
+
+        let curIdx = queueEngine.currentIndex
+        let queue = queueEngine.queue
+        guard curIdx >= 0 && curIdx + 1 < queue.count else { return }
+        let nextSong = queue[curIdx + 1]
+
+        if SpasibaAudioCacheManager.shared.findCachedAudioFile(videoId: nextSong.id) == nil {
+            Task.detached(priority: .background) {
+                NSLog("[NativePlayerManager] Pre-buffering next track audio in background: %@", nextSong.title)
+                _ = try? await SpasibaAudioCacheManager.shared.getOrDownloadAudio(videoId: nextSong.id)
+            }
+        }
     }
 
     private func setupPlayer(with url: URL, headers: [String: String]) {
+        // Stop HeadlessAudioBridge if it was playing online
+        HeadlessAudioBridge.shared.pause()
+
         // Clean up previous observer
         if let observer = timeObserver {
             player?.removeTimeObserver(observer)
@@ -368,6 +416,7 @@ public final class NativePlayerManager: ObservableObject {
             self.currentTime = current
             if self.duration > 0 {
                 self.playbackProgress = min(1.0, current / self.duration)
+                self.maybeTriggerProgressivePrefetch()
             }
             self.updateNowPlayingInfo()
         }

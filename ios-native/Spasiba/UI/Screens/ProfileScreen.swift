@@ -8,15 +8,22 @@ public struct ProfileScreen: View {
 
     @State private var username: String = UserDefaults.standard.string(forKey: "username") ?? "Spasiba Listener"
     @State private var visitorId: String = UIDevice.current.identifierForVendor?.uuidString.prefix(8).uppercased().description ?? "SPASIBA-DEVICE"
-    @State private var profilePhotoUri: String? = UserDefaults.standard.string(forKey: "profile_photo_uri")
+    @AppStorage("profile_photo_uri") private var profilePhotoUri: String = ""
     @State private var isEditNameDialogOpen: Bool = false
     @State private var editNameInput: String = ""
+    @State private var isImagePickerOpen: Bool = false
+    @State private var toastMessage: String? = nil
     @State private var downloadQualityPref: String = UserDefaults.standard.string(forKey: "video_download_quality") ?? "Ask each time"
     @State private var isEunoiaEnabled: Bool = UserDefaults.standard.object(forKey: "eunoia_enabled") == nil ? true : UserDefaults.standard.bool(forKey: "eunoia_enabled")
     @State private var isAddFriendDialogOpen: Bool = false
     @State private var addFriendIdInput: String = ""
     @State private var addFriendNameInput: String = ""
-    @State private var selectedLanguages: Set<String> = ["Hindi", "Punjabi", "English"]
+    @State private var selectedLanguages: Set<String> = {
+        if let saved = UserDefaults.standard.stringArray(forKey: "selected_languages"), !saved.isEmpty {
+            return Set(saved)
+        }
+        return ["Hindi", "Punjabi", "English"]
+    }()
 
     public var onBackClick: () -> Void
     public var onOpenAllFriends: () -> Void
@@ -71,6 +78,24 @@ public struct ProfileScreen: View {
                 }
                 .padding(.bottom, 140)
             }
+
+            // Toast HUD Alert
+            if let toast = toastMessage {
+                VStack {
+                    Spacer()
+                    Text(toast)
+                        .font(.system(size: 14, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                        .background(Color.black.opacity(0.85))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.2), lineWidth: 1))
+                        .padding(.bottom, 100)
+                        .transition(.scale.combined(with: .opacity))
+                }
+                .animation(.easeInOut, value: toastMessage)
+            }
         }
         .sheet(isPresented: $isEditNameDialogOpen) {
             editNameSheet
@@ -78,35 +103,96 @@ public struct ProfileScreen: View {
         .sheet(isPresented: $isAddFriendDialogOpen) {
             addFriendSheet
         }
+        .sheet(isPresented: $isImagePickerOpen) {
+            ImagePicker { pickedImage in
+                saveProfilePhoto(pickedImage)
+            }
+        }
+    }
+
+    private func saveProfilePhoto(_ image: UIImage) {
+        guard let data = image.jpegData(compressionQuality: 0.85) else { return }
+        let fileManager = FileManager.default
+        let docs = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let destUrl = docs.appendingPathComponent("profile_photo.jpg")
+        do {
+            try data.write(to: destUrl)
+            let pathString = destUrl.absoluteString
+            UserDefaults.standard.set(pathString, forKey: "profile_photo_uri")
+            self.profilePhotoUri = pathString
+            showToast("Profile photo saved permanently!")
+        } catch {
+            print("Failed to save profile photo: \(error)")
+        }
+    }
+
+    private func showToast(_ msg: String) {
+        withAnimation {
+            toastMessage = msg
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            withAnimation {
+                if toastMessage == msg {
+                    toastMessage = nil
+                }
+            }
+        }
     }
 
     // MARK: - Account Header Tile
     private var accountHeaderTile: some View {
         HStack(spacing: 16) {
+            // Profile Photo Avatar with Edit Badge
             ZStack(alignment: .bottomTrailing) {
-                ZStack {
-                    if let uri = profilePhotoUri, let url = URL(string: uri) {
-                        AsyncImage(url: url) { phase in
-                            if let img = phase.image {
-                                img.resizable().aspectRatio(contentMode: .fill)
+                Button(action: {
+                    isImagePickerOpen = true
+                }) {
+                    ZStack {
+                        if !profilePhotoUri.isEmpty {
+                            let uri = profilePhotoUri
+                            if let url = URL(string: uri), url.isFileURL, let image = UIImage(contentsOfFile: url.path) {
+                                Image(uiImage: image)
+                                    .resizable()
+                                    .aspectRatio(contentMode: .fill)
+                            } else if let url = URL(string: uri) {
+                                AsyncImage(url: url) { phase in
+                                    if let img = phase.image {
+                                        img.resizable().aspectRatio(contentMode: .fill)
+                                    } else {
+                                        Color(hex: 0x10B981).opacity(0.2)
+                                    }
+                                }
                             } else {
-                                Color(hex: 0x1DB954).opacity(0.2)
+                                Color(hex: 0x10B981).opacity(0.2)
+                                Image(systemName: "person.fill")
+                                    .font(.system(size: 32))
+                                    .foregroundColor(Color(hex: 0x10B981))
                             }
+                        } else {
+                            Color(hex: 0x10B981).opacity(0.2)
+                            Image(systemName: "person.fill")
+                                .font(.system(size: 32))
+                                .foregroundColor(Color(hex: 0x10B981))
                         }
-                    } else {
-                        Color(hex: 0x1DB954).opacity(0.2)
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 32))
-                            .foregroundColor(Color(hex: 0x1DB954))
                     }
+                    .frame(width: 64, height: 64)
+                    .clipShape(Circle())
                 }
-                .frame(width: 64, height: 64)
-                .clipShape(Circle())
+                .buttonStyle(PlainButtonStyle())
 
-                Image(systemName: "pencil.circle.fill")
-                    .font(.system(size: 20))
-                    .foregroundColor(Color(hex: 0x1DB954))
-                    .background(Color.black.clipShape(Circle()))
+                // Edit Photo Badge
+                Button(action: {
+                    isImagePickerOpen = true
+                }) {
+                    Image(systemName: "camera.fill")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(.black)
+                        .frame(width: 22, height: 22)
+                        .background(Color(hex: 0x10B981))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(Color.black, lineWidth: 1.5))
+                }
+                .buttonStyle(PlainButtonStyle())
             }
 
             VStack(alignment: .leading, spacing: 4) {
@@ -115,7 +201,8 @@ public struct ProfileScreen: View {
                     .foregroundColor(.white)
 
                 Button(action: {
-                    UIPasteboard.general.string = visitorId
+                    UIPasteboard.general.string = "@\(visitorId)"
+                    showToast("Copied ID: @\(visitorId)")
                 }) {
                     HStack(spacing: 4) {
                         Text("@\(visitorId)")
@@ -138,7 +225,9 @@ public struct ProfileScreen: View {
                 Image(systemName: "pencil")
                     .font(.system(size: 16))
                     .foregroundColor(Color.white.opacity(0.6))
+                    .padding(8)
             }
+            .buttonStyle(PlainButtonStyle())
         }
         .padding(16)
         .background(Color.white.opacity(0.04))
@@ -267,8 +356,12 @@ public struct ProfileScreen: View {
                     ForEach(allLangs, id: \.self) { lang in
                         let isSel = selectedLanguages.contains(lang)
                         Button(action: {
-                            if isSel { selectedLanguages.remove(lang) }
-                            else { selectedLanguages.insert(lang) }
+                            if isSel { 
+                                selectedLanguages.remove(lang) 
+                            } else { 
+                                selectedLanguages.insert(lang) 
+                            }
+                            UserDefaults.standard.set(Array(selectedLanguages), forKey: "selected_languages")
                         }) {
                             HStack(spacing: 6) {
                                 Text(lang)
@@ -359,17 +452,18 @@ public struct ProfileScreen: View {
                 // Clear Offline Storage Cache
                 Button(action: {
                     SpasibaAudioCacheManager.shared.clearAll()
+                    showToast("Audio & Image Cache cleared!")
                 }) {
                     HStack {
                         Image(systemName: "trash")
                             .foregroundColor(Color(hex: 0xEF4444))
                             .frame(width: 28)
-                        Text("Clear Audio Cache")
+                        Text("Clear Audio & Image Cache")
                             .font(.system(size: 15, weight: .medium))
                             .foregroundColor(.white)
                         Spacer()
                         Text("Clear")
-                            .font(.system(size: 13))
+                            .font(.system(size: 13, weight: .bold))
                             .foregroundColor(Color(hex: 0xEF4444))
                     }
                     .padding(16)
@@ -386,7 +480,7 @@ public struct ProfileScreen: View {
                         .font(.system(size: 15, weight: .medium))
                         .foregroundColor(.white)
                     Spacer()
-                    Text("2.0 Native Swift")
+                    Text("2.0 Native iOS")
                         .font(.system(size: 13))
                         .foregroundColor(Color.white.opacity(0.6))
                 }

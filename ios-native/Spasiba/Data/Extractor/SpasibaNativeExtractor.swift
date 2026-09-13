@@ -222,8 +222,10 @@ public final class SpasibaNativeExtractor {
                 candidates.append(contentsOf: formats)
             }
 
-            let chosen = candidates.first(where: { ($0["itag"] as? Int) == 140 && ($0["url"] as? String)?.isEmpty == false })
-                ?? candidates.first(where: { ($0["itag"] as? Int) == 251 && ($0["url"] as? String)?.isEmpty == false })
+            // Always select the highest bitrate stream available (e.g. itag 251 Opus ~160kbps or itag 141 AAC ~256kbps)
+            let chosen = candidates
+                .filter { ($0["url"] as? String)?.isEmpty == false }
+                .max(by: { ($0["bitrate"] as? Int64 ?? 0) < ($1["bitrate"] as? Int64 ?? 0) })
                 ?? candidates.first(where: { ($0["url"] as? String)?.isEmpty == false })
 
             guard let chosenFormat = chosen,

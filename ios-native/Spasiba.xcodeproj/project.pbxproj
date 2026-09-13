@@ -13,6 +13,7 @@
 		057D8FF891C1DACCF97C22C3 /* SpasibaNativeExtractor.swift in Sources */ = {isa = PBXBuildFile; fileRef = 94D770AC4FC5F800D1C95B57 /* SpasibaNativeExtractor.swift */; };
 		07440000AFFD89C5F2709465 /* ArtistDetailsScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = AE663FD3FBDEA941D9714D39 /* ArtistDetailsScreen.swift */; };
 		09CD37393BD9CB55DD511F76 /* SongArtworkView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */; };
+		09CD37393BD9CB55DD511F77 /* ImagePicker.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1F16283AB9A3EAB8171D099 /* ImagePicker.swift */; };
 		16A084095264BDA7B800FE79 /* Daos.swift in Sources */ = {isa = PBXBuildFile; fileRef = 62B63B92BB6D99C68D902CBC /* Daos.swift */; };
 		1CA52C9013C73D5D863CEB27 /* FriendsListScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9FFB5FACEC8CE067683384F /* FriendsListScreen.swift */; };
 		1D3235E9A4BF43A3838FC770 /* EqualizerWaveformAnimation.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BEBCC3655A675E2AB392729 /* EqualizerWaveformAnimation.swift */; };
@@ -75,6 +76,7 @@
 		FAD73324C8B8429ECC228FB2 /* ExpandedPlayerSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B933502D4BEF036EAF7F1B9 /* ExpandedPlayerSheet.swift */; };
 		FF5417E46B8B3AE598F5C4C3 /* SearchScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 564105F9BBE26056E7ACAC63 /* SearchScreen.swift */; };
 		A1C000000000000000000001 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = A1C000000000000000000002 /* Assets.xcassets */; };
+		A1C000000000000000000004 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = A1C000000000000000000005 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
@@ -90,6 +92,7 @@
 		161404EDB23C900B12DF3EDF /* EunoiaSyncController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaSyncController.swift; sourceTree = "<group>"; };
 		183F738C275DAA4512D1D0B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		A1C000000000000000000002 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A1C000000000000000000005 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		1BFF7EECB6E5668003F3B636 /* YouTubeMusicApi.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = YouTubeMusicApi.swift; sourceTree = "<group>"; };
 		1C57FF91389513D0CC6FB7FC /* PlaylistOperationsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlaylistOperationsScreen.swift; sourceTree = "<group>"; };
 		2BCE2D50E06A3B3048FE2B2B /* CreatePlaylistDialog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CreatePlaylistDialog.swift; sourceTree = "<group>"; };
@@ -125,6 +128,7 @@
 		9A6FBAFFC418AB7A2C1F58DC /* FriendProfileDetailsScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FriendProfileDetailsScreen.swift; sourceTree = "<group>"; };
 		A1AE5C58525C8C406DDC9ABA /* NavigationUtils.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NavigationUtils.swift; sourceTree = "<group>"; };
 		A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SongArtworkView.swift; sourceTree = "<group>"; };
+		A1F16283AB9A3EAB8171D099 /* ImagePicker.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ImagePicker.swift; sourceTree = "<group>"; };
 		A404E6D9FECC89C1B919FF6D /* Entities.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Entities.swift; sourceTree = "<group>"; };
 		A745D03CC324B5469ABBF5C9 /* AudioVisualizer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AudioVisualizer.swift; sourceTree = "<group>"; };
 		A947AC22F75165D0BD859739 /* EunoiaScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = EunoiaScreen.swift; sourceTree = "<group>"; };
@@ -305,6 +309,7 @@
 				DBDE6707AA9E4644EDC1E6F0 /* SilverBrandHeader.swift */,
 				77C8EA3E9635098F33599076 /* SkeletonLoaders.swift */,
 				A1F16283AB9A3EAB8171D098 /* SongArtworkView.swift */,
+				A1F16283AB9A3EAB8171D099 /* ImagePicker.swift */,
 				9658B955B58EE7E7352E6745 /* SongTile.swift */,
 				B90D1C9B4C11A4426AEDF789 /* TrackOptionsMenu.swift */,
 			);
@@ -316,6 +321,7 @@
 			children = (
 				183F738C275DAA4512D1D0B3 /* Info.plist */,
 				A1C000000000000000000002 /* Assets.xcassets */,
+				A1C000000000000000000005 /* LaunchScreen.storyboard */,
 				E470A7AEC9DCFD4DFF6B376A /* App */,
 				BECF52D4ED39AF062E8BC13D /* Core */,
 				0607E4591E5F9700446A95D4 /* Data */,
@@ -440,6 +446,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				A1C000000000000000000001 /* Assets.xcassets in Resources */,
+				A1C000000000000000000004 /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -533,6 +540,7 @@
 				43CAF63518E5EBD8C70613F0 /* SmartQueueEngine.swift in Sources */,
 				E54569BDA28A074C4D884D71 /* Song.swift in Sources */,
 				09CD37393BD9CB55DD511F76 /* SongArtworkView.swift in Sources */,
+				09CD37393BD9CB55DD511F77 /* ImagePicker.swift in Sources */,
 				E64C1899DE39CADB5277D4E2 /* SongTile.swift in Sources */,
 				640495AD898B74B75B89C976 /* SpasibaApp.swift in Sources */,
 				93D2A9CA025EADE065F77F11 /* SpasibaAppShell.swift in Sources */,
@@ -568,7 +576,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.commerceos.customer;
+				PRODUCT_BUNDLE_IDENTIFIER = app.spasiba.nativeapp2;
 				PRODUCT_NAME = Spasiba;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -715,7 +723,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.commerceos.customer;
+				PRODUCT_BUNDLE_IDENTIFIER = app.spasiba.nativeapp2;
 				PRODUCT_NAME = Spasiba;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
