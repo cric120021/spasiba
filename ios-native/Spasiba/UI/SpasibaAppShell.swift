@@ -250,10 +250,8 @@ public struct SpasibaAppShell: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 2. Bottom Navigation Panel (MiniPlayer + Tab Bar)
-            // Anchored at the true bottom of the screen matching android-native-2's compact gesture padding
             if !isKeyboardVisible {
                 bottomFloatingBar
-                    .ignoresSafeArea(edges: .bottom)
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
@@ -364,7 +362,7 @@ public struct SpasibaAppShell: View {
                         player.playNext()
                     }
                 )
-                .frame(maxWidth: 680)
+                .frame(maxWidth: .infinity)
                 .padding(.bottom, 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -396,9 +394,8 @@ public struct SpasibaAppShell: View {
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .frame(maxWidth: 680)
+            .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .padding(.bottom, 6)
         }
         .frame(maxWidth: .infinity)
         .background(
