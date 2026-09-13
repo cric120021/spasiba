@@ -106,7 +106,7 @@ public struct TrackOptionsMenu: View {
                         trackOptionRow(
                             icon: "arrow.down.circle",
                             title: "Download Track",
-                            tint: Color(hex: 0x1DB954)
+                            tint: .white
                         ) {
                             isDownloadDialogOpen = true
                         }
@@ -115,7 +115,7 @@ public struct TrackOptionsMenu: View {
                     trackOptionRow(
                         icon: isLiked ? "heart.fill" : "heart",
                         title: isLiked ? "Remove from Liked Tracks" : "Save to Liked Tracks",
-                        tint: isLiked ? Color(hex: 0x1DB954) : .white
+                        tint: .white
                     ) {
                         onLikeToggle()
                         onDismiss()
@@ -280,7 +280,7 @@ public struct TrackOptionsMenu: View {
                 HStack(spacing: 12) {
                     Image(systemName: "arrow.down.circle.fill")
                         .font(.system(size: 20))
-                        .foregroundColor(Color(hex: 0x1DB954))
+                        .foregroundColor(.white)
 
                     Text("Audio Only (Default)")
                         .font(.system(size: 15, weight: .bold))
@@ -290,10 +290,10 @@ public struct TrackOptionsMenu: View {
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, 14)
-                .background(Color(hex: 0x1DB954).opacity(0.15))
+                .background(Color.white.opacity(0.15))
                 .overlay(
                     RoundedRectangle(cornerRadius: 12)
-                        .stroke(Color(hex: 0x1DB954), lineWidth: 1)
+                        .stroke(Color.white, lineWidth: 1)
                 )
                 .cornerRadius(12)
             }

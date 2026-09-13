@@ -703,7 +703,7 @@ public struct ExpandedPlayerSheet: View {
             Button(action: { playerManager.queueEngine.toggleShuffle() }) {
                 Image(systemName: "shuffle")
                     .font(.system(size: 20))
-                    .foregroundColor(playerManager.queueEngine.isShuffleEnabled ? Color(hex: 0x1DB954) : Color.white.opacity(0.7))
+                    .foregroundColor(playerManager.queueEngine.isShuffleEnabled ? Color.white : Color.white.opacity(0.7))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(PlainButtonStyle())
@@ -767,7 +767,7 @@ public struct ExpandedPlayerSheet: View {
             Button(action: { playerManager.queueEngine.cycleRepeatMode() }) {
                 Image(systemName: repeatIconName)
                     .font(.system(size: 20))
-                    .foregroundColor(playerManager.queueEngine.repeatMode != .off ? Color(hex: 0x1DB954) : Color.white.opacity(0.5))
+                    .foregroundColor(playerManager.queueEngine.repeatMode != .off ? Color.white : Color.white.opacity(0.5))
                     .frame(width: 44, height: 44)
             }
             .buttonStyle(PlainButtonStyle())
@@ -861,7 +861,7 @@ public struct ExpandedPlayerSheet: View {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(qSong.title)
                                     .font(.system(size: 14, weight: isCurrent ? .bold : .regular))
-                                    .foregroundColor(isCurrent ? Color(hex: 0x1DB954) : Color.white.opacity(0.9))
+                                    .foregroundColor(isCurrent ? Color.white : Color.white.opacity(0.9))
                                     .lineLimit(1)
                                     .truncationMode(.tail)
 

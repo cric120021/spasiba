@@ -72,7 +72,7 @@ public struct SongTile: View {
                     if dragOffset > 0 {
                         Image(systemName: "heart.fill")
                             .font(.system(size: 20))
-                            .foregroundColor(Color(hex: 0x1DB954))
+                            .foregroundColor(Color.white)
                             .padding(.leading, 20)
                         Spacer()
                     } else if dragOffset < 0 {
@@ -86,7 +86,7 @@ public struct SongTile: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(
                     dragOffset > 0
-                        ? Color(hex: 0x1DB954).opacity(0.25)
+                        ? Color.white.opacity(0.25)
                         : Color(hex: 0x10B981).opacity(0.25)
                 )
                 .cornerRadius(14)
@@ -105,7 +105,7 @@ public struct SongTile: View {
 
                         Text(song.title)
                             .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(isPlaying ? Color(hex: 0x1DB954) : .white)
+                            .foregroundColor(.white)
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
@@ -143,7 +143,7 @@ public struct SongTile: View {
                 Button(action: onLikeClick) {
                     Image(systemName: isLiked ? "heart.fill" : "heart")
                         .font(.system(size: 18))
-                        .foregroundColor(isLiked ? Color(hex: 0x1DB954) : Color.white.opacity(0.5))
+                        .foregroundColor(isLiked ? Color.white : Color.white.opacity(0.5))
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(PlainButtonStyle())

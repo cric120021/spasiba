@@ -74,12 +74,12 @@ public struct LibraryScreen: View {
                 VStack(alignment: .leading, spacing: 2) {
                     Text("LIBRARY")
                         .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(Color(hex: 0x1DB954))
+                        .foregroundColor(Color(hex: 0x94A3B8))
                         .tracking(2.4)
 
                     Text("Spasiba")
-                        .font(.system(size: 28, weight: .black))
-                        .foregroundStyle(SpasibaTheme.silverGradient)
+                        .font(.system(size: 26, weight: .heavy))
+                        .foregroundColor(.white)
 
                     Text(currentSubtitle)
                         .font(.system(size: 12))
@@ -94,7 +94,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 0 }) {
                         Image(systemName: "music.note.list")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 0 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 0 ? Color.white : Color.white.opacity(0.6))
                             .frame(width: 36, height: 36)
                     }
 
@@ -110,7 +110,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 2 }) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 2 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 2 ? Color.white : Color.white.opacity(0.6))
                             .frame(width: 36, height: 36)
                     }
 
@@ -118,7 +118,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 3 }) {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 3 ? Color(hex: 0x1DB954) : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 3 ? Color.white : Color.white.opacity(0.6))
                             .frame(width: 36, height: 36)
                     }
                 }
@@ -207,9 +207,9 @@ public struct LibraryScreen: View {
                     .font(.system(size: 26, weight: .bold))
                     .foregroundColor(.black)
                     .frame(width: 56, height: 56)
-                    .background(Color(hex: 0x1DB954))
+                    .background(Color.white)
                     .clipShape(Circle())
-                    .shadow(color: Color(hex: 0x1DB954).opacity(0.3), radius: 8, x: 0, y: 4)
+                    .shadow(color: Color.white.opacity(0.25), radius: 8, x: 0, y: 4)
             }
             .padding(.trailing, 20)
             .padding(.bottom, 100)
@@ -493,7 +493,7 @@ public struct LibraryScreen: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("Active Downloads")
                             .font(.system(size: 14, weight: .bold))
-                            .foregroundColor(Color(hex: 0x1DB954))
+                            .foregroundColor(.white)
                             .padding(.horizontal, 16)
 
                         ForEach(Array(activeList), id: \.song.id) { item in
@@ -526,7 +526,7 @@ public struct LibraryScreen: View {
 
                                 if item.status == .downloading {
                                     ProgressView(value: Double(item.progress), total: 100.0)
-                                        .progressViewStyle(LinearProgressViewStyle(tint: Color(hex: 0x1DB954)))
+                                        .progressViewStyle(LinearProgressViewStyle(tint: .white))
                                 }
                             }
                             .padding(12)

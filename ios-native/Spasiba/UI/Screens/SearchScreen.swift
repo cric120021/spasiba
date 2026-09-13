@@ -293,7 +293,7 @@ public struct SearchScreen: View {
                             Button(action: { showClearHistoryAlert = true }) {
                                 Text("Clear All")
                                     .font(.system(size: 13, weight: .bold))
-                                    .foregroundColor(Color(hex: 0x1DB954))
+                                    .foregroundColor(.white)
                             }
                         }
                         .padding(.horizontal, 20)
@@ -741,7 +741,7 @@ public struct SearchScreen: View {
                                     VStack(alignment: .leading, spacing: 2) {
                                         Text(song.title)
                                             .font(.system(size: 14, weight: .bold))
-                                            .foregroundColor(song.id == player.currentSong?.id ? Color(hex: 0x1DB954) : .white)
+                                            .foregroundColor(.white)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
                                         Text(song.author.isEmpty ? "Spasiba Music" : song.author)
@@ -1009,7 +1009,7 @@ public struct SearchScreen: View {
                 // Subtitle / Prompt
                 Text(liveSpokenText.isEmpty ? "Recite a song name, artist, or lyric to search" : "Reciting live...")
                     .font(.system(size: 13, weight: .medium))
-                    .foregroundColor(Color(hex: 0x1DB954))
+                    .foregroundColor(Color.white.opacity(0.7))
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 16)
 
