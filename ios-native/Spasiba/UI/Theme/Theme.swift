@@ -105,15 +105,17 @@ extension Color {
 public enum DeviceSafeArea {
     public static var top: CGFloat {
         let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene ?? UIApplication.shared.connectedScenes.first as? UIWindowScene
-        let window = windowScene?.windows.first(where: { $0.isKeyWindow }) ?? windowScene?.windows.first
-        let inset = window?.safeAreaInsets.top ?? 0
-        return inset > 0 ? inset : 44
+        if let window = windowScene?.windows.first(where: { $0.isKeyWindow }) ?? windowScene?.windows.first {
+            return window.safeAreaInsets.top
+        }
+        return 44
     }
 
     public static var bottom: CGFloat {
         let windowScene = UIApplication.shared.connectedScenes.first(where: { $0.activationState == .foregroundActive }) as? UIWindowScene ?? UIApplication.shared.connectedScenes.first as? UIWindowScene
-        let window = windowScene?.windows.first(where: { $0.isKeyWindow }) ?? windowScene?.windows.first
-        let inset = window?.safeAreaInsets.bottom ?? 0
-        return inset > 0 ? inset : 34
+        if let window = windowScene?.windows.first(where: { $0.isKeyWindow }) ?? windowScene?.windows.first {
+            return window.safeAreaInsets.bottom
+        }
+        return 34
     }
 }

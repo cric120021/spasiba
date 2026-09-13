@@ -8,7 +8,7 @@ public struct SongBadge: View {
     public init(
         text: String,
         color: Color = Color(hex: 0x2DD4BF).opacity(0.2),
-        textColor: Color = Color(hex: 0x1DB954)
+        textColor: Color = Color.white
     ) {
         self.text = text
         self.color = color

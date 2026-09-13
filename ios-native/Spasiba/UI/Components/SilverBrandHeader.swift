@@ -24,8 +24,8 @@ public struct SilverBrandHeader: View {
                     .tracking(2.4)
 
                 Text("Spasiba")
-                    .font(.system(size: 28, weight: .black))
-                    .foregroundStyle(SpasibaTheme.silverGradient)
+                    .font(.system(size: 26, weight: .heavy))
+                    .foregroundColor(.white)
 
                 if let subtitle = subtitle, !subtitle.isEmpty {
                     Text(subtitle)
