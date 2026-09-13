@@ -61,6 +61,10 @@ public struct SpasibaAppShell: View {
         backStack.last ?? 0
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     public func navigateTo(_ screen: Int) {
         selectedCategory = nil
         if screen == 0 {
@@ -247,15 +251,19 @@ public struct SpasibaAppShell: View {
                     }
                 }
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .frame(width: screenWidth)
+            .clipped()
 
             // 2. Bottom Navigation Panel (MiniPlayer + Tab Bar)
             if !isKeyboardVisible {
                 bottomFloatingBar
+                    .frame(width: screenWidth)
                     .ignoresSafeArea(.keyboard, edges: .bottom)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
+        .frame(width: screenWidth)
+        .clipped()
         .ignoresSafeArea(.keyboard, edges: .bottom)
         // Modals and Sheets
         .fullScreenCover(isPresented: $isExpandedPlayerVisible) {
@@ -362,7 +370,7 @@ public struct SpasibaAppShell: View {
                         player.playNext()
                     }
                 )
-                .frame(maxWidth: .infinity)
+                .frame(width: screenWidth)
                 .padding(.bottom, 4)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -388,16 +396,15 @@ public struct SpasibaAppShell: View {
                                 ))
                                 .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .frame(width: screenWidth / 4, height: 48)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
                 }
             }
-            .frame(maxWidth: .infinity)
-            .frame(height: 48)
+            .frame(width: screenWidth, height: 48)
         }
-        .frame(maxWidth: .infinity)
+        .frame(width: screenWidth)
         .background(
             Color.black
                 .ignoresSafeArea(edges: .bottom)

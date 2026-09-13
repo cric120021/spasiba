@@ -40,14 +40,15 @@ public struct MiniPlayerDock: View {
                             .font(.system(size: 14, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Text(song.author)
                             .font(.system(size: 12))
                             .foregroundColor(Color(hex: 0xB3B3B3))
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
-
-                    Spacer(minLength: 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 .contentShape(Rectangle())
                 .onTapGesture {

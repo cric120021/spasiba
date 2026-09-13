@@ -79,6 +79,10 @@ public struct HomeScreen: View {
         }
     }
 
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
     private var activeFilterName: String? {
         selectedCategory?.label ?? selectedMoodFilter
     }
@@ -214,9 +218,10 @@ private struct QuickPickColumn: Identifiable {
 
                         Spacer().frame(height: 120) // Clearance for mini player dock
                     }
-                    .frame(maxWidth: .infinity)
+                    .frame(width: screenWidth)
                 }
-                .frame(maxWidth: .infinity)
+                .frame(width: screenWidth)
+                .clipped()
                 .refreshable {
                     await reloadAllData()
                 }
@@ -325,8 +330,10 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.horizontal, 16)
                 .padding(.vertical, 6)
             }
+            .frame(width: screenWidth)
             .padding(.top, 4)
         }
+        .frame(width: screenWidth)
     }
 
     // MARK: - Quick Picks Section
@@ -407,7 +414,9 @@ private struct QuickPickColumn: Identifiable {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
         }
+        .frame(width: screenWidth)
     }
 
     // MARK: - Display Shelves Section
@@ -477,6 +486,7 @@ private struct QuickPickColumn: Identifiable {
                     }
                     .padding(.horizontal, 16)
                 }
+                .frame(width: screenWidth)
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
@@ -508,8 +518,10 @@ private struct QuickPickColumn: Identifiable {
                     }
                     .padding(.horizontal, 16)
                 }
+                .frame(width: screenWidth)
             }
         }
+        .frame(width: screenWidth)
     }
 
     private var exploringCategoryPlaceholder: some View {
@@ -639,7 +651,9 @@ private struct QuickPickColumn: Identifiable {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
         }
+        .frame(width: screenWidth)
     }
 
     private func reloadQuickPicks() async {
@@ -706,7 +720,9 @@ private struct QuickPickColumn: Identifiable {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
         }
+        .frame(width: screenWidth)
         .padding(.bottom, 22)
     }
 
@@ -944,7 +960,9 @@ private struct QuickPickColumn: Identifiable {
                 }
                 .padding(.horizontal, 16)
             }
+            .frame(width: screenWidth)
         }
+        .frame(width: screenWidth)
     }
 
     // MARK: - Data Loading & Actions
