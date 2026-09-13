@@ -223,7 +223,7 @@ public struct SearchScreen: View {
                     .buttonStyle(PlainButtonStyle())
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 10)
+                .padding(.top, DeviceSafeArea.top + 4)
                 .padding(.bottom, 8)
                 .frame(width: screenWidth)
 

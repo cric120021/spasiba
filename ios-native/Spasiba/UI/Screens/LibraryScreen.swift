@@ -125,7 +125,7 @@ public struct LibraryScreen: View {
                 .fixedSize()
             }
             .padding(.horizontal, 16)
-            .padding(.top, 8)
+            .padding(.top, DeviceSafeArea.top + 4)
             .padding(.bottom, 6)
             .frame(width: screenWidth)
 

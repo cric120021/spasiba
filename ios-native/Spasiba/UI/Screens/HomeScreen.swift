@@ -192,7 +192,7 @@ private struct QuickPickColumn: Identifiable {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         // 1. Dynamic Header with Time Greeting & Top Action Target Icons
                         headerSection
-                            .padding(.top, 2)
+                            .padding(.top, DeviceSafeArea.top + 4)
                             .padding(.bottom, 4)
 
                         // Quick Picks Horizontal 4x4 Swipe Grid

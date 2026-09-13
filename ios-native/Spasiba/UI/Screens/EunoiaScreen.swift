@@ -116,7 +116,7 @@ public struct EunoiaScreen: View {
                 // Dual Overlapping Collab Header
                 headerBar
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, DeviceSafeArea.top + 4)
                     .padding(.bottom, 6)
                     .frame(width: screenWidth)
 

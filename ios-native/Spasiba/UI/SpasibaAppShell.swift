@@ -405,6 +405,7 @@ public struct SpasibaAppShell: View {
                 }
             }
             .frame(width: screenWidth, height: 48)
+            .padding(.bottom, max(8, DeviceSafeArea.bottom - 4))
         }
         .frame(width: screenWidth)
         .background(
