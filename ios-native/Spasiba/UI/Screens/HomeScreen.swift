@@ -184,7 +184,7 @@ private struct QuickPickColumn: Identifiable {
             if isShelvesLoading && liveHomeShelves.isEmpty {
                 HomeScreenSkeleton()
             } else {
-                ScrollView(showsIndicators: false) {
+                ScrollView(.vertical, showsIndicators: false) {
                     LazyVStack(alignment: .leading, spacing: 0) {
                         // 1. Dynamic Header with Time Greeting & Top Action Target Icons
                         headerSection
@@ -214,7 +214,9 @@ private struct QuickPickColumn: Identifiable {
 
                         Spacer().frame(height: 120) // Clearance for mini player dock
                     }
+                    .frame(maxWidth: .infinity)
                 }
+                .frame(maxWidth: .infinity)
                 .refreshable {
                     await reloadAllData()
                 }
@@ -382,16 +384,18 @@ private struct QuickPickColumn: Identifiable {
                                                 .font(.system(size: 14, weight: .semibold))
                                                 .foregroundColor(isPlaying ? spotifyGreen : .white)
                                                 .lineLimit(1)
+                                                .truncationMode(.tail)
 
                                             Text(song.author)
                                                 .font(.system(size: 12))
                                                 .foregroundColor(textSecondaryGray)
                                                 .lineLimit(1)
+                                                .truncationMode(.tail)
                                         }
-
-                                        Spacer()
+                                        .frame(maxWidth: .infinity, alignment: .leading)
                                     }
                                     .padding(6)
+                                    .frame(maxWidth: .infinity)
                                     .background(Color.white.opacity(0.05))
                                     .clipShape(RoundedRectangle(cornerRadius: 8))
                                 }
@@ -413,6 +417,8 @@ private struct QuickPickColumn: Identifiable {
                 Text(shelf.title)
                     .font(.system(size: 20, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
 
                 Spacer()
 
@@ -657,11 +663,15 @@ private struct QuickPickColumn: Identifiable {
                         .font(.system(size: 10, weight: .bold))
                         .foregroundColor(spotifyGreen)
                         .tracking(1.4)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
 
                 Text(title)
                     .font(.system(size: 19, weight: .bold))
                     .foregroundColor(.white)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
@@ -708,7 +718,7 @@ private struct QuickPickColumn: Identifiable {
             ZStack {
                 // Background Thumbnail Image
                 SongArtworkView(song: song, cornerRadius: 0)
-                    .frame(maxWidth: .infinity, maxHeight: 170)
+                    .frame(height: 170)
                     .clipped()
 
                 // Dark Horizontal Gradient Overlay
@@ -723,7 +733,7 @@ private struct QuickPickColumn: Identifiable {
                 )
 
                 // Foreground Content
-                HStack(alignment: .center) {
+                HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text("RECOMMENDED FOR YOU")
                             .font(.system(size: 10, weight: .bold))
@@ -738,11 +748,13 @@ private struct QuickPickColumn: Identifiable {
                             .font(.system(size: 18, weight: .heavy))
                             .foregroundColor(.white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
                         Text(song.author)
                             .font(.system(size: 13))
                             .foregroundColor(textSecondaryGray)
                             .lineLimit(1)
+                            .truncationMode(.tail)
 
                         HStack(spacing: 4) {
                             Image(systemName: "play.fill")
@@ -762,11 +774,12 @@ private struct QuickPickColumn: Identifiable {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     SongArtworkView(song: song, cornerRadius: 8)
-                        .frame(width: 110, height: 110)
+                        .frame(width: 100, height: 100)
                 }
                 .padding(16)
             }
             .frame(height: 170)
+            .frame(maxWidth: .infinity)
             .background(spotifyCardSurface)
             .clipShape(RoundedRectangle(cornerRadius: 12))
             .padding(.horizontal, 16)
@@ -800,9 +813,9 @@ private struct QuickPickColumn: Identifiable {
                             .font(.system(size: 12, weight: .bold))
                             .foregroundColor(.white)
                             .lineLimit(2)
-                            .padding(.horizontal, 10)
-
-                        Spacer()
+                            .truncationMode(.tail)
+                            .padding(.horizontal, 8)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(height: 56)
                     .frame(maxWidth: .infinity)
@@ -854,9 +867,9 @@ private struct QuickPickColumn: Identifiable {
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(isPlaying ? spotifyGreen : .white)
                     .lineLimit(2)
-                    .padding(.horizontal, 10)
-
-                Spacer()
+                    .truncationMode(.tail)
+                    .padding(.horizontal, 8)
+                    .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 56)
             .frame(maxWidth: .infinity)

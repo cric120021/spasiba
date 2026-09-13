@@ -109,6 +109,7 @@ public struct SongArtworkView: View {
                 placeholderView
             }
         }
+        .frame(minWidth: 0, maxWidth: .infinity, minHeight: 0, maxHeight: .infinity)
         .clipped()
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius))
         .task(id: url) {
