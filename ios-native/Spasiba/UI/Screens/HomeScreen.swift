@@ -333,6 +333,7 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.vertical, 6)
             }
             .frame(width: screenWidth)
+            .clipped()
             .padding(.top, 4)
         }
         .frame(width: screenWidth)
@@ -417,6 +418,7 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.horizontal, 16)
             }
             .frame(width: screenWidth)
+            .clipped()
         }
         .frame(width: screenWidth)
     }
@@ -489,6 +491,7 @@ private struct QuickPickColumn: Identifiable {
                     .padding(.horizontal, 16)
                 }
                 .frame(width: screenWidth)
+                .clipped()
             } else {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 14) {
@@ -521,6 +524,7 @@ private struct QuickPickColumn: Identifiable {
                     .padding(.horizontal, 16)
                 }
                 .frame(width: screenWidth)
+                .clipped()
             }
         }
         .frame(width: screenWidth)
@@ -654,6 +658,7 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.horizontal, 16)
             }
             .frame(width: screenWidth)
+            .clipped()
         }
         .frame(width: screenWidth)
     }
@@ -723,6 +728,7 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.horizontal, 16)
             }
             .frame(width: screenWidth)
+            .clipped()
         }
         .frame(width: screenWidth)
         .padding(.bottom, 22)
@@ -963,6 +969,7 @@ private struct QuickPickColumn: Identifiable {
                 .padding(.horizontal, 16)
             }
             .frame(width: screenWidth)
+            .clipped()
         }
         .frame(width: screenWidth)
     }

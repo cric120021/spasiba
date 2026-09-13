@@ -196,6 +196,7 @@ public struct SearchScreen: View {
                     }
                     .padding(.horizontal, 16)
                     .frame(height: 58)
+                    .frame(maxWidth: .infinity)
                     .background(Color(hex: 0x181818))
                     .cornerRadius(29)
                     .overlay(

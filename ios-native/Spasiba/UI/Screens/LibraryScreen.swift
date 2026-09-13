@@ -87,8 +87,7 @@ public struct LibraryScreen: View {
                         .lineLimit(1)
                         .truncationMode(.tail)
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 HStack(spacing: 2) {
                     // 1. Playlists Tab
@@ -123,6 +122,7 @@ public struct LibraryScreen: View {
                             .frame(width: 36, height: 36)
                     }
                 }
+                .fixedSize()
             }
             .padding(.horizontal, 16)
             .padding(.top, 8)
@@ -259,8 +259,7 @@ public struct LibraryScreen: View {
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
-
-            Spacer()
+            .frame(maxWidth: .infinity, alignment: .leading)
 
             Button(action: { selectedPlaylistForOptions = playlist }) {
                 Image(systemName: "ellipsis")

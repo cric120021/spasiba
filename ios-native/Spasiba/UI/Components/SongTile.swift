@@ -107,6 +107,7 @@ public struct SongTile: View {
                             .font(.system(size: 15, weight: .bold))
                             .foregroundColor(isPlaying ? Color(hex: 0x1DB954) : .white)
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
 
                     HStack(spacing: 6) {
@@ -133,10 +134,10 @@ public struct SongTile: View {
                             .font(.system(size: 12))
                             .foregroundColor(Color.white.opacity(0.6))
                             .lineLimit(1)
+                            .truncationMode(.tail)
                     }
                 }
-
-                Spacer()
+                .frame(maxWidth: .infinity, alignment: .leading)
 
                 // Like Button
                 Button(action: onLikeClick) {
@@ -188,6 +189,8 @@ public struct SongTile: View {
                 onLongClick?()
             }
         }
+        .frame(maxWidth: .infinity)
+        .clipped()
         .padding(.vertical, 4)
     }
 }

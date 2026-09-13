@@ -174,6 +174,8 @@ public struct EunoiaScreen: View {
                         image
                             .resizable()
                             .aspectRatio(contentMode: .fill)
+                            .frame(width: screenWidth)
+                            .clipped()
                             .blur(radius: 70)
                             .scaleEffect(1.25)
                             .opacity(0.45)
@@ -191,6 +193,8 @@ public struct EunoiaScreen: View {
                 endPoint: .bottom
             )
         }
+        .frame(width: screenWidth)
+        .clipped()
         .ignoresSafeArea()
     }
 
@@ -233,40 +237,42 @@ public struct EunoiaScreen: View {
                             .lineLimit(1)
                             .truncationMode(.tail)
                     }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
             .buttonStyle(PlainButtonStyle())
 
-            Spacer()
+            HStack(spacing: 8) {
+                // Red Power Button (Session End / Disconnect)
+                Button(action: {
+                    sessionManager.endSession()
+                    showToast("Session disconnected")
+                }) {
+                    Circle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: "power")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundColor(Color(hex: 0xEF4444))
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
 
-            // Red Power Button (Session End / Disconnect)
-            Button(action: {
-                sessionManager.endSession()
-                showToast("Session disconnected")
-            }) {
-                Circle()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Image(systemName: "power")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundColor(Color(hex: 0xEF4444))
-                    )
+                // Invite / Add Partner Button
+                Button(action: { isInviteDialogOpen = true }) {
+                    Circle()
+                        .fill(Color.white.opacity(0.12))
+                        .frame(width: 36, height: 36)
+                        .overlay(
+                            Image(systemName: "person.badge.plus")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundColor(.white)
+                        )
+                }
+                .buttonStyle(PlainButtonStyle())
             }
-            .buttonStyle(PlainButtonStyle())
-
-            // Invite / Add Partner Button
-            Button(action: { isInviteDialogOpen = true }) {
-                Circle()
-                    .fill(Color.white.opacity(0.12))
-                    .frame(width: 36, height: 36)
-                    .overlay(
-                        Image(systemName: "person.badge.plus")
-                            .font(.system(size: 15, weight: .semibold))
-                            .foregroundColor(.white)
-                    )
-            }
-            .buttonStyle(PlainButtonStyle())
+            .fixedSize()
         }
         .frame(width: screenWidth - 32)
     }
