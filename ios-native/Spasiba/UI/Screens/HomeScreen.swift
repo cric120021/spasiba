@@ -235,19 +235,20 @@ private struct QuickPickColumn: Identifiable {
     }
 
     // MARK: - Header Section
+    // MARK: - Header Section (matching Android Native 2 SilverBrandHeader)
     private var headerSection: some View {
         VStack(spacing: 0) {
             HStack(alignment: .center) {
-                // Greeting & Brand Header
+                // Brand Header: "MUSIC" eyebrow + solid white "Spasiba"
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(greeting.uppercased())
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(spotifyGreen)
-                        .tracking(1.5)
+                    Text("MUSIC")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundColor(Color(hex: 0x94A3B8))
+                        .tracking(2.4)
 
                     Text("Spasiba")
-                        .font(.system(size: 26, weight: .black))
-                        .foregroundStyle(SpasibaTheme.silverGradient)
+                        .font(.system(size: 26, weight: .heavy))
+                        .foregroundColor(.white)
                 }
 
                 Spacer()
@@ -260,7 +261,7 @@ private struct QuickPickColumn: Identifiable {
                             .frame(width: 40, height: 40)
                             .overlay(
                                 Image(systemName: "bell.fill")
-                                    .font(.system(size: 18))
+                                    .font(.system(size: 20))
                                     .foregroundColor(.white)
                             )
 
@@ -272,23 +273,23 @@ private struct QuickPickColumn: Identifiable {
                                 .padding(.vertical, 2)
                                 .background(Color(hex: 0xEF4444))
                                 .clipShape(Capsule())
-                                .offset(x: 4, y: -4)
+                                .offset(x: 2, y: -2)
                         }
                     }
                     .frame(width: 44, height: 44)
                 }
                 .buttonStyle(PlainButtonStyle())
 
-                Spacer().frame(width: 8)
+                Spacer().frame(width: 12)
 
                 // Profile Avatar Button
                 Button(action: { onProfileClick() }) {
                     Circle()
                         .fill(Color.white.opacity(0.15))
-                        .frame(width: 40, height: 40)
+                        .frame(width: 44, height: 44)
                         .overlay(
                             Image(systemName: "person.fill")
-                                .font(.system(size: 18))
+                                .font(.system(size: 22))
                                 .foregroundColor(.white)
                         )
                 }
@@ -342,31 +343,15 @@ private struct QuickPickColumn: Identifiable {
     // MARK: - Quick Picks Section
     private var quickPicksSection: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .bottom) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("START RADIO")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(spotifyGreen)
-                        .tracking(1.4)
+            VStack(alignment: .leading, spacing: 2) {
+                Text("START RADIO")
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(spotifyGreen)
+                    .tracking(1.4)
 
-                    Text("Quick picks")
-                        .font(.system(size: 22, weight: .bold))
-                        .foregroundColor(.white)
-                }
-                Spacer()
-                Button(action: {
-                    Task {
-                        await reloadQuickPicks()
-                    }
-                }) {
-                    Image(systemName: "arrow.clockwise")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(textSecondaryGray)
-                        .padding(8)
-                        .background(Color.white.opacity(0.08))
-                        .clipShape(Circle())
-                }
-                .buttonStyle(PlainButtonStyle())
+                Text("Quick picks")
+                    .font(.system(size: 22, weight: .bold))
+                    .foregroundColor(.white)
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 4)
@@ -412,7 +397,7 @@ private struct QuickPickColumn: Identifiable {
                                 .buttonStyle(PlainButtonStyle())
                             }
                         }
-                        .frame(width: 300)
+                        .frame(width: 320)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -588,91 +573,6 @@ private struct QuickPickColumn: Identifiable {
                 mixedForYouSection
                     .padding(.bottom, 24)
             }
-
-            // "Jump Back In" Horizontal Shelf
-            if !jumpBackInTracks.isEmpty {
-                categorySongRail(title: "Jump back in", eyebrow: "RECENTLY PLAYED", songs: jumpBackInTracks)
-                    .padding(.bottom, 24)
-            }
-
-            // Favorite Artists Horizontal Rail
-            if !favoriteArtistNames.isEmpty {
-                favoriteArtistsSection
-                    .padding(.bottom, 24)
-            }
-        }
-    }
-
-    private var favoriteArtistsSection: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("YOUR ROTATION")
-                    .font(.system(size: 10, weight: .bold))
-                    .foregroundColor(spotifyGreen)
-                    .tracking(1.4)
-
-                Text("Favorite artists")
-                    .font(.system(size: 19, weight: .bold))
-                    .foregroundColor(.white)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-
-            Spacer().frame(height: 12)
-
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: 16) {
-                    ForEach(favoriteArtistNames, id: \.self) { artistName in
-                        Button(action: {
-                            if let onArtistClick = onArtistClick {
-                                onArtistClick(artistName)
-                            } else {
-                                onSearchClick()
-                            }
-                        }) {
-                            VStack(spacing: 8) {
-                                ZStack {
-                                    if let url = artistAvatars[artistName] {
-                                        SongArtworkView(url: url, cornerRadius: 40)
-                                    } else {
-                                        Circle()
-                                            .fill(Color(hex: 0x222222))
-                                        Image(systemName: "person.fill")
-                                            .font(.system(size: 32))
-                                            .foregroundColor(Color.white.opacity(0.6))
-                                    }
-                                }
-                                .frame(width: 80, height: 80)
-                                .clipShape(Circle())
-
-                                Text(artistName)
-                                    .font(.system(size: 12, weight: .semibold))
-                                    .foregroundColor(.white)
-                                    .lineLimit(1)
-                                    .frame(width: 84)
-                            }
-                        }
-                        .buttonStyle(PlainButtonStyle())
-                    }
-                }
-                .padding(.horizontal, 16)
-            }
-            .frame(width: screenWidth)
-            .clipped()
-        }
-        .frame(width: screenWidth)
-    }
-
-    private func reloadQuickPicks() async {
-        let refreshed = await YouTubeMusicApi.shared.searchSongs(query: "quick picks")
-        if !refreshed.isEmpty {
-            await MainActor.run {
-                self.liveHomeShelves.removeAll(where: {
-                    let t = $0.title.lowercased()
-                    return t.contains("quick") || t.contains("pick")
-                })
-                self.liveHomeShelves.insert(HomeShelf(title: "Quick picks", subtitle: "Start radio", style: .quickPicksGrid, songs: refreshed), at: 0)
-            }
         }
     }
 
@@ -798,7 +698,7 @@ private struct QuickPickColumn: Identifiable {
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                     SongArtworkView(song: song, cornerRadius: 8)
-                        .frame(width: 100, height: 100)
+                        .frame(width: 110, height: 110)
                 }
                 .padding(16)
             }
@@ -829,7 +729,7 @@ private struct QuickPickColumn: Identifiable {
                         .frame(width: 56, height: 56)
                         .overlay(
                             Image(systemName: "heart.fill")
-                                .font(.system(size: 20))
+                                .font(.system(size: 24))
                                 .foregroundColor(.white)
                         )
 
@@ -838,7 +738,7 @@ private struct QuickPickColumn: Identifiable {
                             .foregroundColor(.white)
                             .lineLimit(2)
                             .truncationMode(.tail)
-                            .padding(.horizontal, 8)
+                            .padding(.horizontal, 10)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(height: 56)
@@ -884,7 +784,7 @@ private struct QuickPickColumn: Identifiable {
             db.addToHistory(song: track)
         }) {
             HStack(spacing: 0) {
-                SongArtworkView(song: track, cornerRadius: 8)
+                SongArtworkView(song: track, cornerRadius: 0)
                     .frame(width: 56, height: 56)
 
                 Text(track.title)
@@ -892,7 +792,7 @@ private struct QuickPickColumn: Identifiable {
                     .foregroundColor(isPlaying ? spotifyGreen : .white)
                     .lineLimit(2)
                     .truncationMode(.tail)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, 10)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(height: 56)
@@ -913,11 +813,11 @@ private struct QuickPickColumn: Identifiable {
                 Spacer()
 
                 Image(systemName: "chevron.right")
-                    .font(.system(size: 18))
+                    .font(.system(size: 14, weight: .bold))
                     .foregroundColor(textSecondaryGray)
             }
             .padding(.horizontal, 16)
-            .padding(.vertical, 4)
+            .padding(.vertical, 6)
 
             Spacer().frame(height: 12)
 
