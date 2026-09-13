@@ -44,7 +44,7 @@ public struct ProfileScreen: View {
 
     public var body: some View {
         ZStack {
-            Color(hex: 0x0D0D0F).ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
@@ -78,6 +78,7 @@ public struct ProfileScreen: View {
                 }
                 .padding(.bottom, 140)
             }
+            .dismissKeyboardOnScroll()
 
             // Toast HUD Alert
             if let toast = toastMessage {
@@ -543,6 +544,7 @@ public struct ProfileScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
+        .background(WindowGestureAttacher())
     }
 
     private var addFriendSheet: some View {
@@ -633,5 +635,6 @@ public struct ProfileScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
+        .background(WindowGestureAttacher())
     }
 }

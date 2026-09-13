@@ -119,3 +119,14 @@ public enum DeviceSafeArea {
         return 34
     }
 }
+
+extension View {
+    @ViewBuilder
+    public func dismissKeyboardOnScroll() -> some View {
+        if #available(iOS 16.0, *) {
+            self.scrollDismissesKeyboard(.interactively)
+        } else {
+            self
+        }
+    }
+}

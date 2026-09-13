@@ -25,8 +25,8 @@ public struct LibraryScreen: View {
 
     private var currentSubtitle: String {
         switch selectedTab {
-        case 0: return "Your custom & shared playlists"
-        case 1: return "Your favorite & liked songs"
+        case 0: return "Playlists & offline collections"
+        case 1: return "Favorite songs & saved tracks"
         case 2: return "Recent listening history"
         case 3: return "Downloaded tracks & offline audio cache"
         default: return "Your Music Library"
@@ -35,7 +35,7 @@ public struct LibraryScreen: View {
 
     public var body: some View {
         ZStack {
-            Color(hex: 0x0D0D0F).ignoresSafeArea()
+            Color.black.ignoresSafeArea()
 
             if let playlist = activePlaylistDetail {
                 playlistDetailView(playlist: playlist)
@@ -69,10 +69,10 @@ public struct LibraryScreen: View {
     // MARK: - Main Library View
     private var mainLibraryView: some View {
         VStack(spacing: 0) {
-            // Header matching YouTube Music design
+            // Header matching YouTube Music design (aligned with SilverBrandHeader)
             HStack(alignment: .center) {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("LIBRARY")
+                    Text("MUSIC")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundColor(Color(hex: 0x94A3B8))
                         .tracking(2.4)
@@ -94,7 +94,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 0 }) {
                         Image(systemName: "music.note.list")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 0 ? Color.white : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 0 ? Color.white : TextMuted)
                             .frame(width: 36, height: 36)
                     }
 
@@ -102,7 +102,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 1 }) {
                         Image(systemName: "heart.fill")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 1 ? Color(hex: 0xEF4444) : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 1 ? Color(hex: 0xEF4444) : TextMuted)
                             .frame(width: 36, height: 36)
                     }
 
@@ -110,7 +110,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 2 }) {
                         Image(systemName: "clock.arrow.circlepath")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 2 ? Color.white : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 2 ? Color.white : TextMuted)
                             .frame(width: 36, height: 36)
                     }
 
@@ -118,7 +118,7 @@ public struct LibraryScreen: View {
                     Button(action: { selectedTab = 3 }) {
                         Image(systemName: "arrow.down.circle")
                             .font(.system(size: 18))
-                            .foregroundColor(selectedTab == 3 ? Color.white : Color.white.opacity(0.6))
+                            .foregroundColor(selectedTab == 3 ? Color.white : TextMuted)
                             .frame(width: 36, height: 36)
                     }
                 }
@@ -169,7 +169,7 @@ public struct LibraryScreen: View {
                                     .truncationMode(.tail)
                                 Text("Paste a Spasiba share link or code")
                                     .font(.system(size: 13))
-                                    .foregroundColor(Color.white.opacity(0.6))
+                                    .foregroundColor(TextMuted)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                             }
@@ -187,7 +187,7 @@ public struct LibraryScreen: View {
                     if repository.playlists.isEmpty {
                         Text("No custom playlists created yet.")
                             .font(.system(size: 14))
-                            .foregroundColor(Color.white.opacity(0.6))
+                            .foregroundColor(TextMuted)
                             .padding(.top, 40)
                     } else {
                         ForEach(repository.playlists) { pl in
@@ -198,6 +198,7 @@ public struct LibraryScreen: View {
                 .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .dismissKeyboardOnScroll()
             .frame(width: screenWidth)
             .clipped()
 
@@ -255,7 +256,7 @@ public struct LibraryScreen: View {
 
                 Text("Custom User Playlist • \(pSongs.count) tracks")
                     .font(.system(size: 13))
-                    .foregroundColor(Color.white.opacity(0.6))
+                    .foregroundColor(TextMuted)
                     .lineLimit(1)
                     .truncationMode(.tail)
             }
@@ -264,7 +265,7 @@ public struct LibraryScreen: View {
             Button(action: { selectedPlaylistForOptions = playlist }) {
                 Image(systemName: "ellipsis")
                     .font(.system(size: 16))
-                    .foregroundColor(Color.white.opacity(0.6))
+                    .foregroundColor(TextMuted)
                     .rotationEffect(.degrees(90))
                     .frame(width: 36, height: 36)
             }
@@ -272,7 +273,7 @@ public struct LibraryScreen: View {
         }
         .padding(14)
         .frame(width: screenWidth - 32)
-        .background(Color.white.opacity(0.06))
+        .background(UiSurfaceElevated)
         .cornerRadius(18)
         .padding(.horizontal, 16)
         .contentShape(Rectangle())
@@ -319,7 +320,7 @@ public struct LibraryScreen: View {
 
                     Text("Auto playlist • \(repository.likedSongs.count) songs")
                         .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .foregroundColor(TextMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -360,7 +361,7 @@ public struct LibraryScreen: View {
                 if repository.likedSongs.isEmpty {
                     Text("No liked tracks yet. Heart songs to save them here!")
                         .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .foregroundColor(TextMuted)
                         .padding(.top, 40)
                 } else {
                     ForEach(Array(repository.likedSongs.enumerated()), id: \.element.id) { index, song in
@@ -383,6 +384,7 @@ public struct LibraryScreen: View {
             .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .dismissKeyboardOnScroll()
         .frame(width: screenWidth)
         .clipped()
     }
@@ -394,7 +396,7 @@ public struct LibraryScreen: View {
                 if repository.listeningHistory.isEmpty {
                     Text("No recent listening history.")
                         .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .foregroundColor(TextMuted)
                         .padding(.top, 40)
                 } else {
                     ForEach(Array(repository.listeningHistory.enumerated()), id: \.element.id) { index, song in
@@ -417,6 +419,7 @@ public struct LibraryScreen: View {
             .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .dismissKeyboardOnScroll()
         .frame(width: screenWidth)
         .clipped()
     }
@@ -432,7 +435,7 @@ public struct LibraryScreen: View {
                 VStack(spacing: 12) {
                     Text("Playlist • \(downloadedList.count) \(downloadedList.count == 1 ? "song" : "songs")")
                         .font(.system(size: 13))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .foregroundColor(TextMuted)
                         .lineLimit(1)
                         .truncationMode(.tail)
 
@@ -510,7 +513,7 @@ public struct LibraryScreen: View {
                                             .truncationMode(.tail)
                                         Text("\(item.type.rawValue) • \(item.quality) • \(Int(item.progress))% (\(item.status.rawValue))")
                                             .font(.system(size: 11))
-                                            .foregroundColor(Color.white.opacity(0.6))
+                                            .foregroundColor(TextMuted)
                                             .lineLimit(1)
                                             .truncationMode(.tail)
                                     }
@@ -543,7 +546,7 @@ public struct LibraryScreen: View {
                 if downloadedList.isEmpty {
                     Text("No downloaded tracks yet. Use Download on any track to listen offline.")
                         .font(.system(size: 14))
-                        .foregroundColor(Color.white.opacity(0.6))
+                        .foregroundColor(TextMuted)
                         .padding(.top, 40)
                 } else {
                     ForEach(Array(downloadedList.enumerated()), id: \.element.id) { index, song in
@@ -570,6 +573,7 @@ public struct LibraryScreen: View {
             .frame(width: screenWidth)
             .padding(.bottom, 140)
         }
+        .dismissKeyboardOnScroll()
         .frame(width: screenWidth)
         .clipped()
     }
@@ -591,7 +595,7 @@ public struct LibraryScreen: View {
 
                 Text("Playlist")
                     .font(.system(size: 14))
-                    .foregroundColor(Color.white.opacity(0.6))
+                    .foregroundColor(TextMuted)
 
                 Spacer()
 
@@ -643,7 +647,7 @@ public struct LibraryScreen: View {
 
                         Text("Playlist • \(pSongs.count) songs")
                             .font(.system(size: 14))
-                            .foregroundColor(Color.white.opacity(0.6))
+                            .foregroundColor(TextMuted)
                             .lineLimit(1)
                             .truncationMode(.tail)
 
@@ -682,7 +686,7 @@ public struct LibraryScreen: View {
                     if pSongs.isEmpty {
                         Text("No songs in this playlist yet.")
                             .font(.system(size: 14))
-                            .foregroundColor(Color.white.opacity(0.6))
+                            .foregroundColor(TextMuted)
                             .padding(.top, 40)
                     } else {
                         ForEach(Array(pSongs.enumerated()), id: \.element.id) { index, song in
@@ -705,6 +709,7 @@ public struct LibraryScreen: View {
                 .frame(width: screenWidth)
                 .padding(.bottom, 140)
             }
+            .dismissKeyboardOnScroll()
             .frame(width: screenWidth)
             .clipped()
         }
@@ -765,6 +770,7 @@ public struct LibraryScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
+        .background(WindowGestureAttacher())
     }
 
     private var importPlaylistSheet: some View {
@@ -824,6 +830,7 @@ public struct LibraryScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
+        .background(WindowGestureAttacher())
     }
 
     private func playlistOptionsSheet(playlist: PlaylistEntity) -> some View {
