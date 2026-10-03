@@ -20,7 +20,7 @@ function AndroidDownloadButtonComponent() {
 
   return (
     <a
-      href="/spasiba.apk"
+      href="https://github.com/Jigar-23/test1/releases/download/v1.0.0/spasiba.apk"
       download="spasiba.apk"
       className="inline-flex items-center gap-1.5 rounded-full border border-emerald-400/30 bg-emerald-500/15 px-3 py-1.5 text-xs font-bold text-emerald-300 shadow-sm backdrop-blur-sm transition hover:border-emerald-400/50 hover:bg-emerald-500/25 active:scale-95"
       title="Single-click download Spasiba for Android"

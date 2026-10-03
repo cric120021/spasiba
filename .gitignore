@@ -13,7 +13,6 @@ dist/
 **/build/
 local.properties
 *.apk
-!public/spasiba.apk
 *.aab
 
 # Environment & local settings
@@ -37,3 +36,4 @@ project.xcworkspace/xcuserdata/
 xcuserdata/
 DerivedData/
 
+.vercel
