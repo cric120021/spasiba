@@ -8,6 +8,7 @@ node_modules
 *.png
 *.jpg
 *.apk
+!public/spasiba.apk
 *.aab
 *.textClipping
 AppNavigator.tsx
