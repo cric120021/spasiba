@@ -18,6 +18,37 @@ const nextConfig: NextConfig = {
         hostname: "i9.ytimg.com"
       }
     ]
+  },
+  async headers() {
+    return [
+      {
+        source: "/spasiba.apk",
+        headers: [
+          {
+            key: "Content-Type",
+            value: "application/vnd.android.package-archive"
+          },
+          {
+            key: "Content-Disposition",
+            value: 'attachment; filename="spasiba.apk"'
+          }
+        ]
+      }
+    ];
+  },
+  async redirects() {
+    return [
+      {
+        source: "/download",
+        destination: "/spasiba.apk",
+        permanent: false
+      },
+      {
+        source: "/api/download",
+        destination: "/spasiba.apk",
+        permanent: false
+      }
+    ];
   }
 };
 

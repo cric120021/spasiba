@@ -40,6 +40,7 @@ import { createQueryKey } from "@/lib/utils";
 import { playerActions } from "@/store/playerStore";
 
 import Artwork from "@/components/ui/Artwork";
+import AndroidDownloadButton from "@/components/AndroidDownloadButton";
 
 const MIN_SEARCH_LENGTH = 2;
 const SUGGESTION_LIMIT = 6;
@@ -1070,6 +1071,7 @@ function SearchBarComponent() {
                     />
                   </svg>
                 </Link>
+                <AndroidDownloadButton />
                 <Link
                   href="/profile"
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-slate-100/84 transition hover:bg-white/[0.09]"
@@ -1154,6 +1156,7 @@ function SearchBarComponent() {
                     />
                   </svg>
                 </Link>
+                <AndroidDownloadButton />
                 <Link
                   href="/profile"
                   className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.08]"
