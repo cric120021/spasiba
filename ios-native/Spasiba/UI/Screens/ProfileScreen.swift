@@ -550,7 +550,7 @@ public struct ProfileScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
-        .background(WindowGestureAttacher())
+        .dismissKeyboardOnTap()
     }
 
     private var addFriendSheet: some View {
@@ -641,6 +641,6 @@ public struct ProfileScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
-        .background(WindowGestureAttacher())
+        .dismissKeyboardOnTap()
     }
 }

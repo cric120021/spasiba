@@ -770,7 +770,7 @@ public struct LibraryScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
-        .background(WindowGestureAttacher())
+        .dismissKeyboardOnTap()
     }
 
     private var importPlaylistSheet: some View {
@@ -830,7 +830,7 @@ public struct LibraryScreen: View {
         }
         .padding(24)
         .background(SpasibaTheme.surfaceElevated.ignoresSafeArea())
-        .background(WindowGestureAttacher())
+        .dismissKeyboardOnTap()
     }
 
     private func playlistOptionsSheet(playlist: PlaylistEntity) -> some View {

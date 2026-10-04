@@ -340,7 +340,6 @@ public struct SpasibaAppShell: View {
                 )
             }
         }
-        .allowsHitTesting(true)
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.easeOut(duration: 0.15)) {
                 isKeyboardVisible = true

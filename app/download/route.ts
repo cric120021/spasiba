@@ -1,9 +1,8 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-const APK_CDN_URL = "https://github.com/Jigar-23/test1/releases/download/v1.0.0/spasiba.apk";
-
-export async function GET() {
-  return NextResponse.redirect(APK_CDN_URL, 307);
+export async function GET(request: NextRequest) {
+  const downloadUrl = new URL("/spasiba.apk", request.url);
+  return NextResponse.redirect(downloadUrl, 307);
 }

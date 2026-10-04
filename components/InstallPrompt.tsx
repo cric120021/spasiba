@@ -101,7 +101,7 @@ function InstallPromptComponent() {
           {/* SINGLE CLICK ANDROID DOWNLOAD BUTTON - STRICTLY HIDDEN ON IOS */}
           {isAndroidOnly ? (
             <a
-              href="https://github.com/Jigar-23/test1/releases/download/v1.0.0/spasiba.apk"
+              href="/spasiba.apk"
               download="spasiba.apk"
               onClick={closePrompt}
               className="inline-flex items-center gap-2 rounded-2xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500 to-teal-400 px-5 py-3 text-sm font-bold text-black shadow-lg shadow-emerald-500/20 transition hover:from-emerald-400 hover:to-teal-300 active:scale-95 cursor-pointer"

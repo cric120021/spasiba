@@ -129,4 +129,10 @@ extension View {
             self
         }
     }
+
+    public func dismissKeyboardOnTap() -> some View {
+        self.onTapGesture {
+            UniversalKeyboardDismissHelper.dismissKeyboard()
+        }
+    }
 }
