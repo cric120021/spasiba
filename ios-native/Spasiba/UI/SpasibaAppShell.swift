@@ -64,6 +64,8 @@ public struct SpasibaAppShell: View {
     }
 
     public func navigateTo(_ screen: Int) {
+        NSLog("[SpasibaNav] navigateTo: %ld (previous: %ld)", screen, currentScreen)
+        print("[SpasibaNav] navigateTo: \(screen) (previous: \(currentScreen))")
         selectedCategory = nil
         currentScreen = screen
         if screen == 0 {
@@ -83,6 +85,8 @@ public struct SpasibaAppShell: View {
             currentScreen = 0
             backStack = [0]
         }
+        NSLog("[SpasibaNav] navigateBack -> currentScreen: %ld", currentScreen)
+        print("[SpasibaNav] navigateBack -> currentScreen: \(currentScreen)")
     }
 
     public var body: some View {
@@ -264,10 +268,32 @@ public struct SpasibaAppShell: View {
                     .zIndex(100)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
+
+            // 3. Create Playlist Dialog Overlay
+            if isCreatePlaylistDialogOpen {
+                CreatePlaylistDialog(
+                    onDismiss: {
+                        isCreatePlaylistDialogOpen = false
+                        pendingSongForNewPlaylist = nil
+                    },
+                    onCreate: { name in
+                        Task {
+                            let newPlaylist = await MusicRepository.shared.createPlaylist(name: name)
+                            if let pendingSong = pendingSongForNewPlaylist {
+                                await MusicRepository.shared.addSongToPlaylist(playlistId: newPlaylist.id, song: pendingSong)
+                                pendingSongForNewPlaylist = nil
+                            }
+                            await MainActor.run {
+                                isCreatePlaylistDialogOpen = false
+                            }
+                        }
+                    }
+                )
+                .zIndex(200)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .ignoresSafeArea(.keyboard, edges: .bottom)
-        // Modals and Sheets
+        .ignoresSafeArea()
         .fullScreenCover(isPresented: $isExpandedPlayerVisible) {
             ExpandedPlayerSheet()
         }
@@ -318,31 +344,6 @@ public struct SpasibaAppShell: View {
                 }
             )
         }
-        .overlay(
-            Group {
-                if isCreatePlaylistDialogOpen {
-                    CreatePlaylistDialog(
-                        onDismiss: {
-                            isCreatePlaylistDialogOpen = false
-                            pendingSongForNewPlaylist = nil
-                        },
-                        onCreate: { name in
-                            Task {
-                                let newPlaylist = await MusicRepository.shared.createPlaylist(name: name)
-                                if let pendingSong = pendingSongForNewPlaylist {
-                                    await MusicRepository.shared.addSongToPlaylist(playlistId: newPlaylist.id, song: pendingSong)
-                                    pendingSongForNewPlaylist = nil
-                                }
-                                await MainActor.run {
-                                    isCreatePlaylistDialogOpen = false
-                                }
-                            }
-                        }
-                    )
-                }
-            }
-            .allowsHitTesting(isCreatePlaylistDialogOpen)
-        )
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.easeOut(duration: 0.15)) {
                 isKeyboardVisible = true
@@ -384,25 +385,29 @@ public struct SpasibaAppShell: View {
                 ForEach(SpasibaTab.allCases) { tab in
                     let isSelected = currentScreen == tab.rawValue && selectedCategory == nil
 
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.iconName(isSelected: isSelected))
-                            .font(.system(size: 20, weight: isSelected ? .bold : .regular))
-                            .frame(width: 28, height: 28)
-                            .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
-
-                        Text(tab.title)
-                            .font(.system(
-                                size: 11,
-                                weight: isSelected ? .bold : .medium
-                            ))
-                            .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .background(Color.black.opacity(0.001))
-                    .contentShape(Rectangle())
-                    .onTapGesture {
+                    Button(action: {
+                        NSLog("[SpasibaNav] Tab Pressed: %ld (%@)", tab.rawValue, tab.title)
+                        print("[SpasibaNav] Tab Pressed: \(tab.rawValue) (\(tab.title))")
                         navigateTo(tab.rawValue)
+                    }) {
+                        VStack(spacing: 3) {
+                            Image(systemName: tab.iconName(isSelected: isSelected))
+                                .font(.system(size: 20, weight: isSelected ? .bold : .regular))
+                                .frame(width: 28, height: 26)
+                                .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
+
+                            Text(tab.title)
+                                .font(.system(
+                                    size: 11,
+                                    weight: isSelected ? .bold : .medium
+                                ))
+                                .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black)
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(PlainButtonStyle())
                 }
             }
             .frame(maxWidth: .infinity)
@@ -410,9 +415,6 @@ public struct SpasibaAppShell: View {
             .padding(.bottom, max(8, DeviceSafeArea.bottom - 4))
         }
         .frame(maxWidth: .infinity)
-        .background(
-            Color.black
-                .ignoresSafeArea(edges: .bottom)
-        )
+        .background(Color.black)
     }
 }
