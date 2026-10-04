@@ -49,12 +49,22 @@ public struct ProfileScreen: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 14) {
                     // Header
-                    HStack {
+                    HStack(alignment: .center, spacing: 12) {
+                        Button(action: onBackClick) {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 18, weight: .bold))
+                                .foregroundColor(.white)
+                                .frame(width: 40, height: 40)
+                                .background(Color.white.opacity(0.08))
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(PlainButtonStyle())
+
                         SilverBrandHeader(subtitle: "Account & Settings")
                         Spacer()
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 8)
+                    .padding(.top, DeviceSafeArea.top + 4)
 
                     // 1. Spotify-Style Account Header Tile
                     accountHeaderTile

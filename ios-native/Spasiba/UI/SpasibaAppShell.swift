@@ -161,7 +161,18 @@ public struct SpasibaAppShell: View {
                     if currentScreen >= 4 {
                         switch currentScreen {
                         case 4:
-                            ProfileScreen()
+                            ProfileScreen(
+                                onBackClick: { navigateBack() },
+                                onOpenAllFriends: { navigateTo(6) },
+                                onQuickInviteFriend: { friend in
+                                    EunoiaSessionManager.shared.quickInvite(friend: friend)
+                                    navigateTo(2)
+                                },
+                                onOpenFriendChat: { friend in
+                                    activeChatFriend = friend
+                                    navigateTo(7)
+                                }
+                            )
 
                         case 5:
                             PlaylistOperationsScreen(
@@ -253,19 +264,17 @@ public struct SpasibaAppShell: View {
                     }
                 }
             }
-            .frame(width: screenWidth)
-            .clipped()
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
 
             // 2. Bottom Navigation Panel (MiniPlayer + Tab Bar)
             if !isKeyboardVisible {
                 bottomFloatingBar
-                    .frame(width: screenWidth)
-                    .ignoresSafeArea(.keyboard, edges: .bottom)
+                    .frame(maxWidth: .infinity)
+                    .zIndex(100)
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
             }
         }
-        .frame(width: screenWidth)
-        .clipped()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .ignoresSafeArea(.keyboard, edges: .bottom)
         // Modals and Sheets
         .fullScreenCover(isPresented: $isExpandedPlayerVisible) {
@@ -318,28 +327,31 @@ public struct SpasibaAppShell: View {
                 }
             )
         }
-        .overlay {
-            if isCreatePlaylistDialogOpen {
-                CreatePlaylistDialog(
-                    onDismiss: {
-                        isCreatePlaylistDialogOpen = false
-                        pendingSongForNewPlaylist = nil
-                    },
-                    onCreate: { name in
-                        Task {
-                            let newPlaylist = await MusicRepository.shared.createPlaylist(name: name)
-                            if let pendingSong = pendingSongForNewPlaylist {
-                                await MusicRepository.shared.addSongToPlaylist(playlistId: newPlaylist.id, song: pendingSong)
-                                pendingSongForNewPlaylist = nil
-                            }
-                            await MainActor.run {
-                                isCreatePlaylistDialogOpen = false
+        .overlay(
+            Group {
+                if isCreatePlaylistDialogOpen {
+                    CreatePlaylistDialog(
+                        onDismiss: {
+                            isCreatePlaylistDialogOpen = false
+                            pendingSongForNewPlaylist = nil
+                        },
+                        onCreate: { name in
+                            Task {
+                                let newPlaylist = await MusicRepository.shared.createPlaylist(name: name)
+                                if let pendingSong = pendingSongForNewPlaylist {
+                                    await MusicRepository.shared.addSongToPlaylist(playlistId: newPlaylist.id, song: pendingSong)
+                                    pendingSongForNewPlaylist = nil
+                                }
+                                await MainActor.run {
+                                    isCreatePlaylistDialogOpen = false
+                                }
                             }
                         }
-                    }
-                )
+                    )
+                }
             }
-        }
+            .allowsHitTesting(isCreatePlaylistDialogOpen)
+        )
         .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillShowNotification)) { _ in
             withAnimation(.easeOut(duration: 0.15)) {
                 isKeyboardVisible = true
@@ -384,7 +396,7 @@ public struct SpasibaAppShell: View {
                     Button(action: {
                         navigateTo(tab.rawValue)
                     }) {
-                        VStack(spacing: 2) {
+                        VStack(spacing: 3) {
                             Image(systemName: tab.iconName(isSelected: isSelected))
                                 .font(.system(size: 20, weight: isSelected ? .bold : .regular))
                                 .frame(width: 28, height: 28)
@@ -397,16 +409,25 @@ public struct SpasibaAppShell: View {
                                 ))
                                 .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
                         }
-                        .frame(width: screenWidth / 4, height: 48)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .background(Color.black.opacity(0.001))
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(PlainButtonStyle())
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            navigateTo(tab.rawValue)
+                        }
+                    )
                 }
             }
-            .frame(width: screenWidth, height: 48)
+            .frame(maxWidth: .infinity)
+            .frame(height: 50)
             .padding(.bottom, max(8, DeviceSafeArea.bottom - 4))
         }
-        .frame(width: screenWidth)
+        .frame(maxWidth: .infinity)
         .background(
             Color.black
                 .ignoresSafeArea(edges: .bottom)
