@@ -384,34 +384,25 @@ public struct SpasibaAppShell: View {
                 ForEach(SpasibaTab.allCases) { tab in
                     let isSelected = currentScreen == tab.rawValue && selectedCategory == nil
 
-                    Button(action: {
-                        navigateTo(tab.rawValue)
-                    }) {
-                        VStack(spacing: 3) {
-                            Image(systemName: tab.iconName(isSelected: isSelected))
-                                .font(.system(size: 20, weight: isSelected ? .bold : .regular))
-                                .frame(width: 28, height: 28)
-                                .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
+                    VStack(spacing: 3) {
+                        Image(systemName: tab.iconName(isSelected: isSelected))
+                            .font(.system(size: 20, weight: isSelected ? .bold : .regular))
+                            .frame(width: 28, height: 28)
+                            .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
 
-                            Text(tab.title)
-                                .font(.system(
-                                    size: 11,
-                                    weight: isSelected ? .bold : .medium
-                                ))
-                                .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
-                        }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .background(Color.black.opacity(0.001))
-                        .contentShape(Rectangle())
+                        Text(tab.title)
+                            .font(.system(
+                                size: 11,
+                                weight: isSelected ? .bold : .medium
+                            ))
+                            .foregroundColor(isSelected ? .white : Color(hex: 0xAAAAAA))
                     }
-                    .buttonStyle(PlainButtonStyle())
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .background(Color.black.opacity(0.001))
                     .contentShape(Rectangle())
-                    .simultaneousGesture(
-                        TapGesture().onEnded {
-                            navigateTo(tab.rawValue)
-                        }
-                    )
+                    .onTapGesture {
+                        navigateTo(tab.rawValue)
+                    }
                 }
             }
             .frame(maxWidth: .infinity)
