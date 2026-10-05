@@ -108,7 +108,12 @@ export async function GET(request: NextRequest) {
     console.info(`[spasiba-runtime] route=/api/search type=query cache=${cacheStatus} durationMs=${durationMs} error=true`);
     return NextResponse.json(
       {
-        error: error instanceof Error ? error.message : "Search failed."
+        error:
+          error instanceof Error
+            ? error.message
+            : typeof error === "string" && error.trim()
+            ? error
+            : "Search failed."
       },
       {
         status: 500

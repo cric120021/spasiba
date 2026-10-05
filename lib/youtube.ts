@@ -1243,6 +1243,92 @@ export function rankSearchResults(query: string, songs: Song[]): Song[] {
   });
 }
 
+async function searchYouTubeWithInnertube(
+  query: string,
+  fetchLimit: number,
+  pages = 1
+): Promise<Song[]> {
+  const youtube = await getYoutubeClient();
+  const searchResult = await youtube.search(query, { type: "video" });
+  const rawVideos: unknown[] = Array.isArray(searchResult.videos) ? [...searchResult.videos] : [];
+
+  let currentPage = 1;
+  let currentResult = searchResult;
+  while (currentPage < pages && currentResult.has_continuation && rawVideos.length < fetchLimit) {
+    try {
+      currentResult = await currentResult.getContinuation();
+      if (Array.isArray(currentResult.videos) && currentResult.videos.length > 0) {
+        rawVideos.push(...currentResult.videos);
+      } else {
+        break;
+      }
+      currentPage++;
+    } catch {
+      break;
+    }
+  }
+
+  const songs: Song[] = [];
+  const seenIds = new Set<string>();
+
+  for (const item of rawVideos) {
+    const video = item as {
+      id?: string;
+      title?: unknown;
+      author?: unknown;
+      duration?: { text?: string; seconds?: number };
+      best_thumbnail?: { url?: string };
+      thumbnails?: Array<{ url?: string }>;
+      view_count?: { text?: string };
+      short_view_count?: { text?: string };
+    };
+
+    if (!video || !video.id || seenIds.has(video.id)) {
+      continue;
+    }
+
+    const title = toDisplayString(video.title).trim();
+    if (!title) {
+      continue;
+    }
+
+    const author =
+      (typeof video.author === "object" && video.author && "name" in video.author
+        ? String((video.author as { name?: unknown }).name)
+        : toDisplayString(video.author)) || "YouTube";
+
+    const durationText = video.duration?.text || "";
+    const durationSeconds = typeof video.duration?.seconds === "number" ? video.duration.seconds : 0;
+
+    const thumbnail =
+      video.best_thumbnail?.url ||
+      video.thumbnails?.[0]?.url ||
+      `https://i.ytimg.com/vi/${video.id}/hqdefault.jpg`;
+
+    const rawViews = video.view_count?.text || video.short_view_count?.text || "";
+    const views = Number(rawViews.replace(/[^0-9]/g, "")) || 0;
+
+    seenIds.add(video.id);
+    songs.push({
+      id: video.id,
+      videoId: video.id,
+      title,
+      thumbnail,
+      duration: durationText || formatDuration(durationSeconds),
+      durationSeconds,
+      author,
+      url: `https://www.youtube.com/watch?v=${video.id}`,
+      views
+    });
+
+    if (songs.length >= fetchLimit) {
+      break;
+    }
+  }
+
+  return songs;
+}
+
 export async function searchYouTube(
   query: string,
   limit = DEFAULT_RESULT_LIMIT,
@@ -1276,18 +1362,43 @@ export async function searchYouTube(
 
   telemetry?.onCacheMiss?.();
 
-  const request = (ytSearch as (query: string | { query: string; pageEnd?: number; category?: string }) => Promise<YtSearchResponse>)(
-    pages > 1 || category
-      ? {
-          query: normalized,
-          pageEnd: pages,
-          ...(category ? { category } : {})
-        }
-      : normalized
-  )
-    .then((response) => {
-      const videos = Array.isArray(response.videos) ? response.videos : [];
-      const rawTracks = videos.slice(0, fetchLimit).map(mapResultToSong);
+  const request = (async () => {
+    const searchQuery = category ? `${normalized} ${category}` : normalized;
+
+    // Primary: Innertube (works reliably in cloud serverless environments like Vercel where HTML scraping is blocked)
+    try {
+      const innertubeTracks = await searchYouTubeWithInnertube(searchQuery, fetchLimit, pages);
+      if (innertubeTracks.length > 0) {
+        return innertubeTracks;
+      }
+    } catch (innertubeError) {
+      console.warn("[spasiba-runtime] Innertube search failed, trying yt-search fallback:", innertubeError);
+    }
+
+    // Secondary / Fallback: yt-search
+    try {
+      const ytSearchResponse = await (
+        ytSearch as (query: string | { query: string; pageEnd?: number; category?: string }) => Promise<YtSearchResponse>
+      )(
+        pages > 1 || category
+          ? {
+              query: normalized,
+              pageEnd: pages,
+              ...(category ? { category } : {})
+            }
+          : normalized
+      );
+      const videos = Array.isArray(ytSearchResponse.videos) ? ytSearchResponse.videos : [];
+      return videos.slice(0, fetchLimit).map(mapResultToSong);
+    } catch (ytSearchError) {
+      throw new Error(
+        `Search failed across all providers. (ytSearch: ${
+          ytSearchError instanceof Error ? ytSearchError.message : String(ytSearchError)
+        })`
+      );
+    }
+  })()
+    .then((rawTracks) => {
       const tracks = rankSearchResults(query, rawTracks);
       writeCache(searchCache, cacheKey, tracks, SEARCH_TTL_MS);
       return tracks;
