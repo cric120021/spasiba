@@ -27,6 +27,7 @@
     "next": "^15.3.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "styled-jsx": "^5.1.7",
     "tailwindcss": "^4.1.4",
     "ws": "^8.18.0",
     "youtubei.js": "^17.0.1",
