@@ -1,0 +1,211 @@
+:root {
+  color-scheme: dark;
+  background: #000;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  background: #000;
+  overscroll-behavior: none;
+}
+
+body {
+  overflow: hidden;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100dvh;
+  background: #000;
+  overflow: hidden;
+}
+
+#initial-loader {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    radial-gradient(circle at top left, rgba(236, 72, 153, 0.17), transparent 28%),
+    radial-gradient(circle at top right, rgba(96, 165, 250, 0.18), transparent 30%),
+    linear-gradient(180deg, #081325 0%, #040712 50%, #02030a 100%);
+  z-index: 100;
+  transition:
+    opacity 360ms ease,
+    visibility 360ms ease;
+}
+
+html.session-splash-seen #initial-loader {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+.initial-splash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+  width: min(86vw, 420px);
+  text-align: center;
+}
+
+.initial-splash__halo {
+  position: absolute;
+  inset: -48px -24px auto;
+  height: 220px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle, rgba(244, 114, 182, 0.22) 0%, rgba(244, 114, 182, 0.06) 42%, transparent 72%),
+    radial-gradient(circle at 68% 30%, rgba(96, 165, 250, 0.18), transparent 42%);
+  filter: blur(14px);
+  pointer-events: none;
+}
+
+.initial-splash__brand {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  z-index: 1;
+}
+
+.initial-splash__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(8, 14, 26, 0.72);
+  color: #f8fafc;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+.initial-splash__copy {
+  text-align: left;
+}
+
+.initial-splash__copy p {
+  margin: 0 0 4px;
+  color: rgba(148, 163, 184, 0.9);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.initial-splash__copy h1 {
+  margin: 0;
+  color: #f8fafc;
+  font-size: clamp(30px, 8vw, 42px);
+  font-weight: 700;
+  letter-spacing: -0.04em;
+  line-height: 1;
+}
+
+.initial-splash__divider {
+  width: min(66vw, 220px);
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, rgba(244, 114, 182, 0.08) 0%, rgba(226, 232, 240, 0.82) 50%, rgba(96, 165, 250, 0.1) 100%);
+  box-shadow: 0 0 18px rgba(148, 163, 184, 0.12);
+}
+
+.initial-splash__tagline {
+  margin: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  color: rgba(203, 213, 225, 0.8);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+}
+
+.initial-splash__tag-separator {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(203, 213, 225, 0.7);
+  font-size: 10px;
+  letter-spacing: 0;
+  transform: translateY(-1px);
+}
+
+body.app-ready #initial-loader {
+  opacity: 0;
+  pointer-events: none;
+  visibility: hidden;
+}
+
+body.app-ready #initial-loader .initial-splash {
+  transform: translateY(8px) scale(1.01);
+  opacity: 0;
+  transition:
+    transform 360ms ease,
+    opacity 360ms ease;
+}
+
+html.session-splash-seen #initial-loader .initial-splash {
+  transform: translateY(8px) scale(1.01);
+  opacity: 0;
+  transition:
+    transform 360ms ease,
+    opacity 360ms ease;
+}
+
+@media (max-width: 420px) {
+  .initial-splash__brand {
+    gap: 12px;
+  }
+
+  .initial-splash__badge {
+    width: 52px;
+    height: 52px;
+    border-radius: 20px;
+    font-size: 18px;
+  }
+}
+
+@media (min-width: 1024px) {
+  .initial-splash {
+    gap: 24px;
+    width: min(68vw, 520px);
+  }
+
+  .initial-splash__badge {
+    width: 64px;
+    height: 64px;
+    border-radius: 24px;
+    font-size: 22px;
+  }
+
+  .initial-splash__copy h1 {
+    font-size: 48px;
+  }
+
+  .initial-splash__copy p {
+    font-size: 11px;
+  }
+
+  .initial-splash__tagline {
+    font-size: 13px;
+  }
+}
