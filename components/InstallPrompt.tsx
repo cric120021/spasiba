@@ -56,22 +56,22 @@ function InstallPromptComponent() {
 
           <div className="min-w-0">
             <h2 id="android-prompt-title" className="text-xs font-semibold text-white">
-              Spasiba for Android
+              Do you want to download Spasiba?
             </h2>
             <p className="text-[11px] text-slate-400">
-              Native background play & lock-screen audio
+              Install Android app for background play & lock-screen audio
             </p>
           </div>
         </div>
 
         <div className="flex shrink-0 items-center gap-1.5">
           <a
-            href={APK_URL}
+            href="/download"
             download="spasiba.apk"
             onClick={dismiss}
             className="inline-flex items-center gap-1.5 rounded-xl border border-emerald-400/40 bg-gradient-to-r from-emerald-500 to-teal-400 px-3 py-1.5 text-xs font-bold text-black shadow-md shadow-emerald-500/20 transition hover:from-emerald-400 hover:to-teal-300 active:scale-95 cursor-pointer"
           >
-            <span>Install APK</span>
+            <span>Download</span>
           </a>
 
           <button

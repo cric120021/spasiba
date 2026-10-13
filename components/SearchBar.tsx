@@ -1320,6 +1320,7 @@ function SearchBarComponent() {
                   />
                 </svg>
               </Link>
+              <AndroidDownloadButton />
               <Link
                 href="/profile"
                 className="flex h-10 w-10 items-center justify-center rounded-[18px] bg-white/[0.05] text-slate-200 transition hover:bg-white/[0.08] sm:h-11 sm:w-11 sm:rounded-2xl"
