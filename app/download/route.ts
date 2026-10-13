@@ -1,8 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(request: NextRequest) {
-  const downloadUrl = new URL("/spasiba.apk", request.url);
-  return NextResponse.redirect(downloadUrl, 307);
+const ANDROID_APK_DOWNLOAD_URL =
+  "https://github.com/cric120021/spasiba/releases/download/v1.0.0/spasiba.apk";
+
+export async function GET() {
+  return NextResponse.redirect(ANDROID_APK_DOWNLOAD_URL, 307);
 }

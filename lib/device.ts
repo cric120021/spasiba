@@ -32,7 +32,7 @@ export function getDeviceInfo(): DeviceInfo {
   const isIOS =
     /iPhone|iPad|iPod/.test(navigator.userAgent) ||
     (typeof navigator !== "undefined" && navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-  const isAndroid = /Android/.test(navigator.userAgent);
+  const isAndroid = /Android/i.test(navigator.userAgent);
   const isStandalone =
     window.matchMedia("(display-mode: standalone)").matches || Boolean(nav.standalone);
 

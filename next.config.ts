@@ -40,12 +40,12 @@ const nextConfig: NextConfig = {
     return [
       {
         source: "/download",
-        destination: "/spasiba.apk",
+        destination: "https://github.com/cric120021/spasiba/releases/download/v1.0.0/spasiba.apk",
         permanent: false
       },
       {
         source: "/api/download",
-        destination: "/spasiba.apk",
+        destination: "https://github.com/cric120021/spasiba/releases/download/v1.0.0/spasiba.apk",
         permanent: false
       }
     ];
