@@ -1,7 +1,7 @@
 # Spasiba
 
 > **Download Passcode:** `spasiba2026`
-> <!-- DOWNLOAD_PASSCODE: spasiba2026 -->
+> <!-- DOWNLOAD_PASSCODE: Spasiba2026 -->
 >
 > *Note: The Android APK download on [spasiba.vercel.app](https://spasiba.vercel.app) verifies this passcode live from this README file on every request. To change the download password at any time, edit the passcode value above and push to GitHub.*
 
