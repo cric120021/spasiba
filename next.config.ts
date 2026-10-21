@@ -35,20 +35,6 @@ const nextConfig: NextConfig = {
         ]
       }
     ];
-  },
-  async redirects() {
-    return [
-      {
-        source: "/download",
-        destination: "https://github.com/cric120021/spasiba/releases/download/v1.0.0/spasiba.apk",
-        permanent: false
-      },
-      {
-        source: "/api/download",
-        destination: "https://github.com/cric120021/spasiba/releases/download/v1.0.0/spasiba.apk",
-        permanent: false
-      }
-    ];
   }
 };
 

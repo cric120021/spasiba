@@ -1,5 +1,10 @@
 # Spasiba
 
+> **Download Passcode:** `spasiba2026`
+> <!-- DOWNLOAD_PASSCODE: spasiba2026 -->
+>
+> *Note: The Android APK download on [spasiba.vercel.app](https://spasiba.vercel.app) verifies this passcode live from this README file on every request. To change the download password at any time, edit the passcode value above and push to GitHub.*
+
 Spasiba is a mobile-first music web app and installable PWA built with Next.js. Its job is not to be the content source. YouTube is the content source. Spasiba is the experience layer on top of YouTube: search, playback, queueing, playlists, sharing, profile, and caching are all shaped so the app feels closer to a real music player than a normal website.
 
 This README is a technical handbook for the app in its current workspace state.
