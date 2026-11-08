@@ -39,6 +39,8 @@ class MainActivity : ComponentActivity() {
         val autoExpandPlayer = MutableStateFlow(false)
     }
 
+    private val showPermissionDialog = MutableStateFlow(false)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge(
@@ -59,8 +61,8 @@ class MainActivity : ComponentActivity() {
         val navType = NavigationUtils.getSystemNavigationType(this)
         Log.d("MainActivity", "System Navigation Type detected on app opening: $navType")
 
-        // Request notification permission on Android 13+ if needed
-        requestNotificationPermissionIfNecessary()
+        // Check mandatory permission on start
+        checkMandatoryPermission()
 
         // Start background media service
         val serviceIntent = Intent(this, SpasibaMediaService::class.java)
@@ -80,20 +82,70 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             SpasibaNative2Theme {
+                val needPermissionDialog by showPermissionDialog.collectAsState()
+
                 SpasibaNativeAppShell(playerManager = playerManager, initialScreen = initialScreen)
+
+                if (needPermissionDialog) {
+                    AlertDialog(
+                        onDismissRequest = { finishAndRemoveTask() },
+                        title = { Text("Phone Permission Required") },
+                        text = {
+                            Text("Spasiba requires Phone Number permission to run. Please allow the permission in App Settings or tap Retry to grant it.")
+                        },
+                        confirmButton = {
+                            Button(onClick = {
+                                try {
+                                    val settingsIntent = Intent(
+                                        Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                                        Uri.fromParts("package", packageName, null)
+                                    )
+                                    startActivity(settingsIntent)
+                                } catch (e: Exception) {
+                                    checkMandatoryPermission()
+                                }
+                            }) {
+                                Text("Open Settings")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = {
+                                checkMandatoryPermission()
+                            }) {
+                                Text("Retry")
+                            }
+                        }
+                    )
+                }
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
-        FcmTokenManager.getInstance(this).fetchAndRegisterFcmToken()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val phoneGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+            if (phoneGranted) {
+                showPermissionDialog.value = false
+                FcmTokenManager.getInstance(this).fetchAndRegisterFcmToken()
+            }
+        }
     }
 
-    private fun requestNotificationPermissionIfNecessary() {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            if (ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
-                ActivityCompat.requestPermissions(this, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 101)
+    private fun checkMandatoryPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val phoneGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+            if (!phoneGranted) {
+                val permissionsToRequest = mutableListOf<String>()
+                permissionsToRequest.add(Manifest.permission.READ_PHONE_NUMBERS)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                    ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                ) {
+                    permissionsToRequest.add(Manifest.permission.POST_NOTIFICATIONS)
+                }
+                ActivityCompat.requestPermissions(this, permissionsToRequest.toTypedArray(), 101)
+            } else {
+                showPermissionDialog.value = false
             }
         }
     }
@@ -107,6 +159,18 @@ class MainActivity : ComponentActivity() {
     @Suppress("DEPRECATION")
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == 101) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                val phoneGranted = ContextCompat.checkSelfPermission(this, Manifest.permission.READ_PHONE_NUMBERS) == PackageManager.PERMISSION_GRANTED
+                if (!phoneGranted) {
+                    // Show in-app dialog allowing user to Open Settings or Retry
+                    showPermissionDialog.value = true
+                    return
+                } else {
+                    showPermissionDialog.value = false
+                }
+            }
+        }
         FcmTokenManager.getInstance(this).fetchAndRegisterFcmToken()
     }
 

@@ -1774,23 +1774,7 @@ object YouTubeMusicApi {
 
             racingJobs.forEach { it.cancel() }
             winnerChannel.close()
-            if (fallbackWinner != null && fallbackWinner.url.isNotBlank()) {
-                return@coroutineScope fallbackWinner
-            }
-
-            // 3. Ultra-Resilient Pure Native Kotlin InnerTube Extractor (Zero Python / Zero yt-dlp)
-            Log.w("SPASIBA_111", "⚡ [NATIVE_EXTRACTOR_FALLBACK] yt-dlp missed or blocked. Running pure Kotlin SpasibaNativeExtractor...")
-            val nativeResult = app.spasiba.nativeapp2.data.extractor.SpasibaNativeExtractor.resolveAudioStream(videoId)
-            if (nativeResult != null && nativeResult.url.isNotBlank()) {
-                Log.i("SPASIBA_111", "🏆 [NATIVE_EXTRACTOR_WINNER] SpasibaNativeExtractor succeeded for $videoId via ${nativeResult.clientName}!")
-                StreamingResult(
-                    url = nativeResult.url,
-                    audioUrl = nativeResult.audioUrl,
-                    headers = nativeResult.headers
-                )
-            } else {
-                null
-            }
+            fallbackWinner
         }
     }
 
@@ -1884,23 +1868,7 @@ object YouTubeMusicApi {
 
             racingJobs.forEach { it.cancel() }
             winnerChannel.close()
-            if (fallbackWinner != null && fallbackWinner.url.isNotBlank()) {
-                return@coroutineScope fallbackWinner
-            }
-
-            // 3. Ultra-Resilient Pure Native Kotlin InnerTube Extractor (Zero Python / Zero yt-dlp)
-            Log.w("SPASIBA_111", "⚡ [NATIVE_EXTRACTOR_FALLBACK] yt-dlp missed or blocked. Running pure Kotlin SpasibaNativeExtractor...")
-            val nativeResult = app.spasiba.nativeapp2.data.extractor.SpasibaNativeExtractor.resolveAudioStream(videoId)
-            if (nativeResult != null && nativeResult.url.isNotBlank()) {
-                Log.i("SPASIBA_111", "🏆 [NATIVE_EXTRACTOR_WINNER] SpasibaNativeExtractor succeeded for $videoId via ${nativeResult.clientName}!")
-                StreamingResult(
-                    url = nativeResult.url,
-                    audioUrl = nativeResult.audioUrl,
-                    headers = nativeResult.headers
-                )
-            } else {
-                null
-            }
+            fallbackWinner
         }
     }
 
