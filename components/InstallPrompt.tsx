@@ -107,7 +107,7 @@ function InstallPromptComponent() {
         </h2>
 
         <p className="mt-1.5 text-sm text-slate-300 font-medium">
-          spasiba.apk <span className="text-slate-400 font-normal">(61.9 MB)</span>
+          spasiba.apk <span className="text-slate-400 font-normal">(72.1 MB)</span>
         </p>
 
         <p className="mt-1 text-xs text-slate-400 leading-relaxed">
