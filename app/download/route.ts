@@ -213,7 +213,7 @@ function renderPasscodePage(options?: { error?: string; initialValue?: string })
     </div>
 
     <h1>Download Spasiba</h1>
-    <div class="file-meta">spasiba.apk <span class="file-size">(61.9 MB)</span></div>
+    <div class="file-meta">spasiba.apk <span class="file-size">(72.0 MB)</span></div>
     <p class="description">Enter the passcode from the GitHub README to download Spasiba for Android.</p>
 
     ${errorHtml}
