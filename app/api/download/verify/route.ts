@@ -12,7 +12,7 @@ export async function POST(request: Request) {
 
     if (!verification.valid) {
       return NextResponse.json(
-        { success: false, error: verification.error || "Incorrect passcode" },
+        { success: false, error: verification.error || "Incorrect password" },
         { status: 401 }
       );
     }
@@ -26,7 +26,7 @@ export async function POST(request: Request) {
   } catch (error) {
     console.error("[Download Verify API] Error:", error);
     return NextResponse.json(
-      { success: false, error: "Internal server error verifying passcode" },
+      { success: false, error: "Internal server error verifying password" },
       { status: 500 }
     );
   }

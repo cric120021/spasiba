@@ -51,7 +51,7 @@ function InstallPromptComponent() {
     if (e) e.preventDefault();
     const cleanPass = passcode.trim();
     if (!cleanPass) {
-      setError("Please enter the passcode.");
+      setError("Please enter the password.");
       return;
     }
 
@@ -68,18 +68,18 @@ function InstallPromptComponent() {
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok || !data.success) {
-        setError(data?.error || "Incorrect passcode. Please try again.");
+        setError(data?.error || "Incorrect password. Please try again.");
         setIsVerifying(false);
         return;
       }
 
-      // Passcode verified! Trigger download & dismiss prompt
+      // Password verified! Trigger download & dismiss prompt
       const downloadTarget =
         data.downloadUrl || `/download?code=${encodeURIComponent(cleanPass)}`;
       dismiss();
       window.location.href = downloadTarget;
     } catch (_err) {
-      setError("Failed to verify passcode. Please check your connection.");
+      setError("Failed to verify password. Please check your connection.");
       setIsVerifying(false);
     }
   };
@@ -111,12 +111,12 @@ function InstallPromptComponent() {
         </p>
 
         <p className="mt-1 text-xs text-slate-400 leading-relaxed">
-          Enter the passcode from the GitHub README to download Spasiba for Android.
+          Enter the password to download the app.
         </p>
 
         <form onSubmit={handleDownload} className="mt-4">
           <label htmlFor="prompt-download-passcode" className="block text-xs font-medium text-slate-300 mb-1.5">
-            Passcode
+            Password
           </label>
 
           <div className="relative">
@@ -128,7 +128,7 @@ function InstallPromptComponent() {
                 setPasscode(e.target.value);
                 if (error) setError(null);
               }}
-              placeholder="Enter passcode"
+              placeholder="Enter password"
               disabled={isVerifying}
               autoFocus
               className={`w-full rounded-xl border bg-black/40 px-3.5 py-2.5 pr-10 text-sm text-white placeholder-slate-500 outline-none transition focus:ring-1 ${
@@ -141,7 +141,7 @@ function InstallPromptComponent() {
               type="button"
               onClick={() => setShowPassword(!showPassword)}
               className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-200 p-1 transition"
-              aria-label={showPassword ? "Hide passcode" : "Show passcode"}
+              aria-label={showPassword ? "Hide password" : "Show password"}
             >
               {showPassword ? (
                 <svg viewBox="0 0 24 24" className="h-4 w-4 fill-none stroke-current stroke-2">

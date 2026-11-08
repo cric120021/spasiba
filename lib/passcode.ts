@@ -135,7 +135,7 @@ export async function verifyPasscode(
   const cleanInput = (inputPasscode || "").trim();
 
   if (!cleanInput) {
-    return { valid: false, error: "Passcode is required." };
+    return { valid: false, error: "Password is required." };
   }
 
   const result = await getGitHubPasscode();
@@ -143,15 +143,14 @@ export async function verifyPasscode(
   if (!result.passcode) {
     return {
       valid: false,
-      error:
-        "Passcode not configured on GitHub README. Please set a passcode in the README.",
+      error: "Password verification is temporarily unavailable. Please try again later.",
     };
   }
 
   if (cleanInput !== result.passcode) {
     return {
       valid: false,
-      error: "Incorrect passcode. Please check the README on GitHub and try again.",
+      error: "Incorrect password. Please try again.",
     };
   }
 

@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 
     // Invalid passcode supplied
     return renderPasscodePage({
-      error: verification.error || "Incorrect passcode. Please try again.",
+      error: verification.error || "Incorrect password. Please try again.",
       initialValue: code,
     });
   }
@@ -214,18 +214,18 @@ function renderPasscodePage(options?: { error?: string; initialValue?: string })
 
     <h1>Download Spasiba</h1>
     <div class="file-meta">spasiba.apk <span class="file-size">(72.1 MB)</span></div>
-    <p class="description">Enter the passcode from the GitHub README to download Spasiba for Android.</p>
+    <p class="description">Enter the password to download the app.</p>
 
     ${errorHtml}
 
     <form method="GET" action="/download" class="form-group">
-      <label for="passcode-input">Passcode</label>
+      <label for="passcode-input">Password</label>
       <div class="input-wrap">
         <input
           id="passcode-input"
           type="password"
           name="code"
-          placeholder="Enter passcode"
+          placeholder="Enter password"
           value="${escapeHtml(options?.initialValue || "")}"
           required
           autofocus
